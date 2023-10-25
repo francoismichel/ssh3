@@ -94,12 +94,12 @@ type ChannelRequest interface {
 
 // see RFC4254 Sec 6.2
 type PtyRequest struct {
-	term string
-	charWidth uint64
-	charHeight uint64
-	pixelWidth uint64
-	pixelHeight uint64
-	encodedTerminalModes string
+	Term string
+	CharWidth uint64
+	CharHeight uint64
+	PixelWidth uint64
+	PixelHeight uint64
+	EncodedTerminalModes string
 }
 
 var _ ChannelRequest = &PtyRequest{}
@@ -131,22 +131,22 @@ func ParsePtyRequest(buf io.Reader) (ChannelRequest, error) {
 		return nil, err
 	}
 	return &PtyRequest{
-		term: term,
-		charWidth: charWidth,
-		charHeight: charHeight,
-		pixelWidth: pixelWidth,
-		pixelHeight: pixelHeight,
-		encodedTerminalModes: encodedTerminalModes,
+		Term: term,
+		CharWidth: charWidth,
+		CharHeight: charHeight,
+		PixelWidth: pixelWidth,
+		PixelHeight: pixelHeight,
+		EncodedTerminalModes: encodedTerminalModes,
 	}, nil
 }
 
 func (r *PtyRequest) Length() int {
-	return util.SSHStringLen(r.term) +
-			int(util.VarIntLen(r.charWidth)) +
-			int(util.VarIntLen(r.charHeight)) +
-			int(util.VarIntLen(r.pixelWidth)) +
-			int(util.VarIntLen(r.pixelHeight)) +
-			util.SSHStringLen(r.encodedTerminalModes)
+	return util.SSHStringLen(r.Term) +
+			int(util.VarIntLen(r.CharWidth)) +
+			int(util.VarIntLen(r.CharHeight)) +
+			int(util.VarIntLen(r.PixelWidth)) +
+			int(util.VarIntLen(r.PixelHeight)) +
+			util.SSHStringLen(r.EncodedTerminalModes)
 }
 
 func (r *PtyRequest) RequestTypeStr() string {
@@ -158,19 +158,19 @@ func (r *PtyRequest) Write(buf []byte) (consumed int, err error) {
 		return 0, errors.New("buffer too small to write PTY request")
 	}
 
-	n, err := util.WriteSSHString(buf, r.term)
+	n, err := util.WriteSSHString(buf, r.Term)
 	if err != nil {
 		return 0, err
 	}
 	consumed += n
 
 	var attrs []byte
-	for _, attr := range []uint64{r.charWidth, r.charHeight, r.pixelWidth, r.pixelHeight} {
+	for _, attr := range []uint64{r.CharWidth, r.CharHeight, r.PixelWidth, r.PixelHeight} {
 		util.AppendVarInt(attrs, attr)
 	}
 	consumed += copy(buf[consumed:], attrs)
 
-	n, err = util.WriteSSHString(buf[consumed:], r.encodedTerminalModes)
+	n, err = util.WriteSSHString(buf[consumed:], r.EncodedTerminalModes)
 	if err != nil {
 		return 0, err
 	}
@@ -181,10 +181,10 @@ func (r *PtyRequest) Write(buf []byte) (consumed int, err error) {
 
 // see RFC4254 Sec 6.3.1
 type X11Request struct {
-	singleConnection bool
-	x11AuthenticationProtocol string
-	x11AuthenticationCookie string
-	x11ScreenNumber uint64
+	SingleConnection bool
+	X11AuthenticationProtocol string
+	X11AuthenticationCookie string
+	X11ScreenNumber uint64
 }
 
 var _ ChannelRequest = &X11Request{}
@@ -209,18 +209,18 @@ func ParseX11Request(buf io.Reader) (ChannelRequest, error) {
 		return nil, err
 	}
 	return &X11Request{
-		singleConnection: singleConnection,
-		x11AuthenticationProtocol: x11AuthenticationProtocol,
-		x11AuthenticationCookie: x11AuthenticationCookie,
-		x11ScreenNumber: x11ScreenNumber,
+		SingleConnection: singleConnection,
+		X11AuthenticationProtocol: x11AuthenticationProtocol,
+		X11AuthenticationCookie: x11AuthenticationCookie,
+		X11ScreenNumber: x11ScreenNumber,
 	}, nil
 }
 
 func (r *X11Request) Length() int {
 	return  1 +
-			int(util.SSHStringLen(r.x11AuthenticationProtocol)) +
-			int(util.SSHStringLen(r.x11AuthenticationCookie)) +
-			int(util.VarIntLen(r.x11ScreenNumber))
+			int(util.SSHStringLen(r.X11AuthenticationProtocol)) +
+			int(util.SSHStringLen(r.X11AuthenticationCookie)) +
+			int(util.VarIntLen(r.X11ScreenNumber))
 }
 
 func (r *X11Request) RequestTypeStr() string {
@@ -232,26 +232,26 @@ func (r *X11Request) Write(buf []byte) (consumed int, err error) {
 		return 0, errors.New("buffer too small to write X11 request")
 	}
 	
-	if r.singleConnection {
+	if r.SingleConnection {
 		buf[0] = 1
 	} else {
 		buf[0] = 0
 	}
 	consumed += 1
 
-	n, err := util.WriteSSHString(buf[consumed:], r.x11AuthenticationProtocol)
+	n, err := util.WriteSSHString(buf[consumed:], r.X11AuthenticationProtocol)
 	if err != nil {
 		return 0, err
 	}
 	consumed += n
 
-	n, err = util.WriteSSHString(buf[consumed:], r.x11AuthenticationCookie)
+	n, err = util.WriteSSHString(buf[consumed:], r.X11AuthenticationCookie)
 	if err != nil {
 		return 0, err
 	}
 	consumed += n
 
-	screenNumberBuf := util.AppendVarInt(nil, r.x11ScreenNumber)
+	screenNumberBuf := util.AppendVarInt(nil, r.X11ScreenNumber)
 	n = copy(buf[consumed:], screenNumberBuf)
 	consumed += n
 	
@@ -280,7 +280,7 @@ func (r *ShellRequest) Write(buf []byte) (int, error) {
 
 
 type ExecRequest struct{
-	command string
+	Command string
 }
 
 var _ ChannelRequest = &ExecRequest{}
@@ -291,12 +291,12 @@ func ParseExecRequest(buf io.Reader) (ChannelRequest, error) {
 		return nil, bufio.ErrAdvanceTooFar
 	}
 	return &ExecRequest{
-		command: command,
+		Command: command,
 	}, nil
 }
 
 func (r *ExecRequest) Length() int {
-	return util.SSHStringLen(r.command)
+	return util.SSHStringLen(r.Command)
 }
 
 func (r *ExecRequest) RequestTypeStr() string {
@@ -304,11 +304,11 @@ func (r *ExecRequest) RequestTypeStr() string {
 }
 
 func (r *ExecRequest) Write(buf []byte) (int, error) {
-	return util.WriteSSHString(buf, r.command)
+	return util.WriteSSHString(buf, r.Command)
 }
 
 type SubsystemRequest struct {
-	subsystemName string
+	SubsystemName string
 }
 
 var _ ChannelRequest = &SubsystemRequest{}
@@ -319,12 +319,12 @@ func ParseSubsystemRequest(buf io.Reader) (ChannelRequest, error) {
 		return nil, bufio.ErrAdvanceTooFar
 	}
 	return &SubsystemRequest{
-		subsystemName: subsystemName,
+		SubsystemName: subsystemName,
 	}, nil
 }
 
 func (r *SubsystemRequest) Length() int {
-	return util.SSHStringLen(r.subsystemName)
+	return util.SSHStringLen(r.SubsystemName)
 }
 
 func (r *SubsystemRequest) RequestTypeStr() string {
@@ -332,15 +332,15 @@ func (r *SubsystemRequest) RequestTypeStr() string {
 }
 
 func (r *SubsystemRequest) Write(buf []byte) (int, error) {
-	return util.WriteSSHString(buf, r.subsystemName)
+	return util.WriteSSHString(buf, r.SubsystemName)
 }
 
 
 type WindowChangeRequest struct {
-	charWidth uint64
-	charHeight uint64
-	pixelWidth uint64
-	pixelHeight uint64
+	CharWidth uint64
+	CharHeight uint64
+	PixelWidth uint64
+	PixelHeight uint64
 }
 
 var _ ChannelRequest = &WindowChangeRequest{}
@@ -364,18 +364,18 @@ func ParseWindowChangeRequest(buf io.Reader) (ChannelRequest, error) {
 		return nil, err
 	}
 	return &WindowChangeRequest{
-		charWidth: charWidth,
-		charHeight: charHeight,
-		pixelWidth: pixelWidth,
-		pixelHeight: pixelHeight,
+		CharWidth: charWidth,
+		CharHeight: charHeight,
+		PixelWidth: pixelWidth,
+		PixelHeight: pixelHeight,
 	}, nil
 }
 
 func (r *WindowChangeRequest) Length() int {
-	return int(util.VarIntLen(r.charWidth)) +
-			int(util.VarIntLen(r.charHeight)) +
-			int(util.VarIntLen(r.pixelWidth)) +
-			int(util.VarIntLen(r.pixelHeight))
+	return int(util.VarIntLen(r.CharWidth)) +
+			int(util.VarIntLen(r.CharHeight)) +
+			int(util.VarIntLen(r.PixelWidth)) +
+			int(util.VarIntLen(r.PixelHeight))
 }
 
 func (r *WindowChangeRequest) RequestTypeStr() string {
@@ -388,7 +388,7 @@ func (r *WindowChangeRequest) Write(buf []byte) (consumed int, err error) {
 	}
 
 	var attrs []byte
-	for _, attr := range []uint64{r.charWidth, r.charHeight, r.pixelWidth, r.pixelHeight} {
+	for _, attr := range []uint64{r.CharWidth, r.CharHeight, r.PixelWidth, r.PixelHeight} {
 		util.AppendVarInt(attrs, attr)
 	}
 	consumed += copy(buf[consumed:], attrs)
@@ -398,7 +398,7 @@ func (r *WindowChangeRequest) Write(buf []byte) (consumed int, err error) {
 
 
 type SignalRequest struct {
-	signalNameWithoutSig string
+	SignalNameWithoutSig string
 }
 
 var _ ChannelRequest = &SignalRequest{}
@@ -409,12 +409,12 @@ func ParseSignalRequest(buf io.Reader) (ChannelRequest, error) {
 		return nil, bufio.ErrAdvanceTooFar
 	}
 	return &SignalRequest{
-		signalNameWithoutSig: signalNameWithoutSig,
+		SignalNameWithoutSig: signalNameWithoutSig,
 	}, nil
 }
 
 func (r *SignalRequest) Length() int {
-	return util.SSHStringLen(r.signalNameWithoutSig)
+	return util.SSHStringLen(r.SignalNameWithoutSig)
 }
 
 func (r *SignalRequest) RequestTypeStr() string {
@@ -422,7 +422,7 @@ func (r *SignalRequest) RequestTypeStr() string {
 }
 
 func (r *SignalRequest) Write(buf []byte) (int, error) {
-	return util.WriteSSHString(buf, r.signalNameWithoutSig)
+	return util.WriteSSHString(buf, r.SignalNameWithoutSig)
 }
 
 type ExitStatusRequest struct {
@@ -461,10 +461,10 @@ func (r *ExitStatusRequest) Write(buf []byte) (int, error) {
 
 
 type ExitSignalRequest struct {
-	signalNameWithoutSig string
-	coreDumped bool
-	errorMessageUTF8 string
-	languageTag string
+	SignalNameWithoutSig string
+	CoreDumped bool
+	ErrorMessageUTF8 string
+	LanguageTag string
 }
 
 var _ ChannelRequest = &ExitSignalRequest{}
@@ -490,18 +490,18 @@ func ParseExitSignalRequest(buf io.Reader) (ChannelRequest, error) {
 		return nil, bufio.ErrAdvanceTooFar
 	}
 	return &ExitSignalRequest{
-		signalNameWithoutSig: signalNameWithoutSig,
-		coreDumped: coreDumped,
-		errorMessageUTF8: errorMessageUTF8,
-		languageTag: languageTag,
+		SignalNameWithoutSig: signalNameWithoutSig,
+		CoreDumped: coreDumped,
+		ErrorMessageUTF8: errorMessageUTF8,
+		LanguageTag: languageTag,
 	}, nil
 }
 
 func (r *ExitSignalRequest) Length() int {
-	return util.SSHStringLen(r.signalNameWithoutSig) +
+	return util.SSHStringLen(r.SignalNameWithoutSig) +
 		   1 +
-		   util.SSHStringLen(r.errorMessageUTF8) +
-		   util.SSHStringLen(r.languageTag)
+		   util.SSHStringLen(r.ErrorMessageUTF8) +
+		   util.SSHStringLen(r.LanguageTag)
 }
 
 func (r *ExitSignalRequest) RequestTypeStr() string {
@@ -512,13 +512,13 @@ func (r *ExitSignalRequest) Write(buf []byte) (consumed int, err error) {
 	if len(buf) < r.Length() {
 		return 0, errors.New("buffer too small to write PTY request")
 	}
-	n, err := util.WriteSSHString(buf, r.signalNameWithoutSig)
+	n, err := util.WriteSSHString(buf, r.SignalNameWithoutSig)
 	if err != nil {
 		return 0, err
 	}
 	consumed += n
 
-	if r.coreDumped {
+	if r.CoreDumped {
 		buf[consumed] = 1
 	} else {
 		buf[consumed] = 0
@@ -526,13 +526,13 @@ func (r *ExitSignalRequest) Write(buf []byte) (consumed int, err error) {
 	consumed += 1
 
 
-	n, err = util.WriteSSHString(buf, r.errorMessageUTF8)
+	n, err = util.WriteSSHString(buf, r.ErrorMessageUTF8)
 	if err != nil {
 		return 0, err
 	}
 	consumed += n
 
-	n, err = util.WriteSSHString(buf, r.languageTag)
+	n, err = util.WriteSSHString(buf, r.LanguageTag)
 	if err != nil {
 		return 0, err
 	}
