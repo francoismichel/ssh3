@@ -59,6 +59,22 @@ func (c *Channel) getAndHandleNextMessage() error {
 			switch requestMessage := message.ChannelRequest.(type) {
 				case *ssh3.PtyRequest:
 					c.PtyReqHandler(c, *requestMessage, message.WantReply)
+				case *ssh3.X11Request:
+					c.X11ReqHandler(c, *requestMessage, message.WantReply)
+				case *ssh3.ShellRequest:
+					c.ShellReqHandler(c, *requestMessage, message.WantReply)
+				case *ssh3.ExecRequest:
+					c.ExecReqHandler(c, *requestMessage, message.WantReply)
+				case *ssh3.SubsystemRequest:
+					c.SubsystemReqHandler(c, *requestMessage, message.WantReply)
+				case *ssh3.WindowChangeRequest:
+					c.WindowChangeReqHandler(c, *requestMessage, message.WantReply)
+				case *ssh3.SignalRequest:
+					c.SignalReqHandler(c, *requestMessage, message.WantReply)
+				case *ssh3.ExitStatusRequest:
+					c.ExitStatusReqHandler(c, *requestMessage, message.WantReply)
+				case *ssh3.ExitSignalRequest:
+					c.ExitSignalReqHandler(c, *requestMessage, message.WantReply)
 			}
 		case *ssh3.DataOrExtendedDataMessage:
 			c.ChannelDataHandler(c, message.DataType, message.Data)
@@ -95,4 +111,16 @@ func (c *Channel) flushOneDataMsg(dataType ssh3.SSHDataType) error {
 }
 
 
-func (c *Channel) SendMessage() {}
+func (c *Channel) sendMessage(m ssh3.Message) error {
+	totalWritten := 0
+	buf := make([]byte, m.Length())
+	m.Write(buf)
+	for totalWritten != len(buf) {
+		n, err := m.Write(buf[totalWritten:])
+		if err != nil {
+			return err
+		}
+		totalWritten += n
+	}
+	return nil
+}
