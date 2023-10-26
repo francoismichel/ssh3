@@ -1,5 +1,9 @@
 package ssh3
 
+import (
+	"ssh3/src/util"
+)
+
 // ssh messages type
 const SSH_MSG_DISCONNECT                  =     1
 const SSH_MSG_IGNORE                      =     2
@@ -28,8 +32,103 @@ const SSH_MSG_CHANNEL_REQUEST             =    98
 const SSH_MSG_CHANNEL_SUCCESS             =    99
 const SSH_MSG_CHANNEL_FAILURE             =   100
 
+type SSHDataType uint64
+const (
+	SSH_EXTENDED_DATA_NONE SSHDataType = 0
+    SSH_EXTENDED_DATA_STDERR SSHDataType = 1
+)
 
 type Message interface {
 	Write(buf []byte) (n int, err error)
 	Length() int
+}
+
+type DataOrExtendedDataMessage struct {
+	DataType SSHDataType
+	Data string
+}
+
+var _ Message = &DataOrExtendedDataMessage{}
+
+func ParseDataMessage(buf util.Reader) (*DataOrExtendedDataMessage, error) {
+	data, err := util.ParseSSHString(buf)
+	if err != nil {
+		return nil, err
+	}
+	return &DataOrExtendedDataMessage{
+		DataType: SSH_EXTENDED_DATA_NONE,
+		Data: data,
+	}, nil
+}
+
+func (m *DataOrExtendedDataMessage) Write(buf []byte) (consumed int, err error) {
+	if m.DataType == SSH_EXTENDED_DATA_NONE {
+		msgTypeBuf := util.AppendVarInt(nil, uint64(SSH_MSG_CHANNEL_DATA))
+		consumed += copy(buf[consumed:], msgTypeBuf)
+	} else {
+		msgTypeBuf := util.AppendVarInt(nil, uint64(SSH_MSG_CHANNEL_EXTENDED_DATA))
+		consumed += copy(buf[consumed:], msgTypeBuf)
+		dataTypeBuf := util.AppendVarInt(nil, uint64(m.DataType))
+		consumed += copy(buf[consumed:], dataTypeBuf)
+	}
+	n, err := util.WriteSSHString(buf[consumed:], m.Data)
+	if err != nil {
+		return 0, err
+	}
+	consumed += n
+	return consumed, nil
+}
+
+func (m *DataOrExtendedDataMessage) Length() int {
+	if m.DataType == SSH_EXTENDED_DATA_NONE {
+		messageTypeLen := util.VarIntLen(SSH_MSG_CHANNEL_DATA)
+		return int(messageTypeLen) + int(util.SSHStringLen(m.Data))
+	}
+	messageTypeLen := util.VarIntLen(SSH_MSG_CHANNEL_EXTENDED_DATA)
+	return int(messageTypeLen) + int(util.VarIntLen(uint64(m.DataType))) + int(util.SSHStringLen(m.Data))
+}
+
+func ParseExtendedDataMessage(buf util.Reader) (*DataOrExtendedDataMessage, error) {
+	dataType, err := util.ReadVarInt(buf)
+	if err != nil {
+		return nil, err
+	}
+	data, err := util.ParseSSHString(buf)
+	if err != nil {
+		return nil, err
+	}
+	return &DataOrExtendedDataMessage{
+		DataType: SSHDataType(dataType),
+		Data: data,
+	}, nil
+}
+
+func ParseMessage(r util.Reader) (Message, error) {
+	typeId, err := util.ReadVarInt(r)
+	if err != nil {
+		return nil, err
+	}
+	switch typeId {
+		case SSH_MSG_CHANNEL_REQUEST:
+			requestMessage, err := ParseRequestMessage(r)
+			if err != nil {
+				return nil, err
+			}
+			return requestMessage, nil
+		case SSH_MSG_CHANNEL_DATA, SSH_MSG_CHANNEL_EXTENDED_DATA:
+			var dataMessage *DataOrExtendedDataMessage
+			var err error
+			if typeId == SSH_MSG_CHANNEL_DATA {
+				dataMessage, err = ParseDataMessage(r)
+			} else {
+				dataMessage, err = ParseExtendedDataMessage(r)
+			}
+			if err != nil {
+				return nil, err
+			}
+			return dataMessage, nil
+
+		default:
+			panic("not implemented")
+	}
 }

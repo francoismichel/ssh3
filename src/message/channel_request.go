@@ -5,22 +5,23 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	util "ssh3/src/util"
 )
 
-var ChannelRequestParseFuncs = map[string]func (io.Reader) (ChannelRequest, error){
-	"pty-req": ParsePtyRequest,
-	"x11-req": ParseX11Request,
-	"shell": ParseShellRequest,
-	"exec": ParseExecRequest,
-	"subsystem": ParseSubsystemRequest,
+var ChannelRequestParseFuncs = map[string]func(util.Reader) (ChannelRequest, error){
+	"pty-req":       ParsePtyRequest,
+	"x11-req":       ParseX11Request,
+	"shell":         ParseShellRequest,
+	"exec":          ParseExecRequest,
+	"subsystem":     ParseSubsystemRequest,
 	"window-change": ParseWindowChangeRequest,
-	"signal": ParseSignalRequest,
+	"signal":        ParseSignalRequest,
+	"exit-status":   ParseExitStatusRequest,
+	"exit-signal":   ParseExitSignalRequest,
 }
 
 type ChannelRequestMessage struct {
-	wantReply bool
+	WantReply bool
 	ChannelRequest
 }
 
@@ -28,7 +29,7 @@ var _ Message = &ChannelRequestMessage{}
 
 func (m *ChannelRequestMessage) Length() (n int) {
 	// msg type + request type + wantReply + request content
-	return 1 + util.SSHStringLen(m.ChannelRequest.RequestTypeStr()) + 1 + m.ChannelRequest.Length()
+	return int(util.VarIntLen(SSH_MSG_CHANNEL_REQUEST)) + util.SSHStringLen(m.ChannelRequest.RequestTypeStr()) + 1 + m.ChannelRequest.Length()
 }
 
 func (m *ChannelRequestMessage) Write(buf []byte) (consumed int, err error) {
@@ -36,8 +37,8 @@ func (m *ChannelRequestMessage) Write(buf []byte) (consumed int, err error) {
 		return 0, fmt.Errorf("buffer too small to write message for channel request of type %T: %d < %d", m.ChannelRequest, len(buf), m.Length())
 	}
 
-	buf[0] = SSH_MSG_CHANNEL_REQUEST
-	consumed += 1
+	msgTypeBuf := util.AppendVarInt(nil, uint64(SSH_MSG_CHANNEL_REQUEST))
+	consumed += copy(buf[consumed:], msgTypeBuf)
 
 	n, err := util.WriteSSHString(buf[consumed:], m.ChannelRequest.RequestTypeStr())
 	if err != nil {
@@ -45,7 +46,7 @@ func (m *ChannelRequestMessage) Write(buf []byte) (consumed int, err error) {
 	}
 	consumed += n
 
-	if m.wantReply {
+	if m.WantReply {
 		buf[consumed] = 1
 	} else {
 		buf[consumed] = 0
@@ -62,7 +63,7 @@ func (m *ChannelRequestMessage) Write(buf []byte) (consumed int, err error) {
 }
 
 // The buffer points to the request-type attribute
-func ParseRequestMessage(buf io.Reader) (*ChannelRequestMessage, error) {
+func ParseRequestMessage(buf util.Reader) (*ChannelRequestMessage, error) {
 	requestType, err := util.ParseSSHString(buf)
 	if err != nil {
 		return nil, err
@@ -73,7 +74,7 @@ func ParseRequestMessage(buf io.Reader) (*ChannelRequestMessage, error) {
 		return nil, err
 	}
 	parseFunc, ok := ChannelRequestParseFuncs[requestType]
-	if !ok{
+	if !ok {
 		return nil, fmt.Errorf("invalid request message type %s", requestType)
 	}
 	channelRequest, err := parseFunc(buf)
@@ -81,7 +82,7 @@ func ParseRequestMessage(buf io.Reader) (*ChannelRequestMessage, error) {
 		return nil, err
 	}
 	return &ChannelRequestMessage{
-		wantReply: wantReply,
+		WantReply:      wantReply,
 		ChannelRequest: channelRequest,
 	}, nil
 }
@@ -94,35 +95,34 @@ type ChannelRequest interface {
 
 // see RFC4254 Sec 6.2
 type PtyRequest struct {
-	Term string
-	CharWidth uint64
-	CharHeight uint64
-	PixelWidth uint64
-	PixelHeight uint64
+	Term                 string
+	CharWidth            uint64
+	CharHeight           uint64
+	PixelWidth           uint64
+	PixelHeight          uint64
 	EncodedTerminalModes string
 }
 
 var _ ChannelRequest = &PtyRequest{}
 
-func ParsePtyRequest(buf io.Reader) (ChannelRequest, error) {
+func ParsePtyRequest(buf util.Reader) (ChannelRequest, error) {
 	term, err := util.ParseSSHString(buf)
 	if err != nil {
 		return nil, err
 	}
-	byteReader := bufio.NewReader(buf)
-	charWidth, err := util.ReadVarInt(byteReader)
+	charWidth, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
-	charHeight, err := util.ReadVarInt(byteReader)
+	charHeight, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
-	pixelWidth, err := util.ReadVarInt(byteReader)
+	pixelWidth, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
-	pixelHeight, err := util.ReadVarInt(byteReader)
+	pixelHeight, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
@@ -131,22 +131,22 @@ func ParsePtyRequest(buf io.Reader) (ChannelRequest, error) {
 		return nil, err
 	}
 	return &PtyRequest{
-		Term: term,
-		CharWidth: charWidth,
-		CharHeight: charHeight,
-		PixelWidth: pixelWidth,
-		PixelHeight: pixelHeight,
+		Term:                 term,
+		CharWidth:            charWidth,
+		CharHeight:           charHeight,
+		PixelWidth:           pixelWidth,
+		PixelHeight:          pixelHeight,
 		EncodedTerminalModes: encodedTerminalModes,
 	}, nil
 }
 
 func (r *PtyRequest) Length() int {
 	return util.SSHStringLen(r.Term) +
-			int(util.VarIntLen(r.CharWidth)) +
-			int(util.VarIntLen(r.CharHeight)) +
-			int(util.VarIntLen(r.PixelWidth)) +
-			int(util.VarIntLen(r.PixelHeight)) +
-			util.SSHStringLen(r.EncodedTerminalModes)
+		int(util.VarIntLen(r.CharWidth)) +
+		int(util.VarIntLen(r.CharHeight)) +
+		int(util.VarIntLen(r.PixelWidth)) +
+		int(util.VarIntLen(r.PixelHeight)) +
+		util.SSHStringLen(r.EncodedTerminalModes)
 }
 
 func (r *PtyRequest) RequestTypeStr() string {
@@ -166,7 +166,7 @@ func (r *PtyRequest) Write(buf []byte) (consumed int, err error) {
 
 	var attrs []byte
 	for _, attr := range []uint64{r.CharWidth, r.CharHeight, r.PixelWidth, r.PixelHeight} {
-		util.AppendVarInt(attrs, attr)
+		attrs = util.AppendVarInt(attrs, attr)
 	}
 	consumed += copy(buf[consumed:], attrs)
 
@@ -181,15 +181,15 @@ func (r *PtyRequest) Write(buf []byte) (consumed int, err error) {
 
 // see RFC4254 Sec 6.3.1
 type X11Request struct {
-	SingleConnection bool
+	SingleConnection          bool
 	X11AuthenticationProtocol string
-	X11AuthenticationCookie string
-	X11ScreenNumber uint64
+	X11AuthenticationCookie   string
+	X11ScreenNumber           uint64
 }
 
 var _ ChannelRequest = &X11Request{}
 
-func ParseX11Request(buf io.Reader) (ChannelRequest, error) {
+func ParseX11Request(buf util.Reader) (ChannelRequest, error) {
 	singleConnection := false
 	err := binary.Read(buf, binary.BigEndian, &singleConnection)
 	if err != nil {
@@ -203,24 +203,23 @@ func ParseX11Request(buf io.Reader) (ChannelRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	byteReader := bufio.NewReader(buf)
-	x11ScreenNumber, err := util.ReadVarInt(byteReader)
+	x11ScreenNumber, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
 	return &X11Request{
-		SingleConnection: singleConnection,
+		SingleConnection:          singleConnection,
 		X11AuthenticationProtocol: x11AuthenticationProtocol,
-		X11AuthenticationCookie: x11AuthenticationCookie,
-		X11ScreenNumber: x11ScreenNumber,
+		X11AuthenticationCookie:   x11AuthenticationCookie,
+		X11ScreenNumber:           x11ScreenNumber,
 	}, nil
 }
 
 func (r *X11Request) Length() int {
-	return  1 +
-			int(util.SSHStringLen(r.X11AuthenticationProtocol)) +
-			int(util.SSHStringLen(r.X11AuthenticationCookie)) +
-			int(util.VarIntLen(r.X11ScreenNumber))
+	return 1 +
+		int(util.SSHStringLen(r.X11AuthenticationProtocol)) +
+		int(util.SSHStringLen(r.X11AuthenticationCookie)) +
+		int(util.VarIntLen(r.X11ScreenNumber))
 }
 
 func (r *X11Request) RequestTypeStr() string {
@@ -231,7 +230,7 @@ func (r *X11Request) Write(buf []byte) (consumed int, err error) {
 	if len(buf) < r.Length() {
 		return 0, errors.New("buffer too small to write X11 request")
 	}
-	
+
 	if r.SingleConnection {
 		buf[0] = 1
 	} else {
@@ -254,7 +253,7 @@ func (r *X11Request) Write(buf []byte) (consumed int, err error) {
 	screenNumberBuf := util.AppendVarInt(nil, r.X11ScreenNumber)
 	n = copy(buf[consumed:], screenNumberBuf)
 	consumed += n
-	
+
 	return consumed, nil
 }
 
@@ -262,7 +261,7 @@ type ShellRequest struct{}
 
 var _ ChannelRequest = &ShellRequest{}
 
-func ParseShellRequest(buf io.Reader) (ChannelRequest, error) {
+func ParseShellRequest(buf util.Reader) (ChannelRequest, error) {
 	return &ShellRequest{}, nil
 }
 
@@ -278,14 +277,13 @@ func (r *ShellRequest) Write(buf []byte) (int, error) {
 	return 0, nil
 }
 
-
-type ExecRequest struct{
+type ExecRequest struct {
 	Command string
 }
 
 var _ ChannelRequest = &ExecRequest{}
 
-func ParseExecRequest(buf io.Reader) (ChannelRequest, error) {
+func ParseExecRequest(buf util.Reader) (ChannelRequest, error) {
 	command, err := util.ParseSSHString(buf)
 	if err != nil {
 		return nil, bufio.ErrAdvanceTooFar
@@ -313,7 +311,7 @@ type SubsystemRequest struct {
 
 var _ ChannelRequest = &SubsystemRequest{}
 
-func ParseSubsystemRequest(buf io.Reader) (ChannelRequest, error) {
+func ParseSubsystemRequest(buf util.Reader) (ChannelRequest, error) {
 	subsystemName, err := util.ParseSSHString(buf)
 	if err != nil {
 		return nil, bufio.ErrAdvanceTooFar
@@ -335,47 +333,45 @@ func (r *SubsystemRequest) Write(buf []byte) (int, error) {
 	return util.WriteSSHString(buf, r.SubsystemName)
 }
 
-
 type WindowChangeRequest struct {
-	CharWidth uint64
-	CharHeight uint64
-	PixelWidth uint64
+	CharWidth   uint64
+	CharHeight  uint64
+	PixelWidth  uint64
 	PixelHeight uint64
 }
 
 var _ ChannelRequest = &WindowChangeRequest{}
 
-func ParseWindowChangeRequest(buf io.Reader) (ChannelRequest, error) {
-	byteReader := bufio.NewReader(buf)
-	charWidth, err := util.ReadVarInt(byteReader)
+func ParseWindowChangeRequest(buf util.Reader) (ChannelRequest, error) {
+	charWidth, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
-	charHeight, err := util.ReadVarInt(byteReader)
+	charHeight, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
-	pixelWidth, err := util.ReadVarInt(byteReader)
+	pixelWidth, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
-	pixelHeight, err := util.ReadVarInt(byteReader)
+	pixelHeight, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
 	return &WindowChangeRequest{
-		CharWidth: charWidth,
-		CharHeight: charHeight,
-		PixelWidth: pixelWidth,
+		CharWidth:   charWidth,
+		CharHeight:  charHeight,
+		PixelWidth:  pixelWidth,
 		PixelHeight: pixelHeight,
 	}, nil
 }
 
 func (r *WindowChangeRequest) Length() int {
 	return int(util.VarIntLen(r.CharWidth)) +
-			int(util.VarIntLen(r.CharHeight)) +
-			int(util.VarIntLen(r.PixelWidth)) +
-			int(util.VarIntLen(r.PixelHeight))
+		int(util.VarIntLen(r.CharHeight)) +
+		int(util.VarIntLen(r.PixelWidth)) +
+		int(util.VarIntLen(r.PixelHeight))
 }
 
 func (r *WindowChangeRequest) RequestTypeStr() string {
@@ -389,13 +385,12 @@ func (r *WindowChangeRequest) Write(buf []byte) (consumed int, err error) {
 
 	var attrs []byte
 	for _, attr := range []uint64{r.CharWidth, r.CharHeight, r.PixelWidth, r.PixelHeight} {
-		util.AppendVarInt(attrs, attr)
+		attrs = util.AppendVarInt(attrs, attr)
 	}
 	consumed += copy(buf[consumed:], attrs)
 
 	return consumed, nil
 }
-
 
 type SignalRequest struct {
 	SignalNameWithoutSig string
@@ -403,7 +398,7 @@ type SignalRequest struct {
 
 var _ ChannelRequest = &SignalRequest{}
 
-func ParseSignalRequest(buf io.Reader) (ChannelRequest, error) {
+func ParseSignalRequest(buf util.Reader) (ChannelRequest, error) {
 	signalNameWithoutSig, err := util.ParseSSHString(buf)
 	if err != nil {
 		return nil, bufio.ErrAdvanceTooFar
@@ -426,50 +421,48 @@ func (r *SignalRequest) Write(buf []byte) (int, error) {
 }
 
 type ExitStatusRequest struct {
-	exitStatus uint64
+	ExitStatus uint64
 }
 
 var _ ChannelRequest = &ExitStatusRequest{}
 
-func ParseExitStatusRequest(buf io.Reader) (ChannelRequest, error) {
-	byteReader := bufio.NewReader(buf)
-	exitStatus, err := util.ReadVarInt(byteReader)
+func ParseExitStatusRequest(buf util.Reader) (ChannelRequest, error) {
+	exitStatus, err := util.ReadVarInt(buf)
 	if err != nil {
 		return nil, err
 	}
 	return &ExitStatusRequest{
-		exitStatus: exitStatus,
+		ExitStatus: exitStatus,
 	}, nil
 }
 
 func (r *ExitStatusRequest) Length() int {
-	return int(util.VarIntLen(r.exitStatus))
+	return int(util.VarIntLen(r.ExitStatus))
 }
 
 func (r *ExitStatusRequest) RequestTypeStr() string {
-	return "signal"
+	return "exit-status"
 }
 
 func (r *ExitStatusRequest) Write(buf []byte) (int, error) {
 	if len(buf) < r.Length() {
 		return 0, errors.New("buffer too small to write PTY request")
 	}
-	attrBuf := util.AppendVarInt(nil, r.exitStatus)
+	attrBuf := util.AppendVarInt(nil, r.ExitStatus)
 	n := copy(buf, attrBuf)
 	return n, nil
 }
 
-
 type ExitSignalRequest struct {
 	SignalNameWithoutSig string
-	CoreDumped bool
-	ErrorMessageUTF8 string
-	LanguageTag string
+	CoreDumped           bool
+	ErrorMessageUTF8     string
+	LanguageTag          string
 }
 
 var _ ChannelRequest = &ExitSignalRequest{}
 
-func ParseExitSignalRequest(buf io.Reader) (ChannelRequest, error) {
+func ParseExitSignalRequest(buf util.Reader) (ChannelRequest, error) {
 	signalNameWithoutSig, err := util.ParseSSHString(buf)
 	if err != nil {
 		return nil, bufio.ErrAdvanceTooFar
@@ -491,17 +484,17 @@ func ParseExitSignalRequest(buf io.Reader) (ChannelRequest, error) {
 	}
 	return &ExitSignalRequest{
 		SignalNameWithoutSig: signalNameWithoutSig,
-		CoreDumped: coreDumped,
-		ErrorMessageUTF8: errorMessageUTF8,
-		LanguageTag: languageTag,
+		CoreDumped:           coreDumped,
+		ErrorMessageUTF8:     errorMessageUTF8,
+		LanguageTag:          languageTag,
 	}, nil
 }
 
 func (r *ExitSignalRequest) Length() int {
 	return util.SSHStringLen(r.SignalNameWithoutSig) +
-		   1 +
-		   util.SSHStringLen(r.ErrorMessageUTF8) +
-		   util.SSHStringLen(r.LanguageTag)
+		1 +
+		util.SSHStringLen(r.ErrorMessageUTF8) +
+		util.SSHStringLen(r.LanguageTag)
 }
 
 func (r *ExitSignalRequest) RequestTypeStr() string {
@@ -512,7 +505,7 @@ func (r *ExitSignalRequest) Write(buf []byte) (consumed int, err error) {
 	if len(buf) < r.Length() {
 		return 0, errors.New("buffer too small to write PTY request")
 	}
-	n, err := util.WriteSSHString(buf, r.SignalNameWithoutSig)
+	n, err := util.WriteSSHString(buf[consumed:], r.SignalNameWithoutSig)
 	if err != nil {
 		return 0, err
 	}
@@ -525,14 +518,13 @@ func (r *ExitSignalRequest) Write(buf []byte) (consumed int, err error) {
 	}
 	consumed += 1
 
-
-	n, err = util.WriteSSHString(buf, r.ErrorMessageUTF8)
+	n, err = util.WriteSSHString(buf[consumed:], r.ErrorMessageUTF8)
 	if err != nil {
 		return 0, err
 	}
 	consumed += n
 
-	n, err = util.WriteSSHString(buf, r.LanguageTag)
+	n, err = util.WriteSSHString(buf[consumed:], r.LanguageTag)
 	if err != nil {
 		return 0, err
 	}

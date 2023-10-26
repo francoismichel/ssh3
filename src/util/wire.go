@@ -3,7 +3,7 @@
 package util
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 )
@@ -22,8 +22,70 @@ const (
 	maxVarInt8 = 4611686018427387903
 )
 
+// Reader implements both the io.ByteReader and io.Reader interfaces.
+type Reader interface {
+	io.ByteReader
+	io.Reader
+}
+
+var _ Reader = &bytes.Reader{}
+
+type byteReader struct {
+	io.Reader
+}
+
+var _ Reader = &byteReader{}
+
+// NewReader returns a Reader for r.
+// If r already implements both io.ByteReader and io.Reader, NewReader returns r.
+// Otherwise, r is wrapped to add the missing interfaces.
+func NewReader(r io.Reader) Reader {
+	if r, ok := r.(Reader); ok {
+		return r
+	}
+	return &byteReader{r}
+}
+
+func (r *byteReader) ReadByte() (byte, error) {
+	var b [1]byte
+	n, err := r.Reader.Read(b[:])
+	if n == 1 && err == io.EOF {
+		err = nil
+	}
+	return b[0], err
+}
+
+// Writer implements both the io.ByteWriter and io.Writer interfaces.
+type Writer interface {
+	io.ByteWriter
+	io.Writer
+}
+
+var _ Writer = &bytes.Buffer{}
+
+type byteWriter struct {
+	io.Writer
+}
+
+var _ Writer = &byteWriter{}
+
+// NewWriter returns a Writer for w.
+// If r already implements both io.ByteWriter and io.Writer, NewWriter returns w.
+// Otherwise, w is wrapped to add the missing interfaces.
+func NewWriter(w io.Writer) Writer {
+	if w, ok := w.(Writer); ok {
+		return w
+	}
+	return &byteWriter{w}
+}
+
+func (w *byteWriter) WriteByte(c byte) error {
+	_, err := w.Writer.Write([]byte{c})
+	return err
+}
+
 // ReadVarInt reads a number in the QUIC varint format from r.
-func ReadVarInt(r io.ByteReader) (uint64, error) {
+func ReadVarInt(r Reader) (uint64, error) {
 	firstByte, err := r.ReadByte()
 	if err != nil {
 		return 0, err
@@ -141,9 +203,8 @@ func VarIntLen(i uint64) uint64 {
 	}{"value doesn't fit into 62 bits: ", i})
 }
 
-func ParseSSHString(buf io.Reader) (string, error) {
-	byteReader := bufio.NewReader(buf)
-	length, err := ReadVarInt(byteReader)
+func ParseSSHString(buf Reader) (string, error) {
+	length, err := ReadVarInt(buf)
 	if err != nil {
 		return "", err
 	}
@@ -156,17 +217,23 @@ func ParseSSHString(buf io.Reader) (string, error) {
 }
 
 func WriteSSHString(out []byte, s string) (int, error) {
-	if uint64(len(out)) < VarIntLen(uint64(len(s)) + uint64(len(s))) {
-		return 0, fmt.Errorf("buffer too small to write varint: %d < %d", len(out), VarIntLen(uint64(len(s))))
+	if uint64(len(out)) < uint64(SSHStringLen(s)) {
+		return 0, fmt.Errorf("buffer too small to write varint: %d < %d", len(out), SSHStringLen(s))
 	}
 	buf := AppendVarInt(nil, uint64(len(s)))
 
 	copied := copy(out, buf)
-
-	copied += copy(buf[copied:], s)
+	copied += copy(out[copied:], s)
 	return copied, nil
 }
 
 func SSHStringLen(s string) int {
 	return int(VarIntLen(uint64(len(s)))) + len(s)
+}
+
+func MinUint64(a uint64, b uint64) uint64 {
+	if a <= b {
+		return a
+	}
+	return b
 }
