@@ -12,6 +12,8 @@ import (
 )
 
 var _ = Describe("Messages", func() {
+	const CHANNEL_OPEN_CONFIRMATION = 91
+	const CHANNEL_OPEN_FAILURE = 92
 	const CLASSICAL_DATA = 94
 	const EXTENDED_DATA = 95
 	const CHANNEL_REQUEST = 98
@@ -512,4 +514,73 @@ var _ = Describe("Messages", func() {
 
 		})
 	})
+
+	Context("Channel open confirmation messages", func() {
+		maxPacketSize := mathrand.Uint64() % (1 << 60)
+		channel_open_confirmation_binary := util.AppendVarInt(nil, CHANNEL_OPEN_CONFIRMATION)
+		channel_open_confirmation_binary = util.AppendVarInt(channel_open_confirmation_binary, maxPacketSize)
+
+		channel_open_confirmation_message := &ssh3.ChannelOpenConfirmationMessage{
+			MaxPacketSize: maxPacketSize,
+		}
+		Context("Parsing", func() {
+			It("Should parse a classical message", func() {
+				r := bytes.NewReader(channel_open_confirmation_binary)
+				parsed_message, err := ssh3.ParseMessage(r)
+				Expect(err).To(BeNil())
+				Expect(parsed_message).To(Equal(channel_open_confirmation_message))
+			})
+		})
+
+		Context("Writing", func() {
+			It("Should write a classical message", func() {
+				buf := make([]byte, channel_open_confirmation_message.Length())
+				n, err := channel_open_confirmation_message.Write(buf)
+				Expect(err).To(BeNil())
+				Expect(n).To(BeEquivalentTo(len(buf)))
+				Expect(buf).To(Equal(channel_open_confirmation_binary))
+			})
+		})
+	})
+
+	Context("Channel open failure messages", func() {
+		largeStringBytes := make([]byte, 1024)
+		rand.Reader.Read(largeStringBytes)
+
+		largeString := string(largeStringBytes)
+		errorString := largeString[:100]
+		languageTag := largeString[100:200]
+		reasonCode := mathrand.Uint64() % (1 << 60)
+		channel_open_failure_binary := util.AppendVarInt(nil, CHANNEL_OPEN_FAILURE)
+		channel_open_failure_binary = util.AppendVarInt(channel_open_failure_binary, reasonCode)
+		channel_open_failure_binary = util.AppendVarInt(channel_open_failure_binary, uint64(len(errorString)))
+		channel_open_failure_binary = append(channel_open_failure_binary, errorString...)
+		channel_open_failure_binary = util.AppendVarInt(channel_open_failure_binary, uint64(len(languageTag)))
+		channel_open_failure_binary = append(channel_open_failure_binary, languageTag...)
+
+		channel_open_failure_message := &ssh3.ChannelOpenFailureMessage{
+			ReasonCode: reasonCode,
+			ErrorMessageUTF8: errorString,
+			LanguageTag: languageTag,
+		}
+		Context("Parsing", func() {
+			It("Should parse a classical message", func() {
+				r := bytes.NewReader(channel_open_failure_binary)
+				parsed_message, err := ssh3.ParseMessage(r)
+				Expect(err).To(BeNil())
+				Expect(parsed_message).To(Equal(channel_open_failure_message))
+			})
+		})
+
+		Context("Writing", func() {
+			It("Should write a classical message", func() {
+				buf := make([]byte, channel_open_failure_message.Length())
+				n, err := channel_open_failure_message.Write(buf)
+				Expect(err).To(BeNil())
+				Expect(n).To(BeEquivalentTo(len(buf)))
+				Expect(buf).To(Equal(channel_open_failure_binary))
+			})
+		})
+	})
+
 })

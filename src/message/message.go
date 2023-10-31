@@ -1,6 +1,7 @@
 package ssh3
 
 import (
+	"errors"
 	"ssh3/src/util"
 )
 
@@ -42,6 +43,96 @@ type Message interface {
 	Write(buf []byte) (n int, err error)
 	Length() int
 }
+
+type ChannelOpenConfirmationMessage struct {
+	MaxPacketSize uint64
+}
+
+var _ Message = &ChannelOpenConfirmationMessage{}
+
+func ParseChannelOpenConfirmationMessage(buf util.Reader) (*ChannelOpenConfirmationMessage, error) {
+	maxPacketSize, err := util.ReadVarInt(buf)
+	if err != nil {
+		return nil, err
+	}
+	return &ChannelOpenConfirmationMessage{
+		MaxPacketSize: maxPacketSize,
+	}, nil
+}
+
+func (m *ChannelOpenConfirmationMessage) Write(buf []byte) (consumed int, err error) {
+	varintBuf := util.AppendVarInt(nil, uint64(SSH_MSG_CHANNEL_OPEN_CONFIRMATION))
+	varintBuf = util.AppendVarInt(varintBuf, m.MaxPacketSize)
+	consumed = copy(buf, varintBuf)
+	return consumed, nil
+}
+
+func (m *ChannelOpenConfirmationMessage) Length() int {
+	messageTypeLen := util.VarIntLen(SSH_MSG_CHANNEL_OPEN_CONFIRMATION)
+	maxPacketSizeLen := util.VarIntLen(m.MaxPacketSize)
+	return int(messageTypeLen) + int(maxPacketSizeLen)
+}
+
+
+type ChannelOpenFailureMessage struct {
+	ReasonCode			 uint64
+	ErrorMessageUTF8     string
+	LanguageTag          string
+}
+
+var _ Message = &ChannelOpenFailureMessage{}
+
+func ParseChannelOpenFailureMessage(buf util.Reader) (*ChannelOpenFailureMessage, error) {
+	reasonCode, err := util.ReadVarInt(buf)
+	if err != nil {
+		return nil, err
+	}
+	errorMessageUTF8, err := util.ParseSSHString(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	languageTag, err := util.ParseSSHString(buf)
+	if err != nil {
+		return nil, err
+	}
+	return &ChannelOpenFailureMessage{
+		ReasonCode:		  reasonCode,
+		ErrorMessageUTF8:     errorMessageUTF8,
+		LanguageTag:          languageTag,
+	}, nil
+}
+
+func (m *ChannelOpenFailureMessage) Length() int {
+	messageTypeLen := util.VarIntLen(SSH_MSG_CHANNEL_OPEN_FAILURE)
+	reasonCodeLen := util.VarIntLen(m.ReasonCode)
+	return int(messageTypeLen) + int(reasonCodeLen) + util.SSHStringLen(m.ErrorMessageUTF8) + util.SSHStringLen(m.LanguageTag)
+}
+
+func (m *ChannelOpenFailureMessage) Write(buf []byte) (consumed int, err error) {
+	if len(buf) < m.Length() {
+		return 0, errors.New("buffer too small to write channel open failure message")
+	}
+
+	varintBuf := util.AppendVarInt(nil, uint64(SSH_MSG_CHANNEL_OPEN_FAILURE))
+	varintBuf = util.AppendVarInt(varintBuf, uint64(m.ReasonCode))
+	consumed += copy(buf[consumed:], varintBuf)
+
+	n, err := util.WriteSSHString(buf[consumed:], m.ErrorMessageUTF8)
+	if err != nil {
+		return 0, err
+	}
+	consumed += n
+
+	n, err = util.WriteSSHString(buf[consumed:], m.LanguageTag)
+	if err != nil {
+		return 0, err
+	}
+	consumed += n
+
+	return consumed, nil
+}
+
 
 type DataOrExtendedDataMessage struct {
 	DataType SSHDataType
@@ -110,11 +201,11 @@ func ParseMessage(r util.Reader) (Message, error) {
 	}
 	switch typeId {
 		case SSH_MSG_CHANNEL_REQUEST:
-			requestMessage, err := ParseRequestMessage(r)
-			if err != nil {
-				return nil, err
-			}
-			return requestMessage, nil
+			return ParseRequestMessage(r)
+		case SSH_MSG_CHANNEL_OPEN_CONFIRMATION:
+			return ParseChannelOpenConfirmationMessage(r)
+		case SSH_MSG_CHANNEL_OPEN_FAILURE:
+			return ParseChannelOpenFailureMessage(r)
 		case SSH_MSG_CHANNEL_DATA, SSH_MSG_CHANNEL_EXTENDED_DATA:
 			var dataMessage *DataOrExtendedDataMessage
 			var err error
@@ -127,7 +218,6 @@ func ParseMessage(r util.Reader) (Message, error) {
 				return nil, err
 			}
 			return dataMessage, nil
-
 		default:
 			panic("not implemented")
 	}
