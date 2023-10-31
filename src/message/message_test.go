@@ -76,21 +76,21 @@ var _ = Describe("Messages", func() {
 		Context("Parsing", func() {
 			It("Should parse small data messages", func() {
 				r := bytes.NewReader(small_binary_message)
-				parsed_message, err := ssh3.ParseMessage(r)
+				parsed_message, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(parsed_message).To(Equal(small_message))
 			})
 
 			It("Should parse empty data messages", func() {
 				r := bytes.NewReader(empty_binary_message)
-				parsed_message, err := ssh3.ParseMessage(r)
+				parsed_message, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(parsed_message).To(Equal(empty_message))
 			})
 
 			It("Should parse large data messages", func() {
 				r := bytes.NewReader(large_binary_message)
-				parsed_message, err := ssh3.ParseMessage(r)
+				parsed_message, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(parsed_message).To(Equal(large_message))
 			})
@@ -127,7 +127,7 @@ var _ = Describe("Messages", func() {
 		Context("Parsing", func() {
 			It("Should parse small data messages", func() {
 				r := bytes.NewReader(small_binary_extended_message)
-				parsed_message, err := ssh3.ParseMessage(r)
+				parsed_message, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				small_message.DataType = EXTENDED_DATA_TYPE
 				Expect(parsed_message).To(Equal(small_message))
@@ -135,7 +135,7 @@ var _ = Describe("Messages", func() {
 
 			It("Should parse empty data messages", func() {
 				r := bytes.NewReader(empty_binary_extended_message)
-				parsed_message, err := ssh3.ParseMessage(r)
+				parsed_message, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				empty_message.DataType = EXTENDED_DATA_TYPE
 				Expect(parsed_message).To(Equal(empty_message))
@@ -143,7 +143,7 @@ var _ = Describe("Messages", func() {
 
 			It("Should parse large data messages", func() {
 				r := bytes.NewReader(large_binary_extended_message)
-				parsed_message, err := ssh3.ParseMessage(r)
+				parsed_message, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				large_message.DataType = EXTENDED_DATA_TYPE
 				Expect(parsed_message).To(Equal(large_message))
@@ -377,63 +377,63 @@ var _ = Describe("Messages", func() {
 		Context("Parsing", func() {
 			It("Parses a pty request", func() {
 				r := bytes.NewReader(pty_req_binary)
-				msg, err := ssh3.ParseMessage(r)
+				msg, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(msg).To(Equal(pty_req_message))
 			})
 
 			It("Parses an x11 request", func() {
 				r := bytes.NewReader(x11_req_binary)
-				msg, err := ssh3.ParseMessage(r)
+				msg, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(msg).To(Equal(x11_req_message))
 			})
 
 			It("Parses a shell request", func() {
 				r := bytes.NewReader(shell_req_binary)
-				msg, err := ssh3.ParseMessage(r)
+				msg, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(msg).To(Equal(shell_req_message))
 			})
 
 			It("Parses an exec request", func() {
 				r := bytes.NewReader(exec_req_binary)
-				msg, err := ssh3.ParseMessage(r)
+				msg, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(msg).To(Equal(exec_req_message))
 			})
 
 			It("Parses a subsystem request", func() {
 				r := bytes.NewReader(subsystem_req_binary)
-				msg, err := ssh3.ParseMessage(r)
+				msg, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(msg).To(Equal(subsystem_req_message))
 			})
 
 			It("Parses a window change request", func() {
 				r := bytes.NewReader(window_change_req_binary)
-				msg, err := ssh3.ParseMessage(r)
+				msg, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(msg).To(Equal(window_change_req_message))
 			})
 
 			It("Parses a signal request", func() {
 				r := bytes.NewReader(signal_req_binary)
-				msg, err := ssh3.ParseMessage(r)
+				msg, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(msg).To(Equal(signal_req_message))
 			})
 
 			It("Parses an exit status request", func() {
 				r := bytes.NewReader(exit_status_req_binary)
-				msg, err := ssh3.ParseMessage(r)
+				msg, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(msg).To(Equal(exit_status_req_message))
 			})
 
 			It("Parses an exit signal request", func() {
 				r := bytes.NewReader(exit_signal_req_binary)
-				msg, err := ssh3.ParseMessage(r)
+				msg, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(msg).To(Equal(exit_signal_req_message))
 			})
@@ -526,7 +526,7 @@ var _ = Describe("Messages", func() {
 		Context("Parsing", func() {
 			It("Should parse a classical message", func() {
 				r := bytes.NewReader(channel_open_confirmation_binary)
-				parsed_message, err := ssh3.ParseMessage(r)
+				parsed_message, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(parsed_message).To(Equal(channel_open_confirmation_message))
 			})
@@ -566,7 +566,7 @@ var _ = Describe("Messages", func() {
 		Context("Parsing", func() {
 			It("Should parse a classical message", func() {
 				r := bytes.NewReader(channel_open_failure_binary)
-				parsed_message, err := ssh3.ParseMessage(r)
+				parsed_message, err := ssh3.ParseMessage(&util.BytesReadCloser{Reader: r})
 				Expect(err).To(BeNil())
 				Expect(parsed_message).To(Equal(channel_open_failure_message))
 			})
