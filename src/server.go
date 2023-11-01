@@ -8,20 +8,22 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+
+	"ssh3/src/auth"
 )
 
-type ConversationHandler func(*Conversation) error
+type ServerConversationHandler func(authenticatedUsername string, conversation *Conversation) error
 
 type Server struct {
 	maxPacketSize uint64
 	h3Server *http3.Server
 	conversations map[http3.StreamCreator]*conversationsManager
-	conversationHandler ConversationHandler
+	conversationHandler ServerConversationHandler
 	lock sync.Mutex
 	// conversations map[]
 }
 
-func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler ConversationHandler) *Server {
+func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler ServerConversationHandler) *Server {
 	ssh3Server := &Server{
 		maxPacketSize: maxPacketSize,
 		h3Server: h3Server,
@@ -85,12 +87,12 @@ func (s *Server) removeConnection(streamCreator http3.StreamCreator) {
 	delete(s.conversations, streamCreator)
 }
 
-type SSH3Handler func (w http.ResponseWriter, r *http.Request)
+type SSH3Handler = auth.AuthenticatedHandlerFunc
 
 
 func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
 	
-	return func (w http.ResponseWriter, r *http.Request) {
+	return func (authenticatedUsername string, w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
 			w.WriteHeader(200)
 			w.(http.Flusher).Flush()
@@ -111,7 +113,7 @@ func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
 				defer conv.Close()
 				defer conversationsManager.removeConversation(conv)
 				defer s.removeConnection(streamCreator)
-				if err := s.conversationHandler(conv); err != nil {
+				if err := s.conversationHandler(authenticatedUsername, conv); err != nil {
 					fmt.Fprintf(os.Stderr, "error while handing new conversation: %+v", err)
 					return
 				}

@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -27,6 +26,7 @@ import (
 
 	testdata "ssh3"
 	ssh3 "ssh3/src"
+	"ssh3/src/auth"
 	ssh3Messages "ssh3/src/message"
 )
 
@@ -125,7 +125,7 @@ func generatePRData(l int) []byte {
 }
 
 
-func newPtyReq(channel *ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
+func newPtyReq(username string, channel *ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
 	cmd := exec.Command("bash")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("TERM=%s", request.Term))
 
@@ -187,27 +187,27 @@ func newPtyReq(channel *ssh3.Channel, request ssh3Messages.PtyRequest, wantReply
 	return nil
 }
 
-func newX11Req(channel *ssh3.Channel, request ssh3Messages.X11Request, wantReply bool) error {
+func newX11Req(username string, channel *ssh3.Channel, request ssh3Messages.X11Request, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newShellReq(channel *ssh3.Channel, request ssh3Messages.ShellRequest, wantReply bool) error {
+func newShellReq(username string, channel *ssh3.Channel, request ssh3Messages.ShellRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newExecReq(channel *ssh3.Channel, request ssh3Messages.ExecRequest, wantReply bool) error {
+func newExecReq(username string, channel *ssh3.Channel, request ssh3Messages.ExecRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newSubsystemReq(channel *ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
+func newSubsystemReq(username string, channel *ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newWindowChangeReq(channel *ssh3.Channel, request ssh3Messages.WindowChangeRequest, wantReply bool) error {
+func newWindowChangeReq(username string, channel *ssh3.Channel, request ssh3Messages.WindowChangeRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newSignalReq(channel *ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
+func newSignalReq(username string, channel *ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
 	channelType, ok := channelTypes[channel]
 	if !ok {
 		return fmt.Errorf("could not find channel type for channel %d (conv %d)", channel.ChannelID, channel.ConversationID)
@@ -229,15 +229,15 @@ func newSignalReq(channel *ssh3.Channel, request ssh3Messages.SignalRequest, wan
 	return nil
 }
 
-func newExitStatusReq(channel *ssh3.Channel, request ssh3Messages.ExitStatusRequest, wantReply bool) error {
+func newExitStatusReq(username string, channel *ssh3.Channel, request ssh3Messages.ExitStatusRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newExitSignalReq(channel *ssh3.Channel, request ssh3Messages.ExitSignalRequest, wantReply bool) error {
+func newExitSignalReq(username string, channel *ssh3.Channel, request ssh3Messages.ExitSignalRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newDataReq(channel *ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
+func newDataReq(username string, channel *ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
 	channelType, ok := channelTypes[channel]
 	if !ok {
 		return fmt.Errorf("could not find channel type for channel %d (conv %d)", channel.ChannelID, channel.ConversationID)
@@ -262,16 +262,8 @@ func newDataReq(channel *ssh3.Channel, request ssh3Messages.DataOrExtendedDataMe
 }
 
 func main() {
-	// defer profile.Start().Stop()
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-	// runtime.SetBlockProfileRate(1)
-
-	// verbose := flag.Bool("v", false, "verbose")
 	bs := binds{}
 	flag.Var(&bs, "bind", "bind to")
-	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 
 
@@ -308,7 +300,7 @@ func main() {
 			certFile, keyFile := testdata.GetCertificatePaths()
 
 			mux := http.NewServeMux()
-			ssh3Server := ssh3.NewServer(30000, &server, func(conv *ssh3.Conversation) error {
+			ssh3Server := ssh3.NewServer(30000, &server, func(authenticatedUserName string, conv *ssh3.Conversation) error {
 				for {
 					channel, err := conv.AcceptChannel(context.Background())
 					if err != nil {
@@ -327,26 +319,26 @@ func main() {
 								case *ssh3Messages.ChannelRequestMessage:
 									switch requestMessage := message.ChannelRequest.(type) {
 										case *ssh3Messages.PtyRequest:
-											err = newPtyReq(channel, *requestMessage, message.WantReply)
+											err = newPtyReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.X11Request:
-											err = newX11Req(channel, *requestMessage, message.WantReply)
+											err = newX11Req(authenticatedUserName, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.ShellRequest:
-											err = newShellReq(channel, *requestMessage, message.WantReply)
+											err = newShellReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.ExecRequest:
-											err = newExecReq(channel, *requestMessage, message.WantReply)
+											err = newExecReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.SubsystemRequest:
-											err = newSubsystemReq(channel, *requestMessage, message.WantReply)
+											err = newSubsystemReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.WindowChangeRequest:
-											err = newWindowChangeReq(channel, *requestMessage, message.WantReply)
+											err = newWindowChangeReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.SignalRequest:
-											err = newSignalReq(channel, *requestMessage, message.WantReply)
+											err = newSignalReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.ExitStatusRequest:
-											err = newExitStatusReq(channel, *requestMessage, message.WantReply)
+											err = newExitStatusReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.ExitSignalRequest:
-											err = newExitSignalReq(channel, *requestMessage, message.WantReply)
+											err = newExitSignalReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
 									}
 								case *ssh3Messages.DataOrExtendedDataMessage:
-									err = newDataReq(channel, *message)
+									err = newDataReq(authenticatedUserName, channel, *message)
 							}
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "error while processing message: %+V", genericMessage)
@@ -357,7 +349,7 @@ func main() {
 				}
 			})
 			ssh3Handler := ssh3Server.GetHTTPHandlerFunc()
-			mux.HandleFunc("/ssh3-pty", ssh3Handler)
+			mux.HandleFunc("/ssh3-pty", auth.HandleBasicAuth(ssh3Handler))
 			server.Handler = mux
 			err = server.ListenAndServeTLS(certFile, keyFile)
 			

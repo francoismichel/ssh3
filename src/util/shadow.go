@@ -31,27 +31,22 @@ package util
 #include <unistd.h>
 #include <shadow.h>
 #include <crypt.h>
-// #include <pwauth.h>
 size_t size_of_shadow() { return sizeof(struct spwd); }
 size_t size_of_crypt_data() { return sizeof(struct crypt_data); }
 */
 import "C"
-import "unsafe"
 import (
 	"fmt"
+	"unsafe"
 )
 
 type ShadowEntry struct {
-    Username   string
-    Password string
-}
-
-type UserNotFound struct {
-	username string
+	Username string
+	Password string
 }
 
 func (e UserNotFound) Error() string {
-	return fmt.Sprintf("User not found: %s", e.username)
+	return fmt.Sprintf("User not found: %s", e.Username)
 }
 
 /*
@@ -59,31 +54,31 @@ func (e UserNotFound) Error() string {
  * copied from https://stackoverflow.com/questions/38790092/call-a-c-function-from-go
  */
 func Getspnam(name string) (*ShadowEntry, error) {
-    cname := C.CString(name)
-    defer C.free(unsafe.Pointer(cname))
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
 
-    cspwd := (*C.struct_spwd)(C.malloc(C.size_of_shadow()))
-    defer C.free(unsafe.Pointer(cspwd))
+	cspwd := (*C.struct_spwd)(C.malloc(C.size_of_shadow()))
+	defer C.free(unsafe.Pointer(cspwd))
 
-    buf := (*C.char)(C.malloc(1024))
-    defer C.free(unsafe.Pointer(buf))
+	buf := (*C.char)(C.malloc(1024))
+	defer C.free(unsafe.Pointer(buf))
 
-    _, err := C.getspnam_r(cname, cspwd, buf, 1024, &cspwd)
+	_, err := C.getspnam_r(cname, cspwd, buf, 1024, &cspwd)
 
-    if unsafe.Pointer(cspwd) == unsafe.Pointer(uintptr(0)) {
-        if err == nil {
-            err = UserNotFound{username: name}
-        }
+	if unsafe.Pointer(cspwd) == unsafe.Pointer(uintptr(0)) {
+		if err == nil {
+			err = UserNotFound{Username: name}
+		}
 
-        return nil, err
-    }
+		return nil, err
+	}
 
-    s := ShadowEntry{
-        Username:   C.GoString(cspwd.sp_namp),
-        Password: C.GoString(cspwd.sp_pwdp),
-    }
+	s := ShadowEntry{
+		Username: C.GoString(cspwd.sp_namp),
+		Password: C.GoString(cspwd.sp_pwdp),
+	}
 
-    return &s, nil
+	return &s, nil
 }
 
 /*
@@ -93,15 +88,15 @@ func Getspnam(name string) (*ShadowEntry, error) {
  * look at the three first components.
  */
 func Crypt(clearPassword, setting string) (string, error) {
-    cPassword := C.CString(clearPassword)
-    defer C.free(unsafe.Pointer(cPassword))
+	cPassword := C.CString(clearPassword)
+	defer C.free(unsafe.Pointer(cPassword))
 
-	fmt.Printf("CLEARPASSWORD %s, SETTING %s\n", clearPassword,setting)
+	fmt.Printf("CLEARPASSWORD %s, SETTING %s\n", clearPassword, setting)
 	cSetting := C.CString(string(setting))
-    defer C.free(unsafe.Pointer(cSetting))
+	defer C.free(unsafe.Pointer(cSetting))
 
-    ccrypt_data := (*C.struct_crypt_data)(C.malloc(C.size_of_crypt_data()))
-    defer C.free(unsafe.Pointer(ccrypt_data))
+	ccrypt_data := (*C.struct_crypt_data)(C.malloc(C.size_of_crypt_data()))
+	defer C.free(unsafe.Pointer(ccrypt_data))
 
 	C.crypt_r(cPassword, cSetting, ccrypt_data)
 
@@ -115,7 +110,19 @@ func Crypt(clearPassword, setting string) (string, error) {
 /*
  * Compares the provided password with the one stored in the shadow passwords table (generally /etc/shadow)
  */
-func CompatePasswordWithHashedPassword(candidatePassword string, hashedPassword string) (bool, error) {
+func ComparePasswordWithHashedPassword(candidatePassword string, hashedPassword string) (bool, error) {
 	candidateHashedPassword, err := Crypt(candidatePassword, string(hashedPassword))
 	return candidateHashedPassword == string(hashedPassword), err
+}
+
+/*
+ *  Returns a boolean stating whether the user is correctly authenticated on this
+ *  server. May return a UserNotFound error when the user does not exist.
+ */
+func UserPasswordAuthentication(username, password string) (bool, error) {
+	shadowEntry, err := Getspnam(username)
+	if err != nil {
+		return false, nil
+	}
+	return ComparePasswordWithHashedPassword(password, shadowEntry.Password)
 }
