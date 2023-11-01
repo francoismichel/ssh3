@@ -8,6 +8,8 @@ size_t size_of_passwd() { return sizeof(struct passwd); }
 */
 import "C"
 import (
+	"io"
+	"os/exec"
 	"ssh3/src/util"
 	"syscall"
 	"unsafe"
@@ -21,10 +23,14 @@ type User struct {
 	Shell	 string
 }
 
+func GetUser(username string) (*User, error) {
+	return getpwnam(username)
+}
+
 /*
  * Wrapper around ibc's getpwnam function
  */
- func Getpwnam(name string) (*User, error) {
+ func getpwnam(name string) (*User, error) {
     cname := C.CString(name)
     defer C.free(unsafe.Pointer(cname))
 
@@ -64,4 +70,25 @@ type User struct {
     }
 
     return &s, nil
+}
+
+func (u *User) CreateShellCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader) *exec.Cmd {
+	return u.CreateCommand(u.Shell, addEnv, stdout, stderr, stdin)
+}
+
+
+func (u *User) CreateCommand(command string, addEnv string, stdout, stderr io.Writer, stdin io.Reader) *exec.Cmd {
+	cmd := exec.Command(command)
+	
+	cmd.Env = append(cmd.Env, addEnv)
+	cmd.Dir = u.Dir
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(u.Uid), Gid: uint32(u.Gid)}
+
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	cmd.Stdin = stdin
+
+	return cmd
 }

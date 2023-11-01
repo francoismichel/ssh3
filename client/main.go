@@ -103,6 +103,7 @@ func main() {
 			log.Fatal(err)
 		}
 		req.Proto = "ssh3"
+		req.SetBasicAuth("testuser", "testpasswd")
 		rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
 		if err != nil {
 			log.Println("err2")
@@ -131,7 +132,7 @@ func main() {
 				fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
 				os.Exit(-1)
 			}
-			channel.SendRequest(
+			err = channel.SendRequest(
 				&ssh3Messages.ChannelRequestMessage{
 					WantReply: true,
 					ChannelRequest: &ssh3Messages.PtyRequest{
@@ -143,6 +144,23 @@ func main() {
 					},
 				},
 			)
+
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
+				return
+			}
+
+			err = channel.SendRequest(
+				&ssh3Messages.ChannelRequestMessage{
+					WantReply: true,
+					ChannelRequest: &ssh3Messages.ShellRequest{},
+				},
+			)
+
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Could send shell request: %+v", err)
+				return
+			}
 
 			fd := os.Stdin.Fd()
 
@@ -158,12 +176,12 @@ func main() {
 					if n > 0 {
 						_, err2 := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
 						if err2 != nil {
-							fmt.Fprintf(os.Stderr, "could not write data on channel: %+v")
+							fmt.Fprintf(os.Stderr, "could not write data on channel: %+v", err2)
 							return
 						}
 					}
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "could not read data from stdin: %+v")
+						fmt.Fprintf(os.Stderr, "could not read data from stdin: %+v", err)
 						return
 					}
 				}

@@ -28,6 +28,7 @@ import (
 	ssh3 "ssh3/src"
 	"ssh3/src/auth"
 	ssh3Messages "ssh3/src/message"
+	util "ssh3/src/util"
 )
 
 var signals = map[string]os.Signal {
@@ -71,26 +72,34 @@ var signals = map[string]os.Signal {
 type channelType uint64
 
 const ( 
-	PTY = channelType(iota)
-	X11
-	SHELL
-	EXEC
-	SUBSYSTEM
+	LARVAL = channelType(iota)
+	OPEN
 	
 
 )
 
-var channelTypes = make(map[*ssh3.Channel]channelType)
+type openPty struct {
+	pty *os.File	// pty used by the server/user to communicate with the running process
+	tty *os.File	// tty used by the running process to communicate with the server/user
+	winSize *pty.Winsize
+	term string
+}
 
-type runningPty struct {
-	stdin io.Writer
-	stdout io.Reader
-	stderr io.Reader
-	process *os.Process
+type runningCommand struct {
+	exec.Cmd
+	stdoutR io.Reader
+	stderrR io.Reader
+	stdinW  io.Writer
+}
+
+type runningSession struct {
+	channelState channelType
+	pty *openPty
+	runningCmd *runningCommand
 }
 
 var conversations = make(map[quic.Stream]*ssh3.Conversation)
-var runningPtys = make(map[*ssh3.Channel]*runningPty)
+var runningSessions = make(map[*ssh3.Channel]*runningSession)
 
 func setWinsize(f *os.File, charWidth, charHeight, pixWidth, pixHeight uint64) {
 	syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCSWINSZ),
@@ -124,139 +133,275 @@ func generatePRData(l int) []byte {
 	return res
 }
 
-
-func newPtyReq(username string, channel *ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
-	cmd := exec.Command("bash")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("TERM=%s", request.Term))
-
-
-	fmt.Println("PTY REQUEST", request, channel.MaxPacketSize)
-
-	f, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(request.CharHeight), Cols: uint16(request.CharWidth), X: uint16(request.PixelWidth), Y: uint16(request.PixelHeight)})
-	if err != nil {
-		panic(err)
+func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, runningCommand *runningCommand) error {
+	// TODO: set the environment like in do_setup_env of https://github.com/openssh/openssh-portable/blob/master/session.c	
+	if openPty != nil {
+		err := util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
+		if err != nil {
+			return err
+		}
+	} else {
+		err := runningCommand.Start()
+		if err != nil {
+			return err
+		}
 	}
-	setWinsize(f, request.CharWidth, request.CharHeight, request.PixelWidth, request.PixelHeight)
-
-	channelTypes[channel] = PTY
-	runningPtys[channel] = &runningPty{
-		stdin: f,
-		stdout: f,
-		stderr: f,
-		process: cmd.Process,
-	}
-
+	
 	go func() {
-		
+
 		type readResult struct {
 			data []byte
 			err error
 		}
-
-		buf := make([]byte, channel.MaxPacketSize)
-		
-
+	
+		stdoutChan := make(chan readResult, 1)
+		stderrChan := make(chan readResult, 1)
+	
+		readStdout := func() {
+			if runningCommand.stdoutR != nil {
+				for {
+					buf := make([]byte, channel.MaxPacketSize)
+					n, err := runningCommand.stdoutR.Read(buf)
+					out := make([]byte, n)
+					copy(out, buf[:n])
+					stdoutChan <- readResult{ data: out, err: err }
+					if err != nil {
+						return
+					}
+				}
+			}
+		}
+		readStderr := func() {
+			if runningCommand.stderrR != nil {
+				for {
+					buf := make([]byte, channel.MaxPacketSize)
+					n, err := runningCommand.stderrR.Read(buf)
+					out := make([]byte, n)
+					copy(out, buf[:n])
+					stderrChan <- readResult{ data: out, err: err }
+					if err != nil {
+						return
+					}
+				}
+			}
+		}
+	
+		go readStdout()
+		go readStderr()
+	
 		defer func() {
-			err := cmd.Wait()
+			err := runningCommand.Wait()
 			exitstatus := uint64(0)
 			if err != nil {
 				if exitError, ok := err.(*exec.ExitError); ok {
 					exitstatus = uint64(exitError.ExitCode())
 				}
 			}
-
+			fmt.Println("DEBUG: exited with status", exitstatus)
 			channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
 				WantReply: false,
 				ChannelRequest: &ssh3Messages.ExitStatusRequest{ ExitStatus: exitstatus },
 			})
 		}()
-
 		for {
-			n, err := f.Read(buf)
-			_, err2 := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
-			if err2 != nil {
-				fmt.Fprintf(os.Stderr, "could not write the pty's output in an SSH message: %+v\n", err)
-				return
-			}
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
-				return
+			select {
+			case stdoutResult := <-stdoutChan:
+				buf, err := stdoutResult.data, stdoutResult.err
+				_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_NONE)
+				if err2 != nil {
+					fmt.Fprintf(os.Stderr, "could not write the pty's output in an SSH message: %+v\n", err)
+					return
+				}
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
+					return
+				}
+			
+			case stderrResult := <-stderrChan:
+				buf, err := stderrResult.data, stderrResult.err
+				_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_STDERR)
+				if err2 != nil {
+					fmt.Fprintf(os.Stderr, "could not write the pty's output in an SSH message: %+v\n", err)
+					return
+				}
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
+					return
+				}
 			}
 		}
 	}()
 	return nil
 }
 
-func newX11Req(username string, channel *ssh3.Channel, request ssh3Messages.X11Request, wantReply bool) error {
-	return fmt.Errorf("%T not implemented", request)
-}
-
-func newShellReq(username string, channel *ssh3.Channel, request ssh3Messages.ShellRequest, wantReply bool) error {
-	return fmt.Errorf("%T not implemented", request)
-}
-
-func newExecReq(username string, channel *ssh3.Channel, request ssh3Messages.ExecRequest, wantReply bool) error {
-	return fmt.Errorf("%T not implemented", request)
-}
-
-func newSubsystemReq(username string, channel *ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
-	return fmt.Errorf("%T not implemented", request)
-}
-
-func newWindowChangeReq(username string, channel *ssh3.Channel, request ssh3Messages.WindowChangeRequest, wantReply bool) error {
-	return fmt.Errorf("%T not implemented", request)
-}
-
-func newSignalReq(username string, channel *ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
-	channelType, ok := channelTypes[channel]
+func newPtyReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
+	var session *runningSession
+	session, ok := runningSessions[channel]
 	if !ok {
-		return fmt.Errorf("could not find channel type for channel %d (conv %d)", channel.ChannelID, channel.ConversationID)
+		return fmt.Errorf("internal error: cannot find session for current channel")
 	}
-	switch channelType {
-	case PTY:
-		runningPty, ok := runningPtys[channel]
-		if !ok {
-			return fmt.Errorf("could not find runing PTY for channel %d (conv %d)", channel.ChannelID, channel.ConversationID)
+
+	if session.channelState != LARVAL {
+		return fmt.Errorf("cannot request new pty on already established session")
+	}
+
+	if session.pty != nil {
+		return fmt.Errorf("cannot request new pty on a channel with an already existing pty")
+	}
+	winSize := &pty.Winsize{Rows: uint16(request.CharHeight), Cols: uint16(request.CharWidth), X: uint16(request.PixelWidth), Y: uint16(request.PixelHeight)}
+	fmt.Println("PTY REQUEST", request, channel.MaxPacketSize)
+	pty, tty, err := pty.Open()
+	if err != nil {
+		return err
+	}
+
+	setWinsize(pty, request.CharWidth, request.CharHeight, request.PixelWidth, request.PixelHeight)
+
+	session.pty = &openPty{
+		pty: pty,
+		tty: tty,
+		term: request.Term,
+		winSize: winSize,
+	}
+
+	return nil
+}
+
+func newX11Req(user *auth.User, channel *ssh3.Channel, request ssh3Messages.X11Request, wantReply bool) error {
+	return fmt.Errorf("%T not implemented", request)
+}
+
+func newShellReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.ShellRequest, wantReply bool) error {
+	var session *runningSession
+	session, ok := runningSessions[channel]
+	if !ok {
+		return fmt.Errorf("internal error: cannot find session for current channel")
+	}
+
+	if session.channelState != LARVAL {
+		return fmt.Errorf("cannot request new shell on already established session")
+	}
+
+	env := ""
+	if session.pty != nil {
+		env = fmt.Sprintf("TERM=%s", session.pty.term)
+	}
+
+	var stdoutR, stderrR, stdinR io.Reader
+	var stdoutW, stderrW, stdinW io.Writer
+	var err error = nil
+
+	if session.pty != nil {
+		stdoutW = session.pty.tty
+		stderrW = session.pty.tty
+		stdinR  = session.pty.tty
+
+		stdoutR = session.pty.pty
+		stderrR = nil
+		stdinW =  session.pty.pty
+	} else {
+		stdoutR, stdoutW, err = os.Pipe()
+		if err != nil {
+			return err
+		}
+		stderrR, stderrW, err = os.Pipe()
+		if err != nil {
+			return err
+		}
+		stdinR, stdinW, err = os.Pipe()
+		if err != nil {
+			return err
+		}
+	}
+
+	cmd := user.CreateShellCommand(env, stdoutW, stderrW, stdinR)
+
+	runningCommand := &runningCommand{
+		Cmd: *cmd,
+		stdoutR: stdoutR,
+		stderrR: stderrR,
+		stdinW: stdinW,
+	}
+
+	session.runningCmd = runningCommand
+
+	session.channelState = OPEN
+
+	return execCmdInBackground(channel, session.pty, session.runningCmd)
+}
+
+func newExecReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.ExecRequest, wantReply bool) error {
+	return fmt.Errorf("%T not implemented", request)
+}
+
+func newSubsystemReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
+	return fmt.Errorf("%T not implemented", request)
+}
+
+func newWindowChangeReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.WindowChangeRequest, wantReply bool) error {
+	return fmt.Errorf("%T not implemented", request)
+}
+
+func newSignalReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
+	runningSession, ok := runningSessions[channel]
+	if !ok {
+		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID, channel.ConversationID)
+	}
+
+	if runningSession.channelState == LARVAL {
+		return fmt.Errorf("cannot send signal for channel in LARVAL state (channel %d, conv %d)", channel.ChannelID, channel.ConversationID)
+	}
+
+	switch channel.ChannelType {
+	case "session":
+		if runningSession.runningCmd == nil {
+			return fmt.Errorf("there is no running command on Channel %d (conv %d) to feed the received data", channel.ChannelID, channel.ConversationID)
 		}
 		signal, ok := signals["SIG" + request.SignalNameWithoutSig]
 		if !ok {
 			return fmt.Errorf("unhandled signal SIG%s", request.SignalNameWithoutSig)
 		}
-		runningPty.process.Signal(signal)
+		runningSession.runningCmd.Process.Signal(signal)
 	default:
-		return fmt.Errorf("channel type %d not implemented", channelType)
+		return fmt.Errorf("channel type %s not implemented", channel.ChannelType)
 	}
 	return nil
 }
 
-func newExitStatusReq(username string, channel *ssh3.Channel, request ssh3Messages.ExitStatusRequest, wantReply bool) error {
+func newExitStatusReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.ExitStatusRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newExitSignalReq(username string, channel *ssh3.Channel, request ssh3Messages.ExitSignalRequest, wantReply bool) error {
+func newExitSignalReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.ExitSignalRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newDataReq(username string, channel *ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
-	channelType, ok := channelTypes[channel]
+func newDataReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
+	runningSession, ok := runningSessions[channel]
 	if !ok {
-		return fmt.Errorf("could not find channel type for channel %d (conv %d)", channel.ChannelID, channel.ConversationID)
+		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID, channel.ConversationID)
 	}
-	switch channelType {
-	case PTY:
+
+	if runningSession.channelState == LARVAL {
+		return fmt.Errorf("cannot receive data for channel in LARVAL state (channel %d, conv %d)", channel.ChannelID, channel.ConversationID)
+	}
+
+	
+
+	switch channel.ChannelType {
+	case "session":
 		fmt.Println("handle new data req")
-		runningPty, ok := runningPtys[channel]
-		if !ok {
-			return fmt.Errorf("could not find running PTY for channel %d (conv %d)", channel.ChannelID, channel.ConversationID)
+		if runningSession.runningCmd == nil {
+			return fmt.Errorf("there is no running command on Channel %d (conv %d) to feed the received data", channel.ChannelID, channel.ConversationID)
 		}
 		switch request.DataType {
 		case ssh3Messages.SSH_EXTENDED_DATA_NONE:
-			runningPty.stdin.Write([]byte(request.Data))
+			runningSession.runningCmd.stdinW.Write([]byte(request.Data))
 		default:
 			return fmt.Errorf("extended data type forbidden server PTY")
 		}
 	default:
-		return fmt.Errorf("channel type %d not implemented", channelType)
+		return fmt.Errorf("channel type %s not implemented", channel.ChannelType)
 	}
 	return nil
 }
@@ -300,11 +445,20 @@ func main() {
 			certFile, keyFile := testdata.GetCertificatePaths()
 
 			mux := http.NewServeMux()
-			ssh3Server := ssh3.NewServer(30000, &server, func(authenticatedUserName string, conv *ssh3.Conversation) error {
+			ssh3Server := ssh3.NewServer(30000, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
+				authenticatedUser, err := auth.GetUser(authenticatedUsername)
+				if err != nil {
+					return err
+				}
 				for {
 					channel, err := conv.AcceptChannel(context.Background())
 					if err != nil {
 						return err
+					}
+					runningSessions[channel] = &runningSession{
+						channelState: LARVAL,
+						pty: nil,
+						runningCmd: nil,
 					}
 					go func() {
 						defer channel.Close()
@@ -314,34 +468,33 @@ func main() {
 								fmt.Printf("error when getting message: %+v", err)
 								return
 							}
-							
 							switch message := genericMessage.(type) {
 								case *ssh3Messages.ChannelRequestMessage:
 									switch requestMessage := message.ChannelRequest.(type) {
 										case *ssh3Messages.PtyRequest:
-											err = newPtyReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
+											err = newPtyReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.X11Request:
-											err = newX11Req(authenticatedUserName, channel, *requestMessage, message.WantReply)
+											err = newX11Req(authenticatedUser, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.ShellRequest:
-											err = newShellReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
+											err = newShellReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.ExecRequest:
-											err = newExecReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
+											err = newExecReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.SubsystemRequest:
-											err = newSubsystemReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
+											err = newSubsystemReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.WindowChangeRequest:
-											err = newWindowChangeReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
+											err = newWindowChangeReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.SignalRequest:
-											err = newSignalReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
+											err = newSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.ExitStatusRequest:
-											err = newExitStatusReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
+											err = newExitStatusReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 										case *ssh3Messages.ExitSignalRequest:
-											err = newExitSignalReq(authenticatedUserName, channel, *requestMessage, message.WantReply)
+											err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 									}
 								case *ssh3Messages.DataOrExtendedDataMessage:
-									err = newDataReq(authenticatedUserName, channel, *message)
+									err = newDataReq(authenticatedUser, channel, *message)
 							}
 							if err != nil {
-								fmt.Fprintf(os.Stderr, "error while processing message: %+V", genericMessage)
+								fmt.Fprintf(os.Stderr, "error while processing message: %+v: %+v\n", genericMessage, err)
 								return
 							}
 						}
