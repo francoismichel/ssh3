@@ -220,6 +220,5 @@ func (c *Channel) SendRequest(r *ssh3.ChannelRequestMessage) error {
 }
 
 func (c *Channel) Close() {
-	fmt.Println("DEBUG channel close")
 	c.recv.Close()
 }

@@ -197,7 +197,6 @@ func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, runningCommand
 					exitstatus = uint64(exitError.ExitCode())
 				}
 			}
-			fmt.Println("DEBUG: exited with status", exitstatus)
 			channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
 				WantReply: false,
 				ChannelRequest: &ssh3Messages.ExitStatusRequest{ ExitStatus: exitstatus },
@@ -249,7 +248,6 @@ func newPtyReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.PtyR
 		return fmt.Errorf("cannot request new pty on a channel with an already existing pty")
 	}
 	winSize := &pty.Winsize{Rows: uint16(request.CharHeight), Cols: uint16(request.CharWidth), X: uint16(request.PixelWidth), Y: uint16(request.PixelHeight)}
-	fmt.Println("PTY REQUEST", request, channel.MaxPacketSize)
 	pty, tty, err := pty.Open()
 	if err != nil {
 		return err
@@ -390,7 +388,6 @@ func newDataReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.Dat
 
 	switch channel.ChannelType {
 	case "session":
-		fmt.Println("handle new data req")
 		if runningSession.runningCmd == nil {
 			return fmt.Errorf("there is no running command on Channel %d (conv %d) to feed the received data", channel.ChannelID, channel.ConversationID)
 		}
@@ -502,7 +499,7 @@ func main() {
 				}
 			})
 			ssh3Handler := ssh3Server.GetHTTPHandlerFunc()
-			mux.HandleFunc("/ssh3-pty", auth.HandleBasicAuth(ssh3Handler))
+			mux.HandleFunc("/ssh3-pty", auth.HandleAuths(ssh3Handler))
 			server.Handler = mux
 			err = server.ListenAndServeTLS(certFile, keyFile)
 			

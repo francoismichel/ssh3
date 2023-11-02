@@ -4,6 +4,8 @@ import (
 	// "bufio"
 	// "bytes"
 	// "context"
+	"crypto"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
@@ -11,16 +13,20 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 
 	testdata "ssh3"
 	ssh3 "ssh3/src"
 	ssh3Messages "ssh3/src/message"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	// "github.com/quic-go/quic-go/logging"
@@ -51,6 +57,7 @@ func main() {
 	// verbose := flag.Bool("v", false, "verbose")
 	// quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "key log file")
+	privKeyFile := flag.String("privkey", "", "private key file")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
@@ -97,25 +104,69 @@ func main() {
 
 	for _, addr := range urls {
 		log.Printf("GET %s", addr)
+		parsedUrl, err := url.Parse(addr)
+		if err != nil {
+			log.Fatal(err)
+		}
 		req, err := http.NewRequest("CONNECT", addr, nil)
 		if err != nil {
-			log.Println("err1")
 			log.Fatal(err)
 		}
 		req.Proto = "ssh3"
-		req.SetBasicAuth("testuser", "testpasswd")
+
+		if *privKeyFile != "" {
+			file, err := os.Open(*privKeyFile)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "could not open private key file:", err)
+				return
+			}
+			keyBytes, err := io.ReadAll(file)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "could not load private key file:", err)
+				return
+			}
+			key, err := ssh.ParseRawPrivateKey(keyBytes)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
+				return
+			}
+
+			rsaKey := key.(crypto.PrivateKey).(*rsa.PrivateKey)
+
+			token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+				"iss": parsedUrl.User.Username(),
+				"iat": jwt.NewNumericDate(time.Now()),
+				"exp": jwt.NewNumericDate(time.Now().Add(10*time.Second)),
+				"sub": "ssh3",
+				"aud": "unused",
+				"client_id": parsedUrl.User.Username(),
+				"jti": "unused",
+			})
+			signedString, err := token.SignedString(rsaKey)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
+				return
+			}
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
+		} else {
+			fmt.Printf("password for %s:", parsedUrl.String())
+			password, err := term.ReadPassword(int(syscall.Stdin))
+		
+			if err != nil {
+				fmt.Fprintf(os.Stdin, "could not get password\n")
+				return
+			}
+			
+			req.SetBasicAuth(parsedUrl.User.Username(), string(password))
+		}
+
 		rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
 		if err != nil {
 			log.Println("err2")
 			log.Fatal(err)
 		}
 
-		fmt.Printf("got response: %+v\n", rsp)
-
-
 		if rsp.StatusCode == 200 {
-			log.Printf("Hijack request")
-
 
 			str := rsp.Body.(http3.HTTPStreamer).HTTPStream()
 			conn := rsp.Body.(http3.Hijacker).StreamCreator()
@@ -228,10 +279,11 @@ func main() {
 							log.Fatal(err)
 						}
 					}
-					// err = newDataReq(channel, *message)
 				}
 			}
 
+		} else {
+			fmt.Println("Failure: got response:", rsp.Status)
 		}
 	}
 }

@@ -15,19 +15,19 @@ import (
 type ServerConversationHandler func(authenticatedUsername string, conversation *Conversation) error
 
 type Server struct {
-	maxPacketSize uint64
-	h3Server *http3.Server
-	conversations map[http3.StreamCreator]*conversationsManager
+	maxPacketSize       uint64
+	h3Server            *http3.Server
+	conversations       map[http3.StreamCreator]*conversationsManager
 	conversationHandler ServerConversationHandler
-	lock sync.Mutex
+	lock                sync.Mutex
 	// conversations map[]
 }
 
 func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler ServerConversationHandler) *Server {
 	ssh3Server := &Server{
-		maxPacketSize: maxPacketSize,
-		h3Server: h3Server,
-		conversations: make(map[http3.StreamCreator]*conversationsManager),
+		maxPacketSize:       maxPacketSize,
+		h3Server:            h3Server,
+		conversations:       make(map[http3.StreamCreator]*conversationsManager),
 		conversationHandler: conversationHandler,
 	}
 
@@ -35,16 +35,16 @@ func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler
 		if err != nil {
 			return false, err
 		}
-		fmt.Println("hijack?")
 		if frameType != SSH_FRAME_TYPE {
+			fmt.Println("bad frame type:", frameType)
 			return false, nil
 		}
-	
+
 		conversationsManager, ok := ssh3Server.getConversationsManager(qconn)
 		if !ok {
 			return false, fmt.Errorf("could not find SSH3 conversation for new channel %d on conn %+v", stream.StreamID(), qconn)
 		}
-	
+
 		channelInfo, err := parseHeader(uint64(stream.StreamID()), &StreamByteReader{stream})
 		if err != nil {
 			return false, err
@@ -57,7 +57,6 @@ func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler
 
 		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, false, false, true)
 		conversation.channelsAcceptQueue.Add(newChannel)
-		fmt.Println("hijacked")
 		return true, nil
 	}
 	return ssh3Server
@@ -89,10 +88,9 @@ func (s *Server) removeConnection(streamCreator http3.StreamCreator) {
 
 type SSH3Handler = auth.AuthenticatedHandlerFunc
 
-
 func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
-	
-	return func (authenticatedUsername string, w http.ResponseWriter, r *http.Request) {
+
+	return func(authenticatedUsername string, w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
 			w.WriteHeader(200)
 			w.(http.Flusher).Flush()

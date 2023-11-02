@@ -112,7 +112,6 @@ func Crypt(clearPassword, setting string) (string, error) {
  */
 func ComparePasswordWithHashedPassword(candidatePassword string, hashedPassword string) (bool, error) {
 	candidateHashedPassword, err := Crypt(candidatePassword, string(hashedPassword))
-    fmt.Printf("DEBUG: candidate=%s, hashed_candidate=%s, hashed=%s\n", candidatePassword, candidateHashedPassword, hashedPassword)
 	return candidateHashedPassword == string(hashedPassword), err
 }
 
