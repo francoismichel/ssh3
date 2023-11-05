@@ -27,7 +27,7 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 		// Configure an OpenID Connect aware OAuth2 client.
 	oauthConfig := oauth2.Config{
 		ClientID:     clientID,
-		ClientSecret: "",
+		ClientSecret: clientSecret,
 		RedirectURL:  "",
 
 		// Discovery returns the OAuth2 endpoints.
