@@ -4,6 +4,7 @@ import (
 	// "bufio"
 	// "bytes"
 	// "context"
+	"context"
 	"crypto"
 	"crypto/rsa"
 	"crypto/tls"
@@ -24,6 +25,7 @@ import (
 
 	testdata "ssh3"
 	ssh3 "ssh3/src"
+	"ssh3/src/auth"
 	ssh3Messages "ssh3/src/message"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -59,9 +61,13 @@ func main() {
 	keyLogFile := flag.String("keylog", "", "key log file")
 	privKeyFile := flag.String("privkey", "", "private key file")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
+	issuerUrl := flag.String("issuer-url", "https://accounts.google.com", "openid issuer url")
+	clientID := flag.String("client-id", "", "openid client id")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
+	
+	auth.Connect(context.Background(), *clientID, *issuerUrl)
 
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {
