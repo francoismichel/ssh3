@@ -98,6 +98,8 @@ func main() {
 	// 		return qlog.NewConnectionTracer(utils.NewBufferedWriteCloser(bufio.NewWriter(f), f), p, connID)
 	// 	}
 	// }
+
+	qconf.KeepAlivePeriod = 1*time.Second
 	roundTripper := &http3.RoundTripper{
 		TLSClientConfig: &tls.Config{
 			RootCAs:            pool,
