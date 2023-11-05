@@ -93,10 +93,10 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 	}
 	command.Wait()
 
-	server.Close()
 	
 	rawIDToken := <-tokenChannel
 	fmt.Println("got token:", rawIDToken)
+	server.Close()
 	 // todo: trigger a browser on localhost on the listeningPort and fetch the token, and then close the http server
 	return rawIDToken, nil
 }
