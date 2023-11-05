@@ -105,19 +105,22 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 		fmt.Println("received request:", r)
 		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"))
 		if err != nil {
-			// handle error
+			fmt.Println("error when parsing oauth token:", err)
+			return
 		}
 	
 		// Extract the ID Token from OAuth2 token.
 		rawIDToken, ok := oauth2Token.Extra("id_token").(string)
 		if !ok {
-			// handle missing token
+			fmt.Println("missing id token:")
+			return
 		}
 	
 		// Parse and verify ID Token payload.
 		idToken, err := verifier.Verify(ctx, rawIDToken)
 		if err != nil {
-			// handle error
+			fmt.Println("error when verifying oauth token:", err)
+			return
 		}
 	
 		// Extract custom claims
@@ -126,7 +129,8 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 			Verified bool   `json:"email_verified"`
 		}
 		if err := idToken.Claims(&claims); err != nil {
-			// TODO: handle error
+			fmt.Println("error when parsing the oauth token claims:", err)
+			return
 		}
 	}
 }
