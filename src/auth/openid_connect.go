@@ -34,7 +34,7 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 
  	listener, err := net.Listen("tcp", ":0")
  	if err != nil {
-		 panic(err)
+		 panic(err)	
 	}
 	 
 	path := fmt.Sprintf("/ssh/%s", randomSecretUrl)
@@ -54,8 +54,10 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 		// "openid" is a required scope for OpenID Connect flows.
 		Scopes: []string{oidc.ScopeOpenID},
 	}
+
+	tokenChannel := make(chan struct{})
 	mux := http.NewServeMux()
-	mux.Handle(path, getOAuth2Callback(ctx, provider, clientID, &oauthConfig))
+	mux.Handle(path, getOAuth2Callback(ctx, provider, clientID, &oauthConfig, tokenChannel))
 	server := http.Server{ Handler: mux }
 	go server.Serve(listener)
 	var cmd string
@@ -90,11 +92,13 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 		return err
 	}
 	command.Wait()
+	
+	fmt.Println("got token:", <-tokenChannel)
 	 // todo: trigger a browser on localhost on the listeningPort and fetch the token, and then close the http server
 	return nil
 }
 
-func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID string, oauth2Config *oauth2.Config) http.HandlerFunc {
+func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID string, oauth2Config *oauth2.Config, tokenChannel chan struct{}) http.HandlerFunc {
 	
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
 
@@ -130,5 +134,6 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 			fmt.Println("error when parsing the oauth token claims:", err)
 			return
 		}
+		tokenChannel <- struct{}{}
 	}
 }
