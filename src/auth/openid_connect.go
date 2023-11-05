@@ -34,7 +34,7 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 		Endpoint: providerEndpoint,
 
 		// "openid" is a required scope for OpenID Connect flows.
-		Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
+		Scopes: []string{oidc.ScopeOpenID},
 	}
 
 	
