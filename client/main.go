@@ -63,11 +63,12 @@ func main() {
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
 	issuerUrl := flag.String("issuer-url", "https://accounts.google.com", "openid issuer url")
 	clientID := flag.String("client-id", "", "openid client id")
+	clientSecret := flag.String("client-secret", "", "openid client secret")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
 	
-	auth.Connect(context.Background(), *clientID, *issuerUrl)
+	auth.Connect(context.Background(), *clientID, *clientSecret, *issuerUrl)
 
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {

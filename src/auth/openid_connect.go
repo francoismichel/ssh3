@@ -15,7 +15,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func Connect(ctx context.Context, clientID string, issuerUrl string) error {
+func Connect(ctx context.Context, clientID string, clientSecret string, issuerUrl string) error {
 	provider, err := oidc.NewProvider(ctx, issuerUrl)
 	if err != nil {
 		return err
