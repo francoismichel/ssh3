@@ -15,10 +15,10 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func Connect(ctx context.Context, clientID string, clientSecret string, issuerUrl string) error {
+func Connect(ctx context.Context, clientID string, clientSecret string, issuerUrl string) (rawIDTokey string, err error) {
 	provider, err := oidc.NewProvider(ctx, issuerUrl)
 	if err != nil {
-		return err
+		return "", err
 	} 	
 
 
@@ -27,7 +27,7 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 	randomSecretUrlBytes := [64]byte{}
 	_, err = rand.Read(randomSecretUrlBytes[:])
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	randomSecretUrl := hex.EncodeToString(randomSecretUrlBytes[:])
@@ -55,7 +55,7 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 		Scopes: []string{oidc.ScopeOpenID},
 	}
 
-	tokenChannel := make(chan struct{})
+	tokenChannel := make(chan string)
 	mux := http.NewServeMux()
 	mux.Handle(path, getOAuth2Callback(ctx, provider, clientID, &oauthConfig, tokenChannel))
 	server := http.Server{ Handler: mux }
@@ -89,22 +89,24 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 	command := exec.Command(cmd, args...)
 	err = command.Start()
 	if err != nil {
-		return err
+		return "", err
 	}
 	command.Wait()
+
+	server.Close()
 	
-	fmt.Println("got token:", <-tokenChannel)
+	rawIDToken := <-tokenChannel
+	fmt.Println("got token:", rawIDToken)
 	 // todo: trigger a browser on localhost on the listeningPort and fetch the token, and then close the http server
-	return nil
+	return rawIDToken, nil
 }
 
-func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID string, oauth2Config *oauth2.Config, tokenChannel chan struct{}) http.HandlerFunc {
+func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID string, oauth2Config *oauth2.Config, tokenChannel chan string) http.HandlerFunc {
 	
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Verify state and errors.
-		fmt.Println("received request:", r)
 		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"))
 		if err != nil {
 			fmt.Println("error when parsing oauth token:", err)
@@ -134,6 +136,6 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 			fmt.Println("error when parsing the oauth token claims:", err)
 			return
 		}
-		tokenChannel <- struct{}{}
+		tokenChannel <- rawIDToken
 	}
 }

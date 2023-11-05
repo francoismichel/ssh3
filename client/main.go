@@ -67,8 +67,7 @@ func main() {
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
-	
-	auth.Connect(context.Background(), *clientID, *clientSecret, *issuerUrl)
+
 
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {
@@ -157,6 +156,13 @@ func main() {
 				return
 			}
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
+		} else if *clientID != "" {
+			token, err := auth.Connect(context.Background(), *clientID, *clientSecret, *issuerUrl)
+		
+			if err != nil {
+				fmt.Println("could not get token:", err)
+			}
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 		} else {
 			fmt.Printf("password for %s:", parsedUrl.String())
 			password, err := term.ReadPassword(int(syscall.Stdin))
