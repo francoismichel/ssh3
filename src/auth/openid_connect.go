@@ -21,7 +21,8 @@ func Connect(ctx context.Context, clientID string, issuerUrl string) error {
 	} 	
 
 	providerEndpoint := provider.Endpoint()
-	// Configure an OpenID Connect aware OAuth2 client.
+
+		// Configure an OpenID Connect aware OAuth2 client.
 	oauthConfig := oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: "",
@@ -69,7 +70,7 @@ func Connect(ctx context.Context, clientID string, issuerUrl string) error {
 	}
 
 
-    browserURL, _ := url.Parse(issuerUrl)
+    browserURL, _ := url.Parse(providerEndpoint.AuthURL)
     params := url.Values{}
     params.Add("redirect_uri", secretUrl)
     params.Add("prompt", "select_account")
