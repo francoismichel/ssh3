@@ -82,18 +82,12 @@ func (i *RSAPubKeyIdentity) Verify(genericCandidate interface{}) bool {
 type OpenIDConnectIdentity struct {
 	clientID  string
 	issuerURL string
+	email	  string
 }
 
 func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
 	switch candidate := genericCandidate.(type) {
 	case JWTTokenString:
-		
-			// jwt.WithIssuer(i.username),
-			// jwt.WithSubject("ssh3"),
-			// jwt.WithIssuedAt(),
-			// jwt.WithAudience("unused"),
-			// jwt.WithValidMethods([]string{"RS256"}))
-
 		token, err := VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.token)
 		if err != nil {
 			return false
@@ -105,9 +99,22 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
 		if token.Subject != "ssh3" {
 			fmt.Fprintln(os.Stderr, "bad subject:", token.Subject, "!=", "ssh3")
 		}
+		fmt.Println("got verified token:", token)
+		
+		var claims struct {
+			Email         string `json:"email"`
+			EmailVerified bool   `json:"email_verified"`
+		}
+		if err := token.Claims(&claims); err != nil {
+			fmt.Println("error verifying claims:", err)
+			return false
+		}
+ 
+		valid := token != nil && claims.EmailVerified && claims.Email == i.email
 
-		// check claims
-		valid := token != nil
+		if !valid {
+			fmt.Fprintln(os.Stderr, "invalid token:", token, "email should be:", i.email, "received claims:", claims)
+		}
 
 		return valid
 	default:
@@ -129,14 +136,16 @@ func ParseIdentity(user *User, identityStr string) (Identity, error) {
 	// it is not an SSH key
 	if strings.HasPrefix(identityStr, "oidc") {
 		tokens := strings.Fields(identityStr)
-		if len(tokens) != 3 {
+		if len(tokens) != 4 {
 			return nil, fmt.Errorf("bad identity format for oidc identity: %s", identityStr)
 		}
 		clientID := tokens[1]
 		issuerURL := tokens[2]
+		email := tokens[3]
 		return &OpenIDConnectIdentity{
 			clientID: clientID,
 			issuerURL: issuerURL,
+			email: email,
 		}, nil
 	}
 	// either error or identity not implemented
