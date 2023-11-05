@@ -33,7 +33,7 @@ func HandleBasicAuth(handlerFunc AuthenticatedHandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		
+
 		ok, err := util.UserPasswordAuthentication(username, password)
 		if err != nil || !ok {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -42,7 +42,6 @@ func HandleBasicAuth(handlerFunc AuthenticatedHandlerFunc) http.HandlerFunc {
 		handlerFunc(username, w, r)
 	}
 }
-
 
 // BearerAuth returns the bearer token
 // Authorization header, if the request uses HTTP Basic Authentication.
@@ -56,7 +55,6 @@ func BearerAuth(r *http.Request) (bearer string, ok bool) {
 }
 
 // parseBearerAuth parses an HTTP Bearer Authentication string.
-// 
 func parseBearerAuth(auth string) (bearer string, ok bool) {
 	const prefix = "Bearer "
 	// Case insensitive prefix match. See Issue 22736.
@@ -67,7 +65,6 @@ func parseBearerAuth(auth string) (bearer string, ok bool) {
 	// it is base64-encoded)
 	return string(auth[len(prefix):]), true
 }
-
 
 func HandleBearerAuth(username string, handlerFunc UnauthenticatedBearerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +85,7 @@ func HandleJWTAuth(username string, handlerFunc AuthenticatedHandlerFunc) Unauth
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		identitiesFile, err := os.Open(DefaultIdentitieFileName(user))
+		identitiesFile, err := os.Open(DefaultIdentitiesFileName(user))
 		if err != nil {
 			// TODO: logging
 			w.WriteHeader(http.StatusUnauthorized)
@@ -100,16 +97,16 @@ func HandleJWTAuth(username string, handlerFunc AuthenticatedHandlerFunc) Unauth
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		
+
 		for _, identity := range identities {
-			verified := identity.Verify(JWTTokenString{ token: unauthenticatedBearerString })
+			verified := identity.Verify(JWTTokenString{token: unauthenticatedBearerString})
 			if verified {
 				// authentication successful
 				handlerFunc(username, w, r)
 				return
 			}
 		}
-		
+
 		// TODO: logging
 		w.WriteHeader(http.StatusUnauthorized)
 		return

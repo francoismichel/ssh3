@@ -15,8 +15,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func Connect(ctx context.Context, clientID string, clientSecret string, issuerUrl string) (rawIDTokey string, err error) {
-	provider, err := oidc.NewProvider(ctx, issuerUrl)
+func Connect(ctx context.Context, clientID string, clientSecret string, issuerURL string) (rawIDTokey string, err error) {
+	provider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
 		return "", err
 	} 	
@@ -138,4 +138,19 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 		}
 		tokenChannel <- rawIDToken
 	}
+}
+
+func VerifyRawToken(ctx context.Context, clientID string, issuerURL string, rawIDToken string) (*oidc.IDToken, error) {
+	provider, err := oidc.NewProvider(ctx, issuerURL)
+	if err != nil {
+		return nil, err
+	} 	
+
+
+	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
+	// Parse and verify ID Token payload.
+	idToken, err := verifier.Verify(ctx, rawIDToken)
+	// TODO: nonce validation ? Is id needed here ?
+
+	return idToken, err
 }

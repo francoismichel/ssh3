@@ -2,10 +2,12 @@ package auth
 
 import (
 	"bufio"
+	"context"
 	"crypto/rsa"
 	"fmt"
 	"os"
 	"path"
+	"strings"
 
 	"golang.org/x/crypto/ssh"
 
@@ -34,7 +36,7 @@ type RSAPubKeyIdentity struct {
 	pubkey   *rsa.PublicKey
 }
 
-func DefaultIdentitieFileName(user *User) string {
+func DefaultIdentitiesFileName(user *User) string {
 	return path.Join(user.Dir, ".ssh3", "authorized_identities")
 }
 
@@ -77,7 +79,40 @@ func (i *RSAPubKeyIdentity) Verify(genericCandidate interface{}) bool {
 	}
 }
 
-type SAML2Identity struct {
+type OpenIDConnectIdentity struct {
+	clientID  string
+	issuerURL string
+}
+
+func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
+	switch candidate := genericCandidate.(type) {
+	case JWTTokenString:
+		
+			// jwt.WithIssuer(i.username),
+			// jwt.WithSubject("ssh3"),
+			// jwt.WithIssuedAt(),
+			// jwt.WithAudience("unused"),
+			// jwt.WithValidMethods([]string{"RS256"}))
+
+		token, err := VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.token)
+		if err != nil {
+			return false
+		}
+
+		if token.Issuer != i.issuerURL {
+			fmt.Fprintln(os.Stderr, "bad issuer:", token.Issuer, "!=", i.issuerURL)
+		}
+		if token.Subject != "ssh3" {
+			fmt.Fprintln(os.Stderr, "bad subject:", token.Subject, "!=", "ssh3")
+		}
+
+		// check claims
+		valid := token != nil
+
+		return valid
+	default:
+		return false
+	}
 }
 
 func ParseIdentity(user *User, identityStr string) (Identity, error) {
@@ -90,6 +125,19 @@ func ParseIdentity(user *User, identityStr string) (Identity, error) {
 		case "ecdsa-sha2-nistp256":
 			panic("not implemented")
 		}
+	}
+	// it is not an SSH key
+	if strings.HasPrefix(identityStr, "oidc") {
+		tokens := strings.Fields(identityStr)
+		if len(tokens) != 3 {
+			return nil, fmt.Errorf("bad identity format for oidc identity: %s", identityStr)
+		}
+		clientID := tokens[1]
+		issuerURL := tokens[2]
+		return &OpenIDConnectIdentity{
+			clientID: clientID,
+			issuerURL: issuerURL,
+		}, nil
 	}
 	// either error or identity not implemented
 	panic("not implemented")
