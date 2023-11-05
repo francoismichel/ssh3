@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,6 +21,7 @@ func Connect(ctx context.Context, clientID string, issuerUrl string) error {
 		return err
 	} 	
 
+
 	providerEndpoint := provider.Endpoint()
 
 		// Configure an OpenID Connect aware OAuth2 client.
@@ -36,12 +38,13 @@ func Connect(ctx context.Context, clientID string, issuerUrl string) error {
 	}
 
 	
-	randomSecretUrl := [64]byte{}
-	_, err = rand.Read(randomSecretUrl[:])
+	randomSecretUrlBytes := [64]byte{}
+	_, err = rand.Read(randomSecretUrlBytes[:])
 	if err != nil {
 		return err
 	}
-	url.QueryEscape(string(randomSecretUrl[:]))
+
+	randomSecretUrl := hex.EncodeToString(randomSecretUrlBytes[:])
 
  	listener, err := net.Listen("tcp", ":0")
  	if err != nil {
