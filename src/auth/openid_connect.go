@@ -23,20 +23,6 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 
 
 	providerEndpoint := provider.Endpoint()
-
-		// Configure an OpenID Connect aware OAuth2 client.
-	oauthConfig := oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURL:  "",
-
-		// Discovery returns the OAuth2 endpoints.
-		Endpoint: providerEndpoint,
-
-		// "openid" is a required scope for OpenID Connect flows.
-		Scopes: []string{oidc.ScopeOpenID},
-	}
-
 	
 	randomSecretUrlBytes := [64]byte{}
 	_, err = rand.Read(randomSecretUrlBytes[:])
@@ -52,14 +38,26 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUr
 	}
 	 
 	path := fmt.Sprintf("/ssh/%s", randomSecretUrl)
-	mux := http.NewServeMux()
-	mux.Handle(path, getOAuth2Callback(ctx, provider, clientID, &oauthConfig))
 	listeningPort := listener.Addr().(*net.TCPAddr).Port
-	server := http.Server{ Handler: mux }
-	go server.Serve(listener)
 	 
 	secretUrl := fmt.Sprintf("http://localhost:%d%s", listeningPort, path)
 
+		// Configure an OpenID Connect aware OAuth2 client.
+	oauthConfig := oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  secretUrl,
+
+		// Discovery returns the OAuth2 endpoints.
+		Endpoint: providerEndpoint,
+
+		// "openid" is a required scope for OpenID Connect flows.
+		Scopes: []string{oidc.ScopeOpenID},
+	}
+	mux := http.NewServeMux()
+	mux.Handle(path, getOAuth2Callback(ctx, provider, clientID, &oauthConfig))
+	server := http.Server{ Handler: mux }
+	go server.Serve(listener)
 	var cmd string
 	var args []string
 	switch runtime.GOOS {
