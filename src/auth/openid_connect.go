@@ -78,7 +78,7 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUR
     params.Add("redirect_uri", secretUrl)
     params.Add("prompt", "select_account")
     params.Add("response_type", "code")
-    params.Add("scope", "openid")
+    params.Add("scope", "openid email")
     params.Add("client_id", clientID)
 
 	browserURL.RawQuery = params.Encode()

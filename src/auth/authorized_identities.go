@@ -95,12 +95,9 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
 
 		if token.Issuer != i.issuerURL {
 			fmt.Fprintln(os.Stderr, "bad issuer:", token.Issuer, "!=", i.issuerURL)
+			return false
 		}
-		if token.Subject != "ssh3" {
-			fmt.Fprintln(os.Stderr, "bad subject:", token.Subject, "!=", "ssh3")
-		}
-		fmt.Println("got verified token:", token)
-		
+
 		var claims struct {
 			Email         string `json:"email"`
 			EmailVerified bool   `json:"email_verified"`
