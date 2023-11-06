@@ -123,8 +123,17 @@ type Size interface {
 	Size() int64
 }
 
-func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, runningCommand *runningCommand) error {
+func setupEnv(user *auth.User, runningCommand *runningCommand) {
 	// TODO: set the environment like in do_setup_env of https://github.com/openssh/openssh-portable/blob/master/session.c	
+	runningCommand.Cmd.Env = append(runningCommand.Cmd.Env,
+									fmt.Sprintf("HOME=%s", user.Dir),
+									fmt.Sprintf("USER=%s", user.Username),
+									fmt.Sprintf("PATH=%s", "/usr/bin:/bin:/usr/sbin:/sbin"),
+									)
+}
+
+func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.User, runningCommand *runningCommand) error {
+	setupEnv(user, runningCommand)
 	if openPty != nil {
 		err := util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
 		if err != nil {
@@ -315,7 +324,7 @@ func newShellReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.Sh
 
 	session.channelState = OPEN
 
-	return execCmdInBackground(channel, session.pty, session.runningCmd)
+	return execCmdInBackground(channel, session.pty, user, session.runningCmd)
 }
 
 func newExecReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.ExecRequest, wantReply bool) error {
