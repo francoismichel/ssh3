@@ -3,11 +3,12 @@ package util
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	ptylib "github.com/creack/pty"
+	"github.com/rs/zerolog"
 )
-
 
 // copied and adapted from github.com/creack/pty
 // StartWithAttrs assigns a pseudo-terminal tty os.File to c.Stdin, c.Stdout,
@@ -85,4 +86,17 @@ func lower(b byte) byte {
 		return b + ('a' - 'A')
 	}
 	return b
+}
+
+func ConfigureLogger(logLevel string) {
+	switch strings.ToLower(logLevel) {
+	case "debug":
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case "info":
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case "warning":
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	default:
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	}
 }

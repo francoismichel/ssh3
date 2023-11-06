@@ -20,6 +20,8 @@ import (
 	"github.com/creack/pty"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	// "github.com/quic-go/quic-go/logging"
 	// "github.com/quic-go/quic-go/qlog"
@@ -98,7 +100,6 @@ type runningSession struct {
 	runningCmd *runningCommand
 }
 
-var conversations = make(map[quic.Stream]*ssh3.Conversation)
 var runningSessions = make(map[*ssh3.Channel]*runningSession)
 
 func setWinsize(f *os.File, charWidth, charHeight, pixWidth, pixHeight uint64) {
@@ -120,17 +121,6 @@ func (b *binds) Set(v string) error {
 // Size is needed by the /demo/upload handler to determine the size of the uploaded file
 type Size interface {
 	Size() int64
-}
-
-// See https://en.wikipedia.org/wiki/Lehmer_random_number_generator
-func generatePRData(l int) []byte {
-	res := make([]byte, l)
-	seed := uint64(1)
-	for i := 0; i < l; i++ {
-		seed = seed * 48271 % 2147483647
-		res[i] = byte(seed)
-	}
-	return res
 }
 
 func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, runningCommand *runningCommand) error {
@@ -406,6 +396,7 @@ func newDataReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.Dat
 func main() {
 	bs := binds{}
 	flag.Var(&bs, "bind", "bind to")
+	verbose := flag.Bool("v", false, "verbose mode, if set")
 	flag.Parse()
 
 
@@ -413,19 +404,14 @@ func main() {
 		bs = binds{"localhost:6121"}
 	}
 
-	quicConf := &quic.Config{}
-	// if *enableQlog {
-	// 	quicConf.Tracer = func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) logging.ConnectionTracer {
-	// 		filename := fmt.Sprintf("server_%x.qlog", connID)
-	// 		f, err := os.Create(filename)
-	// 		if err != nil {
-	// 			log.Fatal(err)
-	// 		}
-	// 		log.Printf("Creating qlog file %s.\n", filename)
-	// 		return qlog.NewConnectionTracer(utils.NewBufferedWriteCloser(bufio.NewWriter(f), f), p, connID)
-	// 	}
-	// }
+	if *verbose {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		util.ConfigureLogger("debug")
+	} else {
+		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+	}
 
+	quicConf := &quic.Config{}
 
 	var wg sync.WaitGroup
 	wg.Add(len(bs))

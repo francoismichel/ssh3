@@ -12,7 +12,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,10 +26,13 @@ import (
 	ssh3 "ssh3/src"
 	"ssh3/src/auth"
 	ssh3Messages "ssh3/src/message"
+	"ssh3/src/util"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	// "github.com/quic-go/quic-go/logging"
 	// "github.com/quic-go/quic-go/qlog"
 )
@@ -69,11 +71,14 @@ func main() {
 	urls := flag.Args()
 
 
+	util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {
 		f, err := os.Create(*keyLogFile)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Msgf("%s", err)
 		}
 		defer f.Close()
 		keyLog = f
@@ -81,22 +86,11 @@ func main() {
 
 	pool, err := x509.SystemCertPool()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Msgf("%s", err)
 	}
 	testdata.AddRootCA(pool)
 
 	var qconf quic.Config
-	// if *enableQlog {
-	// 	qconf.Tracer = func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) logging.ConnectionTracer {
-	// 		filename := fmt.Sprintf("client_%x.qlog", connID)
-	// 		f, err := os.Create(filename)
-	// 		if err != nil {
-	// 			log.Fatal(err)
-	// 		}
-	// 		log.Printf("Creating qlog file %s.\n", filename)
-	// 		return qlog.NewConnectionTracer(utils.NewBufferedWriteCloser(bufio.NewWriter(f), f), p, connID)
-	// 	}
-	// }
 
 	qconf.KeepAlivePeriod = 1*time.Second
 	roundTripper := &http3.RoundTripper{
@@ -114,11 +108,11 @@ func main() {
 		log.Printf("GET %s", addr)
 		parsedUrl, err := url.Parse(addr)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Msgf("%s", err)
 		}
 		req, err := http.NewRequest("CONNECT", addr, nil)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal().Msgf("%s", err)
 		}
 		req.Proto = "ssh3"
 
@@ -177,8 +171,7 @@ func main() {
 
 		rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
 		if err != nil {
-			log.Println("err2")
-			log.Fatal(err)
+			log.Fatal().Msgf("%s", err)
 		}
 
 		if rsp.StatusCode == 200 {
@@ -232,7 +225,7 @@ func main() {
 
 			oldState, err := term.MakeRaw(int(fd))
 			if err != nil {
-				log.Fatal(err)
+				log.Fatal().Msgf("%s", err)
 			}
 
 			go func() {
@@ -291,7 +284,7 @@ func main() {
 					case ssh3Messages.SSH_EXTENDED_DATA_NONE:
 						_, err = os.Stdout.Write([]byte(message.Data))
 						if err != nil {
-							log.Fatal(err)
+							log.Fatal().Msgf("%s", err)
 						}
 					}
 				}
