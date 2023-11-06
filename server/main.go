@@ -397,6 +397,7 @@ func main() {
 	bs := binds{}
 	flag.Var(&bs, "bind", "bind to")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
+	urlPath := flag.String("url-path", "/ssh3-term", "the path on which the ssh3 server listens")
 	flag.Parse()
 
 
@@ -485,7 +486,7 @@ func main() {
 				}
 			})
 			ssh3Handler := ssh3Server.GetHTTPHandlerFunc()
-			mux.HandleFunc("/ssh3-pty", auth.HandleAuths(ssh3Handler))
+			mux.HandleFunc(*urlPath, auth.HandleAuths(ssh3Handler))
 			server.Handler = mux
 			err = server.ListenAndServeTLS(certFile, keyFile)
 			

@@ -66,12 +66,19 @@ func main() {
 	issuerUrl := flag.String("issuer-url", "https://accounts.google.com", "openid issuer url")
 	clientID := flag.String("client-id", "", "openid client id")
 	clientSecret := flag.String("client-secret", "", "openid client secret")
+	verbose := flag.Bool("v", false, "verbose mode, if set")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
 
 
-	util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+	if *verbose {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		util.ConfigureLogger("debug")
+	} else {
+		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+	}
+
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	var keyLog io.Writer
