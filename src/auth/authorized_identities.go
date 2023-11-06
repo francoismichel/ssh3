@@ -115,7 +115,8 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
 		valid := token != nil && claims.EmailVerified && claims.Email == i.email
 
 		if !valid {
-			log.Error().Msgf("invalid token: %+v email should be: %s received claims: %+v", token, i.email, claims)
+			log.Error().Msgf("invalid token: %+v", token)
+			log.Error().Msgf("email should be: %s received claims: %+v", i.email, claims)
 		}
 
 		return valid
