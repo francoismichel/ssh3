@@ -98,6 +98,8 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
 			return false
 		}
 
+		log.Debug().Msgf("token signature verification successful")
+
 		if token.Issuer != i.issuerURL {
 			log.Error().Msgf("cannot verify idendity: bad issuer: %s != %s", token.Issuer, i.issuerURL)
 			return false
@@ -115,8 +117,7 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
 		valid := token != nil && claims.EmailVerified && claims.Email == i.email
 
 		if !valid {
-			log.Error().Msgf("invalid token: %+v", token)
-			log.Error().Msgf("email should be: %s received claims: %+v", i.email, claims)
+			log.Error().Msgf("invalid token: email should be: %s received claims: %+v", i.email, claims)
 		}
 
 		return valid
