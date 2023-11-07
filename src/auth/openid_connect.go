@@ -52,7 +52,6 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUR
 		// Configure an OpenID Connect aware OAuth2 client.
 	oauthConfig := oauth2.Config{
 		ClientID:     clientID,
-		ClientSecret: clientSecret,
 		RedirectURL:  secretUrl,
 
 		// Discovery returns the OAuth2 endpoints.
@@ -113,7 +112,14 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Verify state and errors.
-		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"))
+
+		challengeVerifierBytes := [64]byte{}
+		_, err := rand.Read(challengeVerifierBytes[:])
+		if err != nil {
+			log.Error().Msgf("error when generating random verifier: %s", err.Error())
+			return
+		}
+		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"), oauth2.S256ChallengeOption(string(challengeVerifierBytes[:])))
 		if err != nil {
 			log.Error().Msgf("error when parsing oauth token: %s", err.Error())
 			return
