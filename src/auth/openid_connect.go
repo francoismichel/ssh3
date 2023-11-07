@@ -139,6 +139,7 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 			log.Error().Msgf("error when parsing the oauth token claims: %s", err.Error())
 			return
 		}
+		w.Write([]byte("you can now close this tab"))	// status 200 is implicit
 		tokenChannel <- rawIDToken
 	}
 }
