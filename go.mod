@@ -4,6 +4,8 @@ require (
 	github.com/coreos/go-oidc/v3 v3.7.0
 	github.com/creack/pty v1.1.18
 	github.com/golang-jwt/jwt/v5 v5.0.0
+	github.com/onsi/ginkgo/v2 v2.13.0
+	github.com/onsi/gomega v1.29.0
 	github.com/quic-go/quic-go v0.38.1
 	github.com/rs/zerolog v1.31.0
 	golang.org/x/crypto v0.14.0
@@ -24,8 +26,6 @@ require (
 	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
-	github.com/onsi/ginkgo/v2 v2.13.0 // indirect
-	github.com/onsi/gomega v1.29.0 // indirect
 	github.com/pquerna/cachecontrol v0.2.0 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-20 v0.3.3 // indirect
