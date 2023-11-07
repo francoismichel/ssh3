@@ -63,7 +63,7 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string) (raw
 		Endpoint: providerEndpoint,
 
 		// "openid" is a required scope for OpenID Connect flows.
-		Scopes: []string{oidc.ScopeOpenID, "email"},
+		Scopes: []string{"openid email"},
 	}
 
 	tokenChannel := make(chan string)
