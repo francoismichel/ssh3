@@ -15,6 +15,11 @@ import (
 	"golang.org/x/oauth2"
 )
 
+type OIDCConfig struct {
+	ClientID string  `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+}
+
 /*
  *	Gets an OpenID Connect authorization token from the authorization provider (issuer).
  *  It firsts discuvers the authorization endppoint from the issuerURL. Then, it
@@ -22,7 +27,7 @@ import (
  *  started at a random port to retrieve the issued authorization token.
  *	This token is then returned as an http url-encoded string.
 */
-func Connect(ctx context.Context, clientID string, clientSecret string, issuerURL string) (rawIDTokey string, err error) {
+func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string) (rawIDTokey string, err error) {
 	provider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
 		return "", err
@@ -50,8 +55,8 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUR
 
 		// Configure an OpenID Connect aware OAuth2 client.
 	oauthConfig := oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
+		ClientID:     oidcConfig.ClientID,
+		ClientSecret: oidcConfig.ClientSecret,
 		RedirectURL:  secretUrl,
 
 		// Discovery returns the OAuth2 endpoints.
@@ -63,7 +68,7 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUR
 
 	tokenChannel := make(chan string)
 	mux := http.NewServeMux()
-	mux.Handle(path, getOAuth2Callback(ctx, provider, clientID, &oauthConfig, tokenChannel))
+	mux.Handle(path, getOAuth2Callback(ctx, provider, oidcConfig.ClientID, &oauthConfig, tokenChannel))
 	server := http.Server{ Handler: mux }
 	go server.Serve(listener)
 	var cmd string

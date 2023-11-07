@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -64,8 +65,7 @@ func main() {
 	privKeyFile := flag.String("privkey", "", "private key file")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
 	issuerUrl := flag.String("issuer-url", "https://accounts.google.com", "openid issuer url")
-	clientID := flag.String("client-id", "", "openid client id")
-	clientSecret := flag.String("client-secret", "", "openid client secret")
+	oidcConfigFile := flag.String("oidc-config", "", "oidc json config file containing the \"client_id\" and \"client_secret\" fields")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
@@ -77,6 +77,22 @@ func main() {
 		util.ConfigureLogger("debug")
 	} else {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+	}
+
+
+	var oidcConfig *auth.OIDCConfig = nil 
+	if *oidcConfigFile != "" {
+		configFile, err := os.Open(*oidcConfigFile)
+		if err != nil {
+			log.Error().Msgf("could not open oidc config file %s: %s", *oidcConfigFile, err.Error())
+			return
+		}
+		oidcConfig = new(auth.OIDCConfig)
+		data, err := io.ReadAll(configFile)
+		if err = json.Unmarshal(data, oidcConfig); err != nil {
+			log.Error().Msgf("could not load oidc config file: %s", err.Error())
+			return
+		}
 	}
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -157,11 +173,11 @@ func main() {
 				return
 			}
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
-		} else if *clientID != "" {
-			token, err := auth.Connect(context.Background(), *clientID, *clientSecret, *issuerUrl)
-		
+		} else if *oidcConfigFile != "" {
+			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl)
 			if err != nil {
-				fmt.Println("could not get token:", err)
+				log.Error().Msgf("could not get token:", err)
+				return
 			}
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 		} else {
