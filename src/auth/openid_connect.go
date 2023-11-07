@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"os/exec"
 	"runtime"
 
@@ -79,18 +78,26 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUR
 	}
 
 
-    browserURL, _ := url.Parse(providerEndpoint.AuthURL)
-    params := url.Values{}
-    params.Add("redirect_uri", secretUrl)
-    params.Add("prompt", "select_account")
-    params.Add("response_type", "code")
-    params.Add("scope", "openid email")
-    params.Add("client_id", clientID)
+    // browserURL, _ := url.Parse(providerEndpoint.AuthURL)
+    // params := url.Values{}
+    // params.Add("redirect_uri", secretUrl)
+    // params.Add("prompt", "select_account")
+    // params.Add("response_type", "code")
+    // params.Add("scope", "openid email")
+    // params.Add("client_id", clientID)
 
-	browserURL.RawQuery = params.Encode()
+	// browserURL.RawQuery = params.Encode()
 
-	args = append(args, browserURL.String())
-	log.Debug().Msgf("spawning browser at %s\n", browserURL)
+	challengeVerifierBytes := [64]byte{}
+	_, err = rand.Read(challengeVerifierBytes[:])
+	if err != nil {
+		return "", fmt.Errorf("error when generating random verifier: %s", err.Error())
+	}
+
+	authCodeURL := oauthConfig.AuthCodeURL("state", oauth2.S256ChallengeOption(string(challengeVerifierBytes[:])))
+
+	args = append(args, authCodeURL)
+	log.Debug().Msgf("spawning browser at %s\n", authCodeURL)
 	command := exec.Command(cmd, args...)
 	err = command.Start()
 	if err != nil {
@@ -113,13 +120,7 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Verify state and errors.
 
-		challengeVerifierBytes := [64]byte{}
-		_, err := rand.Read(challengeVerifierBytes[:])
-		if err != nil {
-			log.Error().Msgf("error when generating random verifier: %s", err.Error())
-			return
-		}
-		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"), oauth2.S256ChallengeOption(string(challengeVerifierBytes[:])))
+		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"))
 		if err != nil {
 			log.Error().Msgf("error when parsing oauth token: %s", err.Error())
 			return
