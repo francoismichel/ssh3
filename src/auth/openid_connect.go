@@ -27,7 +27,7 @@ type OIDCConfig struct {
  *  started at a random port to retrieve the issued authorization token.
  *	This token is then returned as an http url-encoded string.
 */
-func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string) (rawIDTokey string, err error) {
+func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPKCE bool) (rawIDTokey string, err error) {
 	provider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
 		return "", err
@@ -76,7 +76,7 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string) (raw
 
 	tokenChannel := make(chan string)
 	mux := http.NewServeMux()
-	mux.Handle(path, getOAuth2Callback(ctx, provider, oidcConfig.ClientID, &oauthConfig, tokenChannel, verifier))
+	mux.Handle(path, getOAuth2Callback(ctx, provider, oidcConfig.ClientID, &oauthConfig, tokenChannel, verifier, doPKCE))
 	server := http.Server{ Handler: mux }
 	go server.Serve(listener)
 	var cmd string
@@ -91,7 +91,12 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string) (raw
 		cmd = "xdg-open"
 	}
 
-	authCodeURL := oauthConfig.AuthCodeURL("state", oauth2.S256ChallengeOption(verifier))
+	options := []oauth2.AuthCodeOption{}
+	if doPKCE {
+		options = append(options, oauth2.S256ChallengeOption(verifier))
+	}
+
+	authCodeURL := oauthConfig.AuthCodeURL("state", options...)
 
 	args = append(args, authCodeURL)
 	log.Debug().Msgf("spawning browser at %s\n", authCodeURL)
@@ -110,14 +115,19 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string) (raw
 	return rawIDToken, nil
 }
 
-func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID string, oauth2Config *oauth2.Config, tokenChannel chan string, challengeVerifier string) http.HandlerFunc {
+func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID string, oauth2Config *oauth2.Config,
+					   tokenChannel chan string, challengeVerifier string, doPKCE bool) http.HandlerFunc {
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Verify state and errors.
 
-		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"), oauth2.VerifierOption(challengeVerifier))
+		options := []oauth2.AuthCodeOption{}
+		if doPKCE {
+			options = append(options, oauth2.VerifierOption(challengeVerifier))
+		}
+		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"), options...)
 		if err != nil {
 			log.Error().Msgf("error when parsing oauth token: %s", err.Error())
 			return

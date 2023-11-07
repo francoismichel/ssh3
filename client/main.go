@@ -67,6 +67,7 @@ func main() {
 	issuerUrl := flag.String("issuer-url", "https://accounts.google.com", "openid issuer url")
 	oidcConfigFile := flag.String("oidc-config", "", "oidc json config file containing the \"client_id\" and \"client_secret\" fields")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
+	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc (currently not working)")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
@@ -174,7 +175,7 @@ func main() {
 			}
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
 		} else if *oidcConfigFile != "" {
-			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl)
+			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
 			if err != nil {
 				log.Error().Msgf("could not get token:", err)
 				return
