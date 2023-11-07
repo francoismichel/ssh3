@@ -66,9 +66,17 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string) (raw
 		Scopes: []string{"openid email"},
 	}
 
+	challengeVerifierBytes := [64]byte{}
+	_, err = rand.Read(challengeVerifierBytes[:])
+	if err != nil {
+		return "", fmt.Errorf("error when generating random verifier: %s", err.Error())
+	}
+
+	verifier := string(challengeVerifierBytes[:])
+
 	tokenChannel := make(chan string)
 	mux := http.NewServeMux()
-	mux.Handle(path, getOAuth2Callback(ctx, provider, oidcConfig.ClientID, &oauthConfig, tokenChannel))
+	mux.Handle(path, getOAuth2Callback(ctx, provider, oidcConfig.ClientID, &oauthConfig, tokenChannel, verifier))
 	server := http.Server{ Handler: mux }
 	go server.Serve(listener)
 	var cmd string
@@ -83,13 +91,7 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string) (raw
 		cmd = "xdg-open"
 	}
 
-	challengeVerifierBytes := [64]byte{}
-	_, err = rand.Read(challengeVerifierBytes[:])
-	if err != nil {
-		return "", fmt.Errorf("error when generating random verifier: %s", err.Error())
-	}
-
-	authCodeURL := oauthConfig.AuthCodeURL("state", oauth2.S256ChallengeOption(string(challengeVerifierBytes[:])))
+	authCodeURL := oauthConfig.AuthCodeURL("state", oauth2.S256ChallengeOption(verifier))
 
 	args = append(args, authCodeURL)
 	log.Debug().Msgf("spawning browser at %s\n", authCodeURL)
@@ -108,14 +110,14 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string) (raw
 	return rawIDToken, nil
 }
 
-func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID string, oauth2Config *oauth2.Config, tokenChannel chan string) http.HandlerFunc {
+func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID string, oauth2Config *oauth2.Config, tokenChannel chan string, challengeVerifier string) http.HandlerFunc {
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Verify state and errors.
 
-		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"))
+		oauth2Token, err := oauth2Config.Exchange(ctx, r.URL.Query().Get("code"), oauth2.VerifierOption(challengeVerifier))
 		if err != nil {
 			log.Error().Msgf("error when parsing oauth token: %s", err.Error())
 			return
