@@ -51,6 +51,7 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUR
 		// Configure an OpenID Connect aware OAuth2 client.
 	oauthConfig := oauth2.Config{
 		ClientID:     clientID,
+		ClientSecret: clientSecret,
 		RedirectURL:  secretUrl,
 
 		// Discovery returns the OAuth2 endpoints.
@@ -76,17 +77,6 @@ func Connect(ctx context.Context, clientID string, clientSecret string, issuerUR
 	default: // "linux", "freebsd", "openbsd", "netbsd"
 		cmd = "xdg-open"
 	}
-
-
-    // browserURL, _ := url.Parse(providerEndpoint.AuthURL)
-    // params := url.Values{}
-    // params.Add("redirect_uri", secretUrl)
-    // params.Add("prompt", "select_account")
-    // params.Add("response_type", "code")
-    // params.Add("scope", "openid email")
-    // params.Add("client_id", clientID)
-
-	// browserURL.RawQuery = params.Encode()
 
 	challengeVerifierBytes := [64]byte{}
 	_, err = rand.Read(challengeVerifierBytes[:])
