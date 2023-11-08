@@ -127,7 +127,10 @@ func main() {
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
-	testdata.AddRootCA(pool)
+
+	if !*insecure {
+		testdata.AddRootCA(pool)
+	}
 
 	var qconf quic.Config
 
