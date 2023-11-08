@@ -63,9 +63,10 @@ func main() {
 	// quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "key log file")
 	privKeyFile := flag.String("privkey", "", "private key file")
+	passwordAuthentication := flag.Bool("use-password", false, "do classical password authentication")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
 	issuerUrl := flag.String("issuer-url", "https://accounts.google.com", "openid issuer url")
-	oidcConfigFile := flag.String("oidc-config", "", "oidc json config file containing the \"client_id\" and \"client_secret\" fields")
+	oidcConfigFileName := flag.String("oidc-config", "", "oidc json config file containing the \"client_id\" and \"client_secret\" fields")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc (currently not working)")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
@@ -81,17 +82,33 @@ func main() {
 	}
 
 
-	var oidcConfig *auth.OIDCConfig = nil 
-	if *oidcConfigFile != "" {
-		configFile, err := os.Open(*oidcConfigFile)
+	// default to oidc if no password or privkey
+	var err error = nil
+	var oidcConfig *auth.OIDCConfig = nil
+	var oidcConfigFile *os.File = nil
+	if *privKeyFile == "" && !*passwordAuthentication && *oidcConfigFileName == "" {
+		defaultFileName := "/etc/ssh3/oidc_config.json"
+		oidcConfigFile, err = os.Open(defaultFileName)
 		if err != nil {
-			log.Error().Msgf("could not open oidc config file %s: %s", *oidcConfigFile, err.Error())
+			log.Warn().Msgf("could not open %s: %s", defaultFileName, err.Error())
+		}
+	} else if *oidcConfigFileName != "" {
+		oidcConfigFile, err = os.Open(*oidcConfigFileName)
+		if err != nil {
+			log.Warn().Msgf("could not open %s: %s", *oidcConfigFileName, err.Error())
 			return
 		}
+	}
+
+	if oidcConfigFile != nil {
 		oidcConfig = new(auth.OIDCConfig)
-		data, err := io.ReadAll(configFile)
+		data, err := io.ReadAll(oidcConfigFile)
+		if err != nil {
+			log.Error().Msgf("could not read oidc config file: %s", err.Error())
+			return
+		}
 		if err = json.Unmarshal(data, oidcConfig); err != nil {
-			log.Error().Msgf("could not load oidc config file: %s", err.Error())
+			log.Error().Msgf("could not parse oidc config file: %s", err.Error())
 			return
 		}
 	}
@@ -140,7 +157,24 @@ func main() {
 		}
 		req.Proto = "ssh3"
 
-		if *privKeyFile != "" {
+		if *passwordAuthentication || (oidcConfig == nil && *privKeyFile == "") {
+			fmt.Printf("password for %s:", parsedUrl.String())
+			password, err := term.ReadPassword(int(syscall.Stdin))
+		
+			if err != nil {
+				fmt.Fprintf(os.Stdin, "could not get password\n")
+				return
+			}
+			
+			req.SetBasicAuth(parsedUrl.User.Username(), string(password))
+		} else if oidcConfig != nil {
+			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
+			if err != nil {
+				log.Error().Msgf("could not get token: %s", err)
+				return
+			}
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		} else if *privKeyFile != "" {
 			file, err := os.Open(*privKeyFile)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "could not open private key file:", err)
@@ -174,23 +208,6 @@ func main() {
 				return
 			}
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
-		} else if *oidcConfigFile != "" {
-			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
-			if err != nil {
-				log.Error().Msgf("could not get token:", err)
-				return
-			}
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-		} else {
-			fmt.Printf("password for %s:", parsedUrl.String())
-			password, err := term.ReadPassword(int(syscall.Stdin))
-		
-			if err != nil {
-				fmt.Fprintf(os.Stdin, "could not get password\n")
-				return
-			}
-			
-			req.SetBasicAuth(parsedUrl.User.Username(), string(password))
 		}
 
 		rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
