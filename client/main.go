@@ -289,6 +289,7 @@ func main() {
 			
 			defer str.Close()
 			defer term.Restore(int(fd), oldState)
+			defer fmt.Printf("\r")
 
 			for {
 				genericMessage, err := channel.NextMessage()
