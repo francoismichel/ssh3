@@ -5,7 +5,9 @@ name: Build release
 
 on:
   release:
-    types: [created]
+    types: 
+      - created
+      - updated
 
 permissions:
     contents: write
