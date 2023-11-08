@@ -18,7 +18,7 @@ import (
 
 // a JWT bearer token, encoded following the JWT specification
 type JWTTokenString struct {
-	token string
+	Token string
 }
 
 /*
@@ -45,7 +45,7 @@ func DefaultIdentitiesFileName(user *User) string {
 func (i *RSAPubKeyIdentity) Verify(genericCandidate interface{}) bool {
 	switch candidate := genericCandidate.(type) {
 	case JWTTokenString:
-		token, err := jwt.Parse(candidate.token, func(unvalidatedToken *jwt.Token) (interface{}, error) {
+		token, err := jwt.Parse(candidate.Token, func(unvalidatedToken *jwt.Token) (interface{}, error) {
 			switch unvalidatedToken.Method.Alg() {
 			case "RS256":
 				return i.pubkey, nil
@@ -92,7 +92,7 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
 	log.Debug().Msgf("verifying openid connect idenitity")
 	switch candidate := genericCandidate.(type) {
 	case JWTTokenString:
-		token, err := VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.token)
+		token, err := VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.Token)
 		if err != nil {
 			log.Error().Msgf("cannot verify raw token: %s", err.Error())
 			return false

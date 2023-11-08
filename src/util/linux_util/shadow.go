@@ -23,7 +23,7 @@ It also checks whether those files have insecure UNIX permissions.
 
 // partially copied from https://github.com/google/minions/blob/v0.1.0/src/go/minions/passwd/minion.go
 
-package util
+package linux_util
 
 /*
 #cgo LDFLAGS: -lcrypt
@@ -37,6 +37,7 @@ size_t size_of_crypt_data() { return sizeof(struct crypt_data); }
 import "C"
 import (
 	"fmt"
+	"ssh3/src/util"
 	"unsafe"
 )
 
@@ -45,9 +46,6 @@ type ShadowEntry struct {
 	Password string
 }
 
-func (e UserNotFound) Error() string {
-	return fmt.Sprintf("User not found: %s", e.Username)
-}
 
 /*
  * Wrapper around libshadow's getspnam function
@@ -67,7 +65,7 @@ func Getspnam(name string) (*ShadowEntry, error) {
 
 	if unsafe.Pointer(cspwd) == unsafe.Pointer(uintptr(0)) {
 		if err == nil {
-			err = UserNotFound{Username: name}
+			err = util.UserNotFound{Username: name}
 		}
 
 		return nil, err
@@ -91,7 +89,6 @@ func Crypt(clearPassword, setting string) (string, error) {
 	cPassword := C.CString(clearPassword)
 	defer C.free(unsafe.Pointer(cPassword))
 
-	fmt.Printf("CLEARPASSWORD %s, SETTING %s\n", clearPassword, setting)
 	cSetting := C.CString(string(setting))
 	defer C.free(unsafe.Pointer(cSetting))
 
