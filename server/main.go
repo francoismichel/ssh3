@@ -419,6 +419,17 @@ func main() {
 		util.ConfigureLogger("debug")
 	} else {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+		
+		logFileName := os.Getenv("SSH3_LOG_FILE")
+		if logFileName == "" {
+			logFileName = "/var/log/ssh3.log"
+		}
+		logFile, err := os.OpenFile(logFileName, os.O_CREATE | os.O_APPEND | os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cannot open log file %s: %s\n", logFileName, err.Error())
+			return
+		}
+		log.Logger = log.Output(logFile)
 	}
 
 	quicConf := &quic.Config{}
