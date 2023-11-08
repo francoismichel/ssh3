@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"ssh3/src/auth"
 	"sync"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-
-	"ssh3/src/server_side_auth"
 )
 
 type ServerConversationHandler func(authenticatedUsername string, conversation *Conversation) error
@@ -86,7 +85,7 @@ func (s *Server) removeConnection(streamCreator http3.StreamCreator) {
 	delete(s.conversations, streamCreator)
 }
 
-type SSH3Handler = server_side_auth.AuthenticatedHandlerFunc
+type SSH3Handler = auth.AuthenticatedHandlerFunc
 
 func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
 

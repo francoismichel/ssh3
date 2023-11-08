@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 package main
 
 import (
@@ -29,9 +32,9 @@ import (
 	testdata "ssh3"
 	ssh3 "ssh3/src"
 	"ssh3/src/auth"
+	"ssh3/src/linux_server"
 	ssh3Messages "ssh3/src/message"
 	util "ssh3/src/util"
-	"ssh3/src/server_side_auth"
 )
 
 var signals = map[string]os.Signal {
@@ -507,7 +510,7 @@ func main() {
 				}
 			})
 			ssh3Handler := ssh3Server.GetHTTPHandlerFunc()
-			mux.HandleFunc(*urlPath, server_side_auth.HandleAuths(ssh3Handler))
+			mux.HandleFunc(*urlPath, linux_server.HandleAuths(ssh3Handler))
 			server.Handler = mux
 			err = server.ListenAndServeTLS(certFile, keyFile)
 			
