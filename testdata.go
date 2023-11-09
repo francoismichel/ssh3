@@ -36,8 +36,8 @@ func GetTLSConfig() *tls.Config {
 }
 
 // AddRootCA adds the root CA certificate to a cert pool
-func AddRootCA(certPool *x509.CertPool) {
-	caCertPath := path.Join(certPath, "ca.pem")
+func AddRootCA(certPool *x509.CertPool, certFileName string) {
+	caCertPath := path.Join(certPath, certFileName)
 	caCertRaw, err := os.ReadFile(caCertPath)
 	if err != nil {
 		panic(err)
@@ -48,8 +48,8 @@ func AddRootCA(certPool *x509.CertPool) {
 }
 
 // GetRootCA returns an x509.CertPool containing (only) the CA certificate
-func GetRootCA() *x509.CertPool {
+func GetRootCA(certFileName string) *x509.CertPool {
 	pool := x509.NewCertPool()
-	AddRootCA(pool)
+	AddRootCA(pool, certFileName)
 	return pool
 }

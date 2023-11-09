@@ -63,6 +63,7 @@ func main() {
 	privKeyFile := flag.String("privkey", "", "private key file")
 	passwordAuthentication := flag.Bool("use-password", false, "do classical password authentication")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
+	addRootCA := flag.String("add-root-ca", "", "add root CA from specified path")
 	issuerUrl := flag.String("issuer-url", "https://accounts.google.com", "openid issuer url")
 	oidcConfigFileName := flag.String("oidc-config", "", "oidc json config file containing the \"client_id\" and \"client_secret\" fields")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
@@ -128,8 +129,8 @@ func main() {
 		log.Fatal().Msgf("%s", err)
 	}
 
-	if !*insecure {
-		testdata.AddRootCA(pool)
+	if *addRootCA != "" {
+		testdata.AddRootCA(pool, *addRootCA)
 	}
 
 	var qconf quic.Config
