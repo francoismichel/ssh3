@@ -91,7 +91,7 @@ type SSH3Handler = auth.AuthenticatedHandlerFunc
 func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
 
 	return func(authenticatedUsername string, w http.ResponseWriter, r *http.Request) {
-		log.Info().Msgf("got request: %+v", r)
+		log.Info().Msgf("got request: method: %s, URL: %s", r.Method, r.URL.String())
 		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
 			w.WriteHeader(200)
 			w.(http.Flusher).Flush()
