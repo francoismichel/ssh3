@@ -9,6 +9,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/rs/zerolog/log"
 )
 
 type ServerConversationHandler func(authenticatedUsername string, conversation *Conversation) error
@@ -90,6 +91,7 @@ type SSH3Handler = auth.AuthenticatedHandlerFunc
 func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
 
 	return func(authenticatedUsername string, w http.ResponseWriter, r *http.Request) {
+		log.Info().Msgf("got request: %+v", r)
 		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
 			w.WriteHeader(200)
 			w.(http.Flusher).Flush()
