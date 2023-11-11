@@ -78,9 +78,6 @@ func EstablishNewClientConversation(req *http.Request, roundTripper *http3.Round
 			return false, nil
 		}
 
-		conv.controlStream = stream
-		conv.streamCreator = qconn
-
 		channelInfo, err := parseHeader(uint64(stream.StreamID()), &StreamByteReader{stream})
 		if err != nil {
 			return false, err
@@ -96,6 +93,8 @@ func EstablishNewClientConversation(req *http.Request, roundTripper *http3.Round
 	}
 
 	if rsp.StatusCode == 200 {
+		conv.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
+		conv.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
 		return conv, nil
 	} else {
 		return nil, fmt.Errorf("returned non-200 status code: %d", rsp.StatusCode)
