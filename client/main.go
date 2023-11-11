@@ -204,6 +204,8 @@ func main() {
 
 	var qconf quic.Config
 
+	qconf.MaxIncomingStreams = 10
+
 	qconf.KeepAlivePeriod = 1*time.Second
 	roundTripper := &http3.RoundTripper{
 		TLSClientConfig: &tls.Config{
@@ -281,159 +283,152 @@ func main() {
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
 		}
 
-		rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
+		conv, err := ssh3.EstablishNewClientConversation(req, roundTripper, 30000)
+		if err != nil {
+			log.Error().Msgf("Could not open channel: %+v", err)
+			os.Exit(-1)
+		}
+
+
+		channel, err := conv.OpenChannel("session", 30000)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not open channel: %+v", err)
+			os.Exit(-1)
+		}
+		
+		if *forwardSSHAgent {
+			_, err := channel.WriteData([]byte("forward-agent"), ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if err != nil {
+				log.Error().Msgf("could not forward agent: %s", err.Error())
+				return
+			}
+			go func() {
+				for {
+					forwardChannel, err := conv.AcceptChannel(ctx)
+					if err != nil {
+						log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
+						return
+					} else if forwardChannel.ChannelType != "agent-connection" {
+						log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType)
+						return
+					}
+					log.Debug().Msg("new agent connection, forwarding")
+					go func() {
+						err = forwardAgent(ctx, forwardChannel)
+						if err != nil {
+							log.Error().Msgf("agent forwarding error: %s", err.Error())
+							cancel()
+						}
+					}()
+				}
+			}()
+		}
+
+		windowSize, err := getWinsize()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
+			os.Exit(-1)
+		}
+		err = channel.SendRequest(
+			&ssh3Messages.ChannelRequestMessage{
+				WantReply: true,
+				ChannelRequest: &ssh3Messages.PtyRequest{
+					Term: os.Getenv("TERM"),
+					CharWidth: uint64(windowSize.NCols),
+					CharHeight: uint64(windowSize.NRows),
+					PixelWidth: uint64(windowSize.PixelWidth),
+					PixelHeight: uint64(windowSize.PixelHeight),
+				},
+			},
+		)
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
+			return
+		}
+
+		err = channel.SendRequest(
+			&ssh3Messages.ChannelRequestMessage{
+				WantReply: true,
+				ChannelRequest: &ssh3Messages.ShellRequest{},
+			},
+		)
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could send shell request: %+v", err)
+			return
+		}
+
+		fd := os.Stdin.Fd()
+
+		oldState, err := term.MakeRaw(int(fd))
 		if err != nil {
 			log.Fatal().Msgf("%s", err)
 		}
 
-		if rsp.StatusCode == 200 {
-
-			str := rsp.Body.(http3.HTTPStreamer).HTTPStream()
-			conn := rsp.Body.(http3.Hijacker).StreamCreator()
-			conv := ssh3.NewClientConversation(str, roundTripper, conn, 30000)
-
-			channel, err := conv.OpenChannel("session", 30000)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Could not open channel: %+v", err)
-				os.Exit(-1)
-			}
-			
-			if *forwardSSHAgent {
-				_, err := channel.WriteData([]byte("forward-agent"), ssh3Messages.SSH_EXTENDED_DATA_NONE)
-				if err != nil {
-					log.Error().Msgf("could not forward agent: %s", err.Error())
-					return
-				}
-				go func() {
-					for {
-						forwardChannel, err := conv.AcceptChannel(ctx)
-						if err != nil {
-							log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
-							return
-						} else if forwardChannel.ChannelType != "agent-connection" {
-							log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType)
-							return
-						}
-						log.Debug().Msg("new agent connection, forwarding")
-						go func() {
-							err = forwardAgent(ctx, forwardChannel)
-							if err != nil {
-								log.Error().Msgf("agent forwarding error: %s", err.Error())
-								cancel()
-							}
-						}()
-					}
-				}()
-			}
-
-			windowSize, err := getWinsize()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
-				os.Exit(-1)
-			}
-			err = channel.SendRequest(
-				&ssh3Messages.ChannelRequestMessage{
-					WantReply: true,
-					ChannelRequest: &ssh3Messages.PtyRequest{
-						Term: os.Getenv("TERM"),
-						CharWidth: uint64(windowSize.NCols),
-						CharHeight: uint64(windowSize.NRows),
-						PixelWidth: uint64(windowSize.PixelWidth),
-						PixelHeight: uint64(windowSize.PixelHeight),
-					},
-				},
-			)
-
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
-				return
-			}
-
-			err = channel.SendRequest(
-				&ssh3Messages.ChannelRequestMessage{
-					WantReply: true,
-					ChannelRequest: &ssh3Messages.ShellRequest{},
-				},
-			)
-
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Could send shell request: %+v", err)
-				return
-			}
-
-			fd := os.Stdin.Fd()
-
-			oldState, err := term.MakeRaw(int(fd))
-			if err != nil {
-				log.Fatal().Msgf("%s", err)
-			}
-
-			go func() {
-				buf := make([]byte, channel.MaxPacketSize)
-				for {
-					n, err := os.Stdin.Read(buf)
-					if n > 0 {
-						_, err2 := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
-						if err2 != nil {
-							fmt.Fprintf(os.Stderr, "could not write data on channel: %+v", err2)
-							return
-						}
-					}
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "could not read data from stdin: %+v", err)
+		go func() {
+			buf := make([]byte, channel.MaxPacketSize)
+			for {
+				n, err := os.Stdin.Read(buf)
+				if n > 0 {
+					_, err2 := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+					if err2 != nil {
+						fmt.Fprintf(os.Stderr, "could not write data on channel: %+v", err2)
 						return
 					}
 				}
-			}()
-			
-			defer str.Close()
-			defer term.Restore(int(fd), oldState)
-			defer fmt.Printf("\r")
-
-			for {
-				genericMessage, err := channel.NextMessage()
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Could not get message: %+v\n", err)
-					os.Exit(-1)
+					fmt.Fprintf(os.Stderr, "could not read data from stdin: %+v", err)
+					return
 				}
-				switch message := genericMessage.(type) {
-				case *ssh3Messages.ChannelRequestMessage:
-					switch requestMessage := message.ChannelRequest.(type) {
-						case *ssh3Messages.PtyRequest:
-							fmt.Fprintf(os.Stderr, "pty request not implemented\n")
-						case *ssh3Messages.X11Request:
-							fmt.Fprintf(os.Stderr, "x11 request not implemented\n")
-						case *ssh3Messages.ShellRequest:
-							fmt.Fprintf(os.Stderr, "shell request not implemented\n")
-						case *ssh3Messages.ExecRequest:
-							fmt.Fprintf(os.Stderr, "exec request not implemented\n")
-						case *ssh3Messages.SubsystemRequest:
-							fmt.Fprintf(os.Stderr, "subsystem request not implemented\n")
-						case *ssh3Messages.WindowChangeRequest:
-							fmt.Fprintf(os.Stderr, "windowchange request not implemented\n")
-						case *ssh3Messages.SignalRequest:
-							fmt.Fprintf(os.Stderr, "signal request not implemented\n")
-						case *ssh3Messages.ExitStatusRequest:
-							fmt.Fprintf(os.Stderr, "ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
-							return
-						case *ssh3Messages.ExitSignalRequest:
-							fmt.Fprintf(os.Stderr, "ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
-							return
-					}
-				case *ssh3Messages.DataOrExtendedDataMessage:
-					switch message.DataType {
-					case ssh3Messages.SSH_EXTENDED_DATA_NONE:
-						_, err = os.Stdout.Write([]byte(message.Data))
-						if err != nil {
-							log.Fatal().Msgf("%s", err)
-						}
+			}
+		}()
+		
+		defer conv.Close()
+		defer term.Restore(int(fd), oldState)
+		defer fmt.Printf("\r")
+
+		for {
+			genericMessage, err := channel.NextMessage()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Could not get message: %+v\n", err)
+				os.Exit(-1)
+			}
+			switch message := genericMessage.(type) {
+			case *ssh3Messages.ChannelRequestMessage:
+				switch requestMessage := message.ChannelRequest.(type) {
+					case *ssh3Messages.PtyRequest:
+						fmt.Fprintf(os.Stderr, "pty request not implemented\n")
+					case *ssh3Messages.X11Request:
+						fmt.Fprintf(os.Stderr, "x11 request not implemented\n")
+					case *ssh3Messages.ShellRequest:
+						fmt.Fprintf(os.Stderr, "shell request not implemented\n")
+					case *ssh3Messages.ExecRequest:
+						fmt.Fprintf(os.Stderr, "exec request not implemented\n")
+					case *ssh3Messages.SubsystemRequest:
+						fmt.Fprintf(os.Stderr, "subsystem request not implemented\n")
+					case *ssh3Messages.WindowChangeRequest:
+						fmt.Fprintf(os.Stderr, "windowchange request not implemented\n")
+					case *ssh3Messages.SignalRequest:
+						fmt.Fprintf(os.Stderr, "signal request not implemented\n")
+					case *ssh3Messages.ExitStatusRequest:
+						fmt.Fprintf(os.Stderr, "ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
+						return
+					case *ssh3Messages.ExitSignalRequest:
+						fmt.Fprintf(os.Stderr, "ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
+						return
+				}
+			case *ssh3Messages.DataOrExtendedDataMessage:
+				switch message.DataType {
+				case ssh3Messages.SSH_EXTENDED_DATA_NONE:
+					_, err = os.Stdout.Write([]byte(message.Data))
+					if err != nil {
+						log.Fatal().Msgf("%s", err)
 					}
 				}
 			}
-
-		} else {
-			fmt.Println("Failure: got response:", rsp.Status)
 		}
+
 	}
 }
 

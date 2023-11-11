@@ -449,6 +449,7 @@ func listenAndAcceptAuthSockets(cancel context.CancelFunc, conversation *ssh3.Co
 	defer cancel()
 	defer listener.Close()
 	for {
+		log.Debug().Msg("waiting for new agent connections to forward")
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Error().Msgf("error while listening for agent connections: %s", err.Error())
