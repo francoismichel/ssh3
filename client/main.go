@@ -73,6 +73,9 @@ func forwardAgent(parent context.Context, channel *ssh3.Channel) error {
 		for {
 			select {
 			case <-ctx.Done():
+				if err != nil {
+					log.Error().Msgf("reading message stopped on channel %d: %s", channel.ChannelID, err.Error())
+				}
 				return
 			default:
 				genericMessage, err = channel.NextMessage()
