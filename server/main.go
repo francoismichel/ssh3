@@ -414,15 +414,17 @@ func handleAuthAgentSocketConn(conn net.Conn, conversation *ssh3.Conversation) {
 	go func() {
 		defer channel.Close()
 		buf := make([]byte, channel.MaxPacketSize)
-		n, err := conn.Read(buf)
-		if err != nil {
-			log.Info().Msgf("could not read data socket %d: %s", channel.ChannelID, err.Error())
-			return
-		}
-		_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
-		if err != nil {
-			log.Info().Msgf("could not write data on agent channel %d: %s", channel.ChannelID, err.Error())
-			return
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				log.Info().Msgf("could not read data socket %d: %s", channel.ChannelID, err.Error())
+				return
+			}
+			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if err != nil {
+				log.Info().Msgf("could not write data on agent channel %d: %s", channel.ChannelID, err.Error())
+				return
+			}
 		}
 	}()
 	for {
