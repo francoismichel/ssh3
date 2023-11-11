@@ -93,13 +93,13 @@ type runningCommand struct {
 	stdoutR             io.Reader
 	stderrR             io.Reader
 	stdinW              io.Writer
-	authAgentSocketPath string
 }
 
 type runningSession struct {
 	channelState channelType
 	pty          *openPty
 	runningCmd   *runningCommand
+	authAgentSocketPath string
 }
 
 var runningSessions = make(map[*ssh3.Channel]*runningSession)
@@ -125,20 +125,20 @@ type Size interface {
 	Size() int64
 }
 
-func setupEnv(user *auth.User, runningCommand *runningCommand) {
+func setupEnv(user *auth.User, runningCommand *runningCommand, authAgentSocketPath string) {
 	// TODO: set the environment like in do_setup_env of https://github.com/openssh/openssh-portable/blob/master/session.c
 	runningCommand.Cmd.Env = append(runningCommand.Cmd.Env,
 		fmt.Sprintf("HOME=%s", user.Dir),
 		fmt.Sprintf("USER=%s", user.Username),
 		fmt.Sprintf("PATH=%s", "/usr/bin:/bin:/usr/sbin:/sbin"),
 	)
-	if runningCommand.authAgentSocketPath != "" {
-		runningCommand.Cmd.Env = append(runningCommand.Cmd.Env, fmt.Sprintf("SSH_AUTH_SOCK=%s", runningCommand.authAgentSocketPath))
+	if authAgentSocketPath != "" {
+		runningCommand.Cmd.Env = append(runningCommand.Cmd.Env, fmt.Sprintf("SSH_AUTH_SOCK=%s", authAgentSocketPath))
 	}
 }
 
-func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.User, runningCommand *runningCommand) error {
-	setupEnv(user, runningCommand)
+func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.User, runningCommand *runningCommand, authAgentSocketPath string) error {
+	setupEnv(user, runningCommand, authAgentSocketPath)
 	if openPty != nil {
 		err := util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
 		if err != nil {
@@ -329,7 +329,7 @@ func newShellReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.Sh
 
 	session.channelState = OPEN
 
-	return execCmdInBackground(channel, session.pty, user, session.runningCmd)
+	return execCmdInBackground(channel, session.pty, user, session.runningCmd, session.authAgentSocketPath)
 }
 
 func newExecReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.ExecRequest, wantReply bool) error {
@@ -460,21 +460,22 @@ func listenAndAcceptAuthSockets(cancel context.CancelFunc, conversation *ssh3.Co
 	}
 }
 
-func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Context, conv *ssh3.Conversation) error {
+func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Context, conv *ssh3.Conversation) (string, error) {
 
 	sockPath, err := linux_util.NewUnixSocketPath()
 	if err != nil {
-		return err
+		return "", err
 	}
+
 
 	var listener net.ListenConfig
 	agentSock, err := listener.Listen(ctx, "unix", sockPath)
 	if err != nil {
 		log.Error().Msgf("could not listen on agent socket: %s", err.Error())
-		return err
+		return "", err
 	}
 	go listenAndAcceptAuthSockets(cancel, conv, agentSock, 30000)
-	return nil
+	return sockPath, nil
 }
 
 func main() {
@@ -574,7 +575,7 @@ func main() {
 								runningSession, ok := runningSessions[channel]
 								if ok && runningSession.channelState == LARVAL {
 									if message.Data == string("forward-agent") {
-										err = openAgentSocketAndForwardAgent(cancel, ctx, conv)
+										runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(cancel, ctx, conv)
 									} else {
 										// invalid data on larval state
 										err = fmt.Errorf("invalid data on ssh channel with LARVAL state")
