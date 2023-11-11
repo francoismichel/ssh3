@@ -104,7 +104,10 @@ func forwardAgent(parent context.Context, channel *ssh3.Channel) error {
 			return err
 		default:
 			n, err := c.Read(buf)
-			if err != nil {
+			if err == io.EOF {
+				log.Debug().Msgf("unix socket for ssh agent closed")
+				return nil
+			} else if err != nil {
 				cancel(err)
 				log.Error().Msgf("could not read on unix socket: %s", err.Error())
 				return err
@@ -301,16 +304,24 @@ func main() {
 					log.Error().Msgf("could not forward agent: %s", err.Error())
 					return
 				}
-				forwardChannel, err := conv.AcceptChannel(ctx)
-				if err != nil {
-					log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
-					return
-				}
 				go func() {
-					err := forwardAgent(ctx, forwardChannel)
-					if err != nil {
-						log.Error().Msgf("agent forwarding error: %s", err.Error())
-						cancel()
+					for {
+						forwardChannel, err := conv.AcceptChannel(ctx)
+						if err != nil {
+							log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
+							return
+						} else if forwardChannel.ChannelType != "agent-connection" {
+							log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType)
+							return
+						}
+						log.Debug().Msg("new agent connection, forwarding")
+						go func() {
+							err = forwardAgent(ctx, forwardChannel)
+							if err != nil {
+								log.Error().Msgf("agent forwarding error: %s", err.Error())
+								cancel()
+							}
+						}()
 					}
 				}()
 			}
