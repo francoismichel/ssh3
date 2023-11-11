@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -55,6 +56,69 @@ func getWinsize() (windowSize, error) {
 	return winSize, err
 }
 
+func forwardAgent(parent context.Context, channel *ssh3.Channel) error {
+	sockPath := os.Getenv("SSH_AUTH_SOCK")
+	if sockPath == "" {
+		return fmt.Errorf("no auth socket in SSH_AUTH_SOCK env var")
+	}
+	c, err := net.Dial("unix", sockPath)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	ctx, cancel := context.WithCancelCause(parent)
+	go func() {
+		var err error = nil
+		var genericMessage ssh3Messages.Message
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				genericMessage, err = channel.NextMessage()
+				if err != nil {
+					err = fmt.Errorf("error when getting message on channel %d: %s", channel.ChannelID, err.Error())
+					cancel(err)
+					return
+				}
+				switch message := genericMessage.(type) {
+				case *ssh3Messages.DataOrExtendedDataMessage:
+					c.Write([]byte(message.Data))
+				default:
+					err = fmt.Errorf("unhandled message type on agent channel %d: %T", channel.ChannelID, message)
+					cancel(err)
+					return
+				}
+			}
+		}
+	}()
+
+	buf := make([]byte, channel.MaxPacketSize)
+	for {
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+			if err != nil {
+				log.Error().Msgf("ending agent forwarding on channel %d: %s", channel.ChannelID, err.Error())
+			}
+			return err
+		default:
+			n, err := c.Read(buf)
+			if err != nil {
+				cancel(err)
+				log.Error().Msgf("could not read on unix socket: %s", err.Error())
+				return err
+			}
+			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if err != nil {
+				cancel(err)
+				log.Error().Msgf("could not write on ssh channel: %s", err.Error())
+				return err
+			}
+		}
+	}
+}
+
 
 func main() {
 	// verbose := flag.Bool("v", false, "verbose")
@@ -68,6 +132,7 @@ func main() {
 	oidcConfigFileName := flag.String("oidc-config", "", "oidc json config file containing the \"client_id\" and \"client_secret\" fields")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc (currently not working)")
+	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
@@ -80,6 +145,7 @@ func main() {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 
 	// default to oidc if no password or privkey
 	var err error = nil
@@ -229,6 +295,26 @@ func main() {
 				os.Exit(-1)
 			}
 			
+			if *forwardSSHAgent {
+				_, err := channel.WriteData([]byte("forward-agent"), ssh3Messages.SSH_EXTENDED_DATA_NONE)
+				if err != nil {
+					log.Error().Msgf("could not forward agent: %s", err.Error())
+					return
+				}
+				forwardChannel, err := conv.AcceptChannel(ctx)
+				if err != nil {
+					log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
+					return
+				}
+				go func() {
+					err := forwardAgent(ctx, forwardChannel)
+					if err != nil {
+						log.Error().Msgf("agent forwarding error: %s", err.Error())
+						cancel()
+					}
+				}()
+			}
+
 			windowSize, err := getWinsize()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
