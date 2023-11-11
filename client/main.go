@@ -73,6 +73,7 @@ func forwardAgent(parent context.Context, channel *ssh3.Channel) error {
 		for {
 			select {
 			case <-ctx.Done():
+				err = context.Cause(ctx)
 				if err != nil {
 					log.Error().Msgf("reading message stopped on channel %d: %s", channel.ChannelID, err.Error())
 				}
@@ -100,7 +101,7 @@ func forwardAgent(parent context.Context, channel *ssh3.Channel) error {
 	for {
 		select {
 		case <-ctx.Done():
-			err = ctx.Err()
+			err = context.Cause(ctx)
 			if err != nil {
 				log.Error().Msgf("ending agent forwarding on channel %d: %s", channel.ChannelID, err.Error())
 			}
