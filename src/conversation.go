@@ -75,6 +75,7 @@ func NewServerConversation(controlStream http3.Stream, streamCreator http3.Strea
 		channelsAcceptQueue: util.NewAcceptQueue[Channel](),
 		streamCreator:       streamCreator,
 		maxPacketSize:       maxPacketsize,
+		channelsManager:     newChannelsManager(),
 	}
 	return conv
 }
