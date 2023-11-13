@@ -140,7 +140,7 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 						return
 					}
 					if convID == uint64(conv.controlStream.StreamID()) {
-						err = conv.AddDatagram(ctx, dgram[buf.Len():])
+						err = conv.AddDatagram(ctx, dgram[buf.Size()-int64(buf.Len()):])
 						if err != nil {
 							log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
 							return

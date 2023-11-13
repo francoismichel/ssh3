@@ -82,7 +82,7 @@ func EstablishNewClientConversation(ctx context.Context, req *http.Request, roun
 					return
 				}
 				if convID == uint64(conv.controlStream.StreamID()) {
-					err = conv.AddDatagram(ctx, dgram[buf.Len():])
+					err = conv.AddDatagram(ctx, dgram[buf.Size()-int64(buf.Len()):])
 					if err != nil {
 						log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
 						return
@@ -180,7 +180,7 @@ func (c *Conversation) AddDatagram(ctx context.Context, datagram []byte) error {
 	if !ok {
 		return util.ChannelNotFound{ChannelID: channelID}
 	}
-	return channel.addDatagram(ctx, datagram[buf.Len():])
+	return channel.addDatagram(ctx, datagram[buf.Size()-int64(buf.Len()):])
 }
 
 func (c *Conversation) Close() {
