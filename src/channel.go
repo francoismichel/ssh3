@@ -80,6 +80,7 @@ type Channel interface {
 	confirmChannel(maxPacketSize uint64) error
 	setDatagramSender(func(datagram []byte) error)
 	addDatagram(ctx context.Context, datagram []byte) error
+	maybeSendHeader() error
 }
 
 type channelImpl struct {
@@ -338,6 +339,7 @@ func (c *channelImpl) ReceiveDatagram(ctx context.Context) ([]byte, error) {
 }
 
 func (c *channelImpl) SendDatagram(datagram []byte) error {
+	c.maybeSendHeader()
 	if c.datagramSender == nil {
 		return SentDatagramOnNonDatagramChannel{c.ChannelID()}
 	}

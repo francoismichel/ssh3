@@ -148,6 +148,7 @@ func (c *Conversation) OpenUDPForwardingChannel(maxPacketSize uint64, datagramsQ
 		buf = append(buf, datagram...)
 		return c.messageSender.SendMessage(buf)
 	})
+	channel.maybeSendHeader()
 	c.channelsManager.addChannel(channel)
 	return &UDPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
 }
