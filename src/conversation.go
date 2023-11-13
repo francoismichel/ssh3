@@ -1,10 +1,11 @@
 package ssh3
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
-	"sync"
+	"ssh3/src/util"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -12,63 +13,24 @@ import (
 
 const SSH_FRAME_TYPE = 0xaf3627e6
 
-// Accept queue copied from https://github.com/quic-go/webtransport-go/blob/master/session.go
-type acceptQueue[T any] struct {
-	mx sync.Mutex
-	// The channel is used to notify consumers (via Chan) about new incoming items.
-	// Needs to be buffered to preserve the notification if an item is enqueued
-	// between a call to Next and to Chan.
-	c chan struct{}
-	// Contains all the streams waiting to be accepted.
-	// There's no explicit limit to the length of the queue, but it is implicitly
-	// limited by the stream flow control provided by QUIC.
-	queue []T
-}
-
-func newAcceptQueue[T any]() *acceptQueue[T] {
-	return &acceptQueue[T]{c: make(chan struct{}, 1)}
-}
-
-func (q *acceptQueue[T]) Add(str T) {
-	q.mx.Lock()
-	q.queue = append(q.queue, str)
-	q.mx.Unlock()
-
-	select {
-	case q.c <- struct{}{}:
-	default:
-	}
-}
-
-func (q *acceptQueue[T]) Next() T {
-	q.mx.Lock()
-	defer q.mx.Unlock()
-
-	if len(q.queue) == 0 {
-		return *new(T)
-	}
-	str := q.queue[0]
-	q.queue = q.queue[1:]
-	return str
-}
-
-func (q *acceptQueue[T]) Chan() <-chan struct{} { return q.c }
-
 
 type Conversation struct {
 	controlStream http3.Stream
 	maxPacketSize uint64
 	streamCreator http3.StreamCreator
+	datagramSender util.DatagramSender
+	channelsManager *channelsManager
 
-	channelsAcceptQueue *acceptQueue[*Channel]
+	channelsAcceptQueue *util.AcceptQueue[*Channel]
 }
 
-func EstablishNewClientConversation(req *http.Request, roundTripper *http3.RoundTripper, maxPacketsize uint64) (*Conversation, error) {
+func EstablishNewClientConversation(req *http.Request, roundTripper *http3.RoundTripper, maxPacketsize uint64, defaultDatagramsQueueSize uint64) (*Conversation, error) {
 	conv := &Conversation{
 		controlStream: nil,
-		channelsAcceptQueue: newAcceptQueue[*Channel](),
+		channelsAcceptQueue: util.NewAcceptQueue[*Channel](),
 		streamCreator: nil,
 		maxPacketSize: maxPacketsize,
+		channelsManager: newChannelsManager(),
 	}
 	roundTripper.StreamHijacker = func(frameType http3.FrameType, qconn quic.Connection, stream quic.Stream, err error) (bool, error) {
 		if err != nil {
@@ -83,7 +45,13 @@ func EstablishNewClientConversation(req *http.Request, roundTripper *http3.Round
 			return false, err
 		}
 
-		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, false, false, true)
+		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, nil, conv.channelsManager, false, false, true, defaultDatagramsQueueSize)
+		newChannel.datagramSender = func(datagram []byte) error {
+			buf := util.AppendVarInt(nil, uint64(conv.controlStream.StreamID()))
+			buf = util.AppendVarInt(buf, newChannel.ChannelID)
+			buf = append(buf, datagram...)
+			return conv.datagramSender.SendDatagram(buf)
+		}
 		conv.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
@@ -104,7 +72,7 @@ func EstablishNewClientConversation(req *http.Request, roundTripper *http3.Round
 func NewServerConversation(controlStream http3.Stream, streamCreator http3.StreamCreator, maxPacketsize uint64) *Conversation {
 	conv := &Conversation{
 		controlStream: controlStream,
-		channelsAcceptQueue: newAcceptQueue[*Channel](),
+		channelsAcceptQueue: util.NewAcceptQueue[*Channel](),
 		streamCreator: streamCreator,
 		maxPacketSize: maxPacketsize,
 	}
@@ -124,12 +92,14 @@ func (r *StreamByteReader) ReadByte() (byte, error) {
 	return buf[0], nil
 }
 
-func (c *Conversation) OpenChannel(channelType string, maxPacketSize uint64) (*Channel, error) {
+func (c *Conversation) OpenChannel(channelType string, maxPacketSize uint64, datagramsQueueSize uint64) (*Channel, error) {
 	str, err := c.streamCreator.OpenStream()
 	if err != nil {
 		return nil, err
 	}
-	return NewChannel(uint64(c.controlStream.StreamID()), uint64(str.StreamID()), channelType, maxPacketSize, &StreamByteReader{str}, str, true, true, false), nil
+	channel := NewChannel(uint64(c.controlStream.StreamID()), uint64(str.StreamID()), channelType, maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize)
+	c.channelsManager.addChannel(channel)
+	return channel, nil
 }
 
 
@@ -137,6 +107,7 @@ func (c *Conversation) AcceptChannel(ctx context.Context) (*Channel, error) {
 	for {
 		if channel := c.channelsAcceptQueue.Next(); channel != nil {
 			channel.confirmChannel(c.maxPacketSize)
+			c.channelsManager.addChannel(channel)
 			return channel, nil
 		}
 		select {
@@ -146,6 +117,21 @@ func (c *Conversation) AcceptChannel(ctx context.Context) (*Channel, error) {
 		}
 	}
 	
+}
+
+// blocks until the datagram is added
+// the first field must be the channel ID
+func (c *Conversation) AddDatagram(ctx context.Context, datagram []byte) error {
+	buf := &util.BytesReadCloser{ Reader: bytes.NewReader(datagram)}
+	channelID, err := util.ReadVarInt(buf)
+	if err != nil {
+		return err
+	}
+	channel, ok := c.channelsManager.getChannel(channelID)
+	if !ok {
+		return util.ChannelNotFound{ChannelID: channelID}
+	}
+	return channel.addDatagram(ctx, datagram[buf.Len():])
 }
 
 func (c *Conversation) Close() {

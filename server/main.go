@@ -91,15 +91,15 @@ type openPty struct {
 
 type runningCommand struct {
 	exec.Cmd
-	stdoutR             io.Reader
-	stderrR             io.Reader
-	stdinW              io.Writer
+	stdoutR io.Reader
+	stderrR io.Reader
+	stdinW  io.Writer
 }
 
 type runningSession struct {
-	channelState channelType
-	pty          *openPty
-	runningCmd   *runningCommand
+	channelState        channelType
+	pty                 *openPty
+	runningCmd          *runningCommand
 	authAgentSocketPath string
 }
 
@@ -136,6 +136,24 @@ func setupEnv(user *auth.User, runningCommand *runningCommand, authAgentSocketPa
 	if authAgentSocketPath != "" {
 		runningCommand.Cmd.Env = append(runningCommand.Cmd.Env, fmt.Sprintf("SSH_AUTH_SOCK=%s", authAgentSocketPath))
 	}
+}
+
+func forwardUDPInBackground(ctx context.Context, channel *ssh3.Channel, conn *net.UDPConn) {
+	go func() {
+		defer channel.Close()
+		for {
+			datagram, err := channel.ReceiveDatagram(ctx)
+			if err != nil {
+				log.Error().Msgf("could not receive datagram: %s", err)
+				return
+			}
+			_, err = conn.Write(datagram)
+			if err != nil {
+				log.Error().Msgf("could write datagram on UDP socket: %s", err)
+				return
+			}
+		}
+	}()
 }
 
 func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.User, runningCommand *runningCommand, authAgentSocketPath string) error {
@@ -379,6 +397,21 @@ func newExitSignalReq(user *auth.User, channel *ssh3.Channel, request ssh3Messag
 	return fmt.Errorf("%T not implemented", request)
 }
 
+func newForwardingReq(ctx context.Context, user *auth.User, conv *ssh3.Conversation, channel *ssh3.Channel, request ssh3Messages.ForwardingRequest, wantReply bool) error {
+	if request.Protocol == util.SSHForwardingProtocolTCP {
+		return fmt.Errorf("TCP forwarding not implemented")
+	}
+	// TODO: currently, the rights for socket creation are not checked. The socket is opened with the process's uid and gid
+	// Not sure how to handled that in go since we cannot temporarily change the uid/gid without potentially impacting every
+	// other goroutine
+	conn, err := net.DialUDP("udp", nil, &net.UDPAddr{ IP: request.IpAddress, Port: int(request.Port) })
+	if err != nil {
+		return err
+	}
+	forwardUDPInBackground(ctx, channel, conn)
+	return nil
+}
+
 func newDataReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
 	runningSession, ok := runningSessions[channel]
 	if !ok {
@@ -407,7 +440,7 @@ func newDataReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.Dat
 }
 
 func handleAuthAgentSocketConn(conn net.Conn, conversation *ssh3.Conversation) {
-	channel, err := conversation.OpenChannel("agent-connection", 30000)
+	channel, err := conversation.OpenChannel("agent-connection", 30000, 10)
 	if err != nil {
 		log.Error().Msgf("could not open channel: %s", err.Error())
 		return
@@ -477,7 +510,7 @@ func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Conte
 		log.Error().Msgf("could not listen on agent socket: %s", err.Error())
 		return "", err
 	}
-	
+
 	sockDir := path.Dir(sockPath)
 	err = os.Chown(sockDir, int(user.Uid), int(user.Gid))
 	if err != nil {
@@ -542,7 +575,7 @@ func main() {
 			certFile, keyFile := testdata.GetCertificatePaths()
 
 			mux := http.NewServeMux()
-			ssh3Server := ssh3.NewServer(30000, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
+			ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
 				authenticatedUser, err := auth.GetUser(authenticatedUsername)
 				if err != nil {
 					return err
@@ -586,6 +619,8 @@ func main() {
 									err = newExitStatusReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 								case *ssh3Messages.ExitSignalRequest:
 									err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.ForwardingRequest:
+									err = newForwardingReq(ctx, authenticatedUser, conv, channel, *requestMessage, message.WantReply)
 								}
 							case *ssh3Messages.DataOrExtendedDataMessage:
 								runningSession, ok := runningSessions[channel]

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
 	util "ssh3/src/util"
 )
 
@@ -533,4 +534,86 @@ func (r *ExitSignalRequest) Write(buf []byte) (consumed int, err error) {
 	return consumed, nil
 }
 
-// XXX: port forwarding is not implemented on purpose, MASQUE could be used instead
+type ForwardingRequest struct {
+	Protocol      util.SSHForwardingProtocol
+	AddressFamily util.SSHForwardingAddressFamily
+	IpAddress     net.IP
+	Port          uint16
+}
+
+var _ ChannelRequest = &ForwardingRequest{}
+
+func ParseForwardingRequest(buf util.Reader) (ChannelRequest, error) {
+	protocol, err := util.ReadVarInt(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	if protocol != util.SSHForwardingProtocolTCP && protocol != util.SSHProtocolUDP {
+		return nil, fmt.Errorf("invalid protocol number: %d", protocol)
+	}
+
+	addressFamily, err := util.ReadVarInt(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	var address net.IP
+	if addressFamily == util.SSHAFIpv4 {
+		address = make([]byte, 4)
+	} else if addressFamily == util.SSHAFIpv6 {
+		address = make([]byte, 16)
+	} else {
+		return nil, fmt.Errorf("invalid address family: %d", addressFamily)
+	}
+
+	_, err = buf.Read(address)
+	if err != nil {
+		return nil, err
+	}
+
+	var portBuf [2]byte
+	_, err = buf.Read(portBuf[:])
+	if err != nil {
+		return nil, err
+	}
+	port := binary.BigEndian.Uint16(portBuf[:])
+
+	return &ForwardingRequest{
+		Protocol:      protocol,
+		AddressFamily: addressFamily,
+		IpAddress:     address,
+		Port:          port,
+	}, nil
+}
+
+func (r *ForwardingRequest) Length() int {
+	return int(util.VarIntLen(r.Protocol)) +
+		int(util.VarIntLen(r.AddressFamily)) +
+		len(r.IpAddress) +
+		2
+}
+
+func (r *ForwardingRequest) RequestTypeStr() string {
+	return "forward-port"
+}
+
+func (r *ForwardingRequest) Write(buf []byte) (consumed int, err error) {
+	if len(buf) < r.Length() {
+		return 0, errors.New("buffer too small to write forwarding request")
+	}
+
+	var attrs []byte
+	for _, attr := range []uint64{r.AddressFamily, r.Protocol} {
+		attrs = util.AppendVarInt(attrs, attr)
+	}
+
+	consumed += copy(buf[consumed:], attrs)
+	consumed += copy(r.IpAddress, attrs)
+	binary.BigEndian.PutUint16(buf[consumed:], r.Port)
+	consumed += 2
+
+	return consumed, nil
+}
+
+// XXX: MASQUE could (should?) be used instead of this handwritten implementation

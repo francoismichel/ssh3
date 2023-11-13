@@ -10,6 +10,8 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog/log"
+
+	"ssh3/src/util"
 )
 
 type ServerConversationHandler func(authenticatedUsername string, conversation *Conversation) error
@@ -25,7 +27,7 @@ type Server struct {
 
 // Creates a new server handling http requests for SSH conversations
 
-func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler ServerConversationHandler) *Server {
+func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *http3.Server, conversationHandler ServerConversationHandler) *Server {
 	ssh3Server := &Server{
 		maxPacketSize:       maxPacketSize,
 		h3Server:            h3Server,
@@ -52,12 +54,13 @@ func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler
 			return false, err
 		}
 
-		conversation, ok := conversationsManager.getConversation(ConversationID(channelInfo.ConversationID))
+		conversation, ok := conversationsManager.getConversation(util.ConversationID(channelInfo.ConversationID))
 		if !ok {
 			return false, fmt.Errorf("could not find SSH3 conversation with id %d for new channel %d on conn %+v", channelInfo.ConversationID, channelInfo.ChannelID, qconn)
 		}
 
-		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, false, false, true)
+		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream},
+							     stream, nil, conversation.channelsManager, false, false, true, defaultDatagramQueueSize)
 		conversation.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}

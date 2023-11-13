@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -140,6 +142,7 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc (currently not working)")
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
+	forwardUDP := flag.String("forward-udp", "", "if set, takes a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
@@ -150,6 +153,52 @@ func main() {
 		util.ConfigureLogger("debug")
 	} else {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+	}
+
+	var localUDPAddr *net.UDPAddr = nil
+	var remoteUDPAddr *net.UDPAddr = nil
+	if *forwardUDP != "" {
+		array := strings.Split(*forwardUDP, "/")
+		localPort, err := strconv.Atoi(array[0])
+		if err != nil {
+			log.Error().Msgf("could not convert %s to int: %s", array[0], err)
+			return
+		} else if localPort > 0xFFFF {
+			log.Error().Msgf("UDP port too large %d", localPort)
+			return
+		}
+		array = strings.Split(array[1], "@")
+		remoteIP := net.ParseIP(array[0])
+		if remoteIP == nil {
+			log.Error().Msgf("could not parse IP %s", array[0])
+			return
+		}
+		remotePort, err := strconv.Atoi(array[1])
+		if err != nil {
+			log.Error().Msgf("could not convert %s to int: %s", array[1], err)
+			return
+		} else if localPort > 0xFFFF {
+			log.Error().Msgf("UDP port too large %d", remotePort)
+			return
+		}
+		remoteUDPAddr = &net.UDPAddr{
+			IP: remoteIP,
+			Port: remotePort,
+		}
+		if len(remoteIP) == 4 {
+			localUDPAddr = &net.UDPAddr{
+				IP: net.IPv4(127, 0, 0, 1),
+				Port: localPort,
+			}
+		} else if len(remoteIP) == 16 {
+			localUDPAddr = &net.UDPAddr{
+				IP: net.IPv6loopback,
+				Port: localPort,
+			}
+		} else {
+			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+			return
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -287,14 +336,14 @@ func main() {
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
 		}
 
-		conv, err := ssh3.EstablishNewClientConversation(req, roundTripper, 30000)
+		conv, err := ssh3.EstablishNewClientConversation(req, roundTripper, 30000, 10)
 		if err != nil {
 			log.Error().Msgf("Could not open channel: %+v", err)
 			os.Exit(-1)
 		}
 
 
-		channel, err := conv.OpenChannel("session", 30000)
+		channel, err := conv.OpenChannel("session", 30000, 0)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not open channel: %+v", err)
 			os.Exit(-1)
@@ -388,9 +437,49 @@ func main() {
 			}
 		}()
 		
+		if localUDPAddr != nil && remoteUDPAddr != nil {
+			log.Debug().Msgf("start forwarding from %s to %s", localUDPAddr, remoteUDPAddr)
+			var addressFamily util.SSHForwardingAddressFamily
+			if len(remoteUDPAddr.IP) == 4 {
+				addressFamily = util.SSHAFIpv4
+			} else {
+				addressFamily = util.SSHAFIpv6
+			}
+			err = channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
+				WantReply: false,
+				ChannelRequest: &ssh3Messages.ForwardingRequest{
+					Protocol: util.SSHProtocolUDP,
+					AddressFamily: addressFamily,
+					IpAddress: remoteUDPAddr.IP,
+					Port: uint16(remoteUDPAddr.Port),
+				},
+			})
+			if err != nil {
+				log.Error().Msgf("could not forward UDP: %s", err)
+				return
+			}
+			conn, err := net.ListenUDP("udp", localUDPAddr)
+			if err != nil {
+				log.Error().Msgf("could listen on UDP socket: %s", err)
+				return
+			}
+			go func() {
+				buf := make([]byte, 1500)
+				for {
+					n, err := conn.Read(buf)
+					if err != nil {
+						log.Error().Msgf("could read on UDP socket: %s", err)
+						return
+					}
+					channel.SendDatagram(buf[:n])
+				}
+			}()
+		}
+
 		defer conv.Close()
 		defer term.Restore(int(fd), oldState)
 		defer fmt.Printf("\r")
+		
 
 		for {
 			genericMessage, err := channel.NextMessage()

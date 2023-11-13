@@ -1,27 +1,45 @@
 package ssh3
 
 import (
+	"context"
 	"fmt"
 	"io"
 	ssh3 "ssh3/src/message"
 	"ssh3/src/util"
 )
 
-type ChannelOpenFailure struct{
+type ChannelOpenFailure struct {
 	ReasonCode uint64
-	ErrorMsg string
+	ErrorMsg   string
 }
+
 func (e ChannelOpenFailure) Error() string {
 	return fmt.Sprintf("Channel open failure: reason: %d: %s", e.ReasonCode, e.ErrorMsg)
 }
 
-type MessageOnNonConfirmedChannel struct{
+type MessageOnNonConfirmedChannel struct {
 	message ssh3.Message
 }
+
 func (e MessageOnNonConfirmedChannel) Error() string {
 	return fmt.Sprintf("A message of type %T has been received on a non-confirmed channel", e.message)
 }
 
+type ReceivedDatagramOnNonDatagramChannel struct {
+	channelID uint64
+}
+
+func (e ReceivedDatagramOnNonDatagramChannel) Error() string {
+	return fmt.Sprintf("a datagram has been received on non-datagram channel %d", e.channelID)
+}
+
+type SentDatagramOnNonDatagramChannel struct {
+	channelID uint64
+}
+
+func (e SentDatagramOnNonDatagramChannel) Error() string {
+	return fmt.Sprintf("a datagram has been sent on non-datagram channel %d", e.channelID)
+}
 
 type PtyReqHandler func(channel *Channel, request ssh3.PtyRequest, wantReply bool)
 type X11ReqHandler func(channel *Channel, request ssh3.X11Request, wantReply bool)
@@ -36,22 +54,30 @@ type ExitSignalReqHandler func(channel *Channel, request ssh3.ExitSignalRequest,
 type ChannelDataHandler func(channel *Channel, dataType ssh3.SSHDataType, data string)
 
 
+type channelCloseListener interface {
+	onChannelClose(channel *Channel)
+}
 
 type ChannelInfo struct {
-	MaxPacketSize 		uint64
-	ConversationID 		uint64
-	ChannelID			uint64
-	ChannelType 		string
+	MaxPacketSize  uint64
+	ConversationID uint64
+	ChannelID      uint64
+	ChannelType    string
 }
 
 type Channel struct {
 	ChannelInfo
-	confirmSent bool
+	confirmSent     bool
 	confirmReceived bool
-	header []byte
+	header          []byte
 
-	recv util.Reader
-	send io.WriteCloser
+	datagramSender util.SSH3DatagramSenderFunc
+
+	channelCloseListener
+
+	recv          util.Reader
+	send          io.WriteCloser
+	datagramsQueue *util.DatagramsQueue
 	PtyReqHandler
 	X11ReqHandler
 	ShellReqHandler
@@ -91,39 +117,43 @@ func parseHeader(channelID uint64, r util.Reader) (*ChannelInfo, error) {
 	}
 	return &ChannelInfo{
 		ConversationID: conversationID,
-		ChannelType: channelType,
-		MaxPacketSize: maxPacketSize,
-		ChannelID: channelID,
+		ChannelType:    channelType,
+		MaxPacketSize:  maxPacketSize,
+		ChannelID:      channelID,
 	}, nil
 }
 
-func NewChannel(conversationID uint64, channelID uint64, channelType string, maxPacketSize uint64, recv util.Reader, send io.WriteCloser, sendHeader bool, confirmSent bool, confirmReceived bool) *Channel {
+func NewChannel(conversationID uint64, channelID uint64, channelType string, maxPacketSize uint64, recv util.Reader,
+			    send io.WriteCloser, datagramSender util.SSH3DatagramSenderFunc, channelCloseListener channelCloseListener, sendHeader bool, confirmSent bool,
+				confirmReceived bool, datagramsQueueSize uint64) *Channel {
 	var header []byte = nil
 	if sendHeader {
 		header = buildHeader(conversationID, channelType, maxPacketSize)
 	}
 	return &Channel{
 		ChannelInfo: ChannelInfo{
-			MaxPacketSize: maxPacketSize,
+			MaxPacketSize:  maxPacketSize,
 			ConversationID: conversationID,
-			ChannelID: channelID,
-			ChannelType: channelType,
+			ChannelID:      channelID,
+			ChannelType:    channelType,
 		},
-		recv: recv,
-		send: send,
-		header: header,
-		confirmSent: confirmSent,
+		recv:            recv,
+		send:            send,
+		datagramsQueue:   util.NewDatagramsQueue(datagramsQueueSize),
+		datagramSender:  datagramSender,
+		channelCloseListener: channelCloseListener,
+		header:          header,
+		confirmSent:     confirmSent,
 		confirmReceived: confirmReceived,
 	}
 }
 
-/// The error is EOF only if no bytes were read. If an EOF happens
-/// after reading some but not all the bytes, nextMessage returns
-/// ErrUnexpectedEOF.
+// / The error is EOF only if no bytes were read. If an EOF happens
+// / after reading some but not all the bytes, nextMessage returns
+// / ErrUnexpectedEOF.
 func (c *Channel) nextMessage() (ssh3.Message, error) {
 	return ssh3.ParseMessage(c.recv)
 }
-
 
 // The returned  message will neither be ChannelOpenConfirmationMessage nor ChannelOpenFailureMessage
 // as this function handles it internally
@@ -134,21 +164,20 @@ func (c *Channel) NextMessage() (ssh3.Message, error) {
 	}
 
 	switch message := genericMessage.(type) {
-		case *ssh3.ChannelOpenConfirmationMessage:
-			c.confirmReceived = true
-			// let's read the next message
-			return c.NextMessage()
-		case *ssh3.ChannelOpenFailureMessage:
-			return nil, ChannelOpenFailure{ ReasonCode: message.ReasonCode, ErrorMsg: message.ErrorMessageUTF8 }
+	case *ssh3.ChannelOpenConfirmationMessage:
+		c.confirmReceived = true
+		// let's read the next message
+		return c.NextMessage()
+	case *ssh3.ChannelOpenFailureMessage:
+		return nil, ChannelOpenFailure{ReasonCode: message.ReasonCode, ErrorMsg: message.ErrorMessageUTF8}
 	}
 
-	// TODO: might be problematic if a peer already sends data along the channel opening 
+	// TODO: might be problematic if a peer already sends data along the channel opening
 	if !c.confirmSent {
-		return nil, MessageOnNonConfirmedChannel{ message: genericMessage }
+		return nil, MessageOnNonConfirmedChannel{message: genericMessage}
 	}
 	return genericMessage, nil
 }
-
 
 func (c *Channel) maybeSendHeader() error {
 	if len(c.header) > 0 {
@@ -170,11 +199,11 @@ func (c *Channel) WriteData(dataBuf []byte, dataType ssh3.SSHDataType) (int, err
 	for len(dataBuf) > 0 {
 		dataMsg := &ssh3.DataOrExtendedDataMessage{
 			DataType: dataType,
-			Data: "",
+			Data:     "",
 		}
 		emptyMsgLen := dataMsg.Length()
-		msgLen := util.MinUint64(c.ChannelInfo.MaxPacketSize - uint64(emptyMsgLen), uint64(len(dataBuf)))
-	
+		msgLen := util.MinUint64(c.ChannelInfo.MaxPacketSize-uint64(emptyMsgLen), uint64(len(dataBuf)))
+
 		dataMsg.Data = string(dataBuf[:msgLen])
 		dataBuf = dataBuf[msgLen:]
 		// TODO: avoid unnecessary copies and buffer creations
@@ -212,6 +241,22 @@ func (c *Channel) sendMessage(m ssh3.Message) error {
 	}
 	c.send.Write(buf)
 	return nil
+}
+
+// blocks until the datagram is added
+func (c *Channel) addDatagram(ctx context.Context, datagram []byte) error {
+	return c.datagramsQueue.WaitAdd(ctx, datagram)
+}
+
+func (c *Channel) ReceiveDatagram(ctx context.Context) ([]byte, error) {
+	return c.datagramsQueue.WaitNext(ctx)
+}
+
+func (c *Channel) SendDatagram(datagram []byte) error {
+	if c.datagramSender == nil {
+		return SentDatagramOnNonDatagramChannel{c.ChannelID}
+	}
+	return c.datagramSender(datagram)
 }
 
 func (c *Channel) SendRequest(r *ssh3.ChannelRequestMessage) error {

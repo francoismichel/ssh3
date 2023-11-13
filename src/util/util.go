@@ -1,9 +1,11 @@
 package util
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 
 	ptylib "github.com/creack/pty"
@@ -100,3 +102,95 @@ func ConfigureLogger(logLevel string) {
 		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
 	}
 }
+
+
+// Accept queue copied from https://github.com/quic-go/webtransport-go/blob/master/session.go
+type AcceptQueue[T any] struct {
+	mx sync.Mutex
+	// The channel is used to notify consumers (via Chan) about new incoming items.
+	// Needs to be buffered to preserve the notification if an item is enqueued
+	// between a call to Next and to Chan.
+	c chan struct{}
+	// Contains all the streams waiting to be accepted.
+	// There's no explicit limit to the length of the queue, but it is implicitly
+	// limited by the stream flow control provided by QUIC.
+	queue []T
+}
+
+func NewAcceptQueue[T any]() *AcceptQueue[T] {
+	return &AcceptQueue[T]{c: make(chan struct{}, 1)}
+}
+
+func (q *AcceptQueue[T]) Add(str T) {
+	q.mx.Lock()
+	q.queue = append(q.queue, str)
+	q.mx.Unlock()
+
+	select {
+	case q.c <- struct{}{}:
+	default:
+	}
+}
+
+func (q *AcceptQueue[T]) Next() T {
+	q.mx.Lock()
+	defer q.mx.Unlock()
+
+	if len(q.queue) == 0 {
+		return *new(T)
+	}
+	str := q.queue[0]
+	q.queue = q.queue[1:]
+	return str
+}
+
+func (q *AcceptQueue[T]) Chan() <-chan struct{} { return q.c }
+
+
+type DatagramsQueue struct {
+	c chan []byte
+}
+
+func NewDatagramsQueue(len uint64) *DatagramsQueue {
+	return &DatagramsQueue{c: make(chan []byte, len)}
+}
+
+// returns true if added, false otherwise
+func (q *DatagramsQueue) Add(datagram []byte) bool {
+	select {
+	case q.c <- datagram:
+		return true
+	default:
+		return false
+	}
+}
+
+// returns nil if added, the context closing error (context.Cause(ctx)) otherwise
+func (q *DatagramsQueue) WaitAdd(ctx context.Context, datagram []byte) error {
+	select {
+	case q.c <- datagram:
+		return nil
+	case <-ctx.Done():
+		return context.Cause(ctx)
+	}
+}
+
+
+func (q *DatagramsQueue) Next() []byte {
+	select {
+	case datagram := <-q.c:
+		return datagram
+	default:
+		return nil
+	}
+}
+
+func (q *DatagramsQueue) WaitNext(ctx context.Context) ([]byte, error) {
+	select {
+	case datagram := <-q.c:
+		return datagram, nil
+	case <-ctx.Done():
+		return nil, context.Cause(ctx)
+	}
+}
+
