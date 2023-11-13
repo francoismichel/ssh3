@@ -585,6 +585,7 @@ func main() {
 				Handler:    nil,
 				Addr:       bCap,
 				QuicConfig: quicConf,
+				EnableDatagrams: true,
 			}
 			certFile, keyFile := testdata.GetCertificatePaths()
 

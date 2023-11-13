@@ -267,6 +267,7 @@ func main() {
 			KeyLogWriter:       keyLog,
 		},
 		QuicConfig: &qconf,
+		EnableDatagrams: true,
 	}
 
 	defer roundTripper.Close()
