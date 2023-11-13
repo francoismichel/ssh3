@@ -477,7 +477,11 @@ func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Conte
 		return "", err
 	}
 	
-	os.Chown(sockPath, int(user.Uid), int(user.Gid))
+	err = os.Chown(sockPath, int(user.Uid), int(user.Gid))
+	if err != nil {
+		log.Error().Msgf("could chown the listening socket at %s: %s", sockPath, err.Error())
+		return "", err
+	}
 
 	go listenAndAcceptAuthSockets(cancel, conv, agentSock, 30000)
 	return sockPath, nil
