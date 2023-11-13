@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
@@ -477,6 +478,12 @@ func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Conte
 		return "", err
 	}
 	
+	sockDir := path.Dir(sockPath)
+	err = os.Chown(sockDir, int(user.Uid), int(user.Gid))
+	if err != nil {
+		log.Error().Msgf("could chown the directory of the listening socket at %s: %s", sockPath, err.Error())
+		return "", err
+	}
 	err = os.Chown(sockPath, int(user.Uid), int(user.Gid))
 	if err != nil {
 		log.Error().Msgf("could chown the listening socket at %s: %s", sockPath, err.Error())
