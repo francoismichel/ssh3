@@ -445,7 +445,7 @@ func main() {
 				log.Error().Msgf("could listen on UDP socket: %s", err)
 				return
 			}
-			forwardings := make(map[*net.UDPAddr]ssh3.Channel)
+			forwardings := make(map[string]ssh3.Channel)
 			go func() {
 				buf := make([]byte, 1500)
 				for {
@@ -454,14 +454,14 @@ func main() {
 						log.Error().Msgf("could read on UDP socket: %s", err)
 						return
 					}
-					channel, ok := forwardings[addr]
+					channel, ok := forwardings[addr.String()]
 					if !ok {
 						channel, err = conv.OpenUDPForwardingChannel(30000, 10, localUDPAddr, remoteUDPAddr)
 						if err != nil {
 							log.Error().Msgf("could open new UDP forwarding channel: %s", err)
 							return
 						}
-						forwardings[addr] = channel
+						forwardings[addr.String()] = channel
 
 						go func() {
 							for {
