@@ -19,7 +19,7 @@ type Conversation struct {
 	controlStream   http3.Stream
 	maxPacketSize   uint64
 	streamCreator   http3.StreamCreator
-	datagramSender  util.DatagramSender
+	messageSender   util.MessageSender
 	channelsManager *channelsManager
 
 	channelsAcceptQueue *util.AcceptQueue[Channel]
@@ -51,7 +51,7 @@ func EstablishNewClientConversation(ctx context.Context, req *http.Request, roun
 			buf := util.AppendVarInt(nil, uint64(conv.controlStream.StreamID()))
 			buf = util.AppendVarInt(buf, newChannel.ChannelID())
 			buf = append(buf, datagram...)
-			return conv.datagramSender.SendDatagram(buf)
+			return conv.messageSender.SendMessage(buf)
 		})
 		conv.channelsAcceptQueue.Add(newChannel)
 		return true, nil
@@ -64,7 +64,7 @@ func EstablishNewClientConversation(ctx context.Context, req *http.Request, roun
 	if rsp.StatusCode == 200 {
 		conv.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
 		conv.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
-
+		conv.messageSender = conv.streamCreator.(quic.Connection)
 		go func() {
 			// TODO: this hijacks the datagrams for the whole quic connection, so the server
 			//		 currently does not work for several conversations in the same QUIC connection
@@ -98,12 +98,13 @@ func EstablishNewClientConversation(ctx context.Context, req *http.Request, roun
 	}
 }
 
-func NewServerConversation(controlStream http3.Stream, streamCreator http3.StreamCreator, maxPacketsize uint64) *Conversation {
+func NewServerConversation(controlStream http3.Stream, streamCreator http3.StreamCreator, messageSender util.MessageSender, maxPacketsize uint64) *Conversation {
 	conv := &Conversation{
 		controlStream:       controlStream,
 		channelsAcceptQueue: util.NewAcceptQueue[Channel](),
 		streamCreator:       streamCreator,
 		maxPacketSize:       maxPacketsize,
+		messageSender: 		 messageSender,
 		channelsManager:     newChannelsManager(),
 	}
 	return conv
@@ -145,7 +146,7 @@ func (c *Conversation) OpenUDPForwardingChannel(maxPacketSize uint64, datagramsQ
 		buf := util.AppendVarInt(nil, uint64(c.controlStream.StreamID()))
 		buf = util.AppendVarInt(buf, channel.ChannelID())
 		buf = append(buf, datagram...)
-		return c.datagramSender.SendDatagram(buf)
+		return c.messageSender.SendMessage(buf)
 	})
 	c.channelsManager.addChannel(channel)
 	return &UDPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil

@@ -2,7 +2,6 @@ package util
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 )
 
@@ -47,10 +46,6 @@ func (b *BytesReadCloser) Close() error { return nil }
 // sends an ssh3 datagram. The function must know the ID of the channel
 type SSH3DatagramSenderFunc func(p []byte) error
 
-type DatagramSender interface {
-	SendDatagram(p []byte) error
-}
-
-type DatagramReceiver interface {
-	ReceiveDatagram(ctx context.Context) ([]byte, error)
+type MessageSender interface {
+	SendMessage(p []byte) error
 }

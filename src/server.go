@@ -119,7 +119,7 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 			}
 
 			streamCreator := hijacker.StreamCreator()
-			conv := NewServerConversation(str, streamCreator, s.maxPacketSize)
+			conv := NewServerConversation(str, streamCreator, streamCreator.(quic.Connection), s.maxPacketSize)
 			conversationsManager := s.getOrCreateConversationsManager(streamCreator)
 			conversationsManager.addConversation(conv)
 
