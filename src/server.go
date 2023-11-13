@@ -1,6 +1,8 @@
 package ssh3
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -101,7 +103,7 @@ func (s *Server) removeConnection(streamCreator http3.StreamCreator) {
 
 type SSH3Handler = auth.AuthenticatedHandlerFunc
 
-func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
+func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 
 	return func(authenticatedUsername string, w http.ResponseWriter, r *http.Request) {
 		log.Info().Msgf("got request: method: %s, URL: %s", r.Method, r.URL.String())
@@ -115,12 +117,39 @@ func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
 				fmt.Fprintf(os.Stderr, "failed to hijack")
 				return
 			}
-			hijacker.StreamCreator()
 
 			streamCreator := hijacker.StreamCreator()
 			conv := NewServerConversation(str, streamCreator, s.maxPacketSize)
 			conversationsManager := s.getOrCreateConversationsManager(streamCreator)
 			conversationsManager.addConversation(conv)
+
+			go func() {
+				// TODO: this hijacks the datagrams for the whole quic connection, so the server
+				//		 currently does not work for several conversations in the same QUIC connection
+				qconn := streamCreator.(quic.Connection)
+				for {
+					dgram, err := qconn.ReceiveMessage(ctx)
+					if err != nil {
+						log.Error().Msgf("could not receive message from conn: %s", err)
+						return
+					}
+					buf := &util.BytesReadCloser{Reader: bytes.NewReader(dgram)}
+					convID, err := util.ReadVarInt(buf)
+					if err != nil {
+						log.Error().Msgf("could not read conv id from datagram on conv %d: %s", conv.controlStream.StreamID(), err)
+						return
+					}
+					if convID == uint64(conv.controlStream.StreamID()) {
+						err = conv.AddDatagram(ctx, dgram)
+						if err != nil {
+							log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
+							return
+						}
+					} else {
+						log.Error().Msgf("discarding datagram with invalid conv id %d", convID)
+					}
+				}
+			}()
 			go func() {
 				defer conv.Close()
 				defer conversationsManager.removeConversation(conv)

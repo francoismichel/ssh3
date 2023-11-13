@@ -337,7 +337,7 @@ func main() {
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
 		}
 
-		conv, err := ssh3.EstablishNewClientConversation(req, roundTripper, 30000, 10)
+		conv, err := ssh3.EstablishNewClientConversation(ctx, req, roundTripper, 30000, 10)
 		if err != nil {
 			log.Error().Msgf("Could not open channel: %+v", err)
 			os.Exit(-1)

@@ -664,7 +664,7 @@ func main() {
 
 				}
 			})
-			ssh3Handler := ssh3Server.GetHTTPHandlerFunc()
+			ssh3Handler := ssh3Server.GetHTTPHandlerFunc(ctx)
 			mux.HandleFunc(*urlPath, linux_server.HandleAuths(ssh3Handler))
 			server.Handler = mux
 			err = server.ListenAndServeTLS(certFile, keyFile)

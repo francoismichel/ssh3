@@ -10,6 +10,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/rs/zerolog/log"
 )
 
 const SSH_FRAME_TYPE = 0xaf3627e6
@@ -24,7 +25,7 @@ type Conversation struct {
 	channelsAcceptQueue *util.AcceptQueue[Channel]
 }
 
-func EstablishNewClientConversation(req *http.Request, roundTripper *http3.RoundTripper, maxPacketsize uint64, defaultDatagramsQueueSize uint64) (*Conversation, error) {
+func EstablishNewClientConversation(ctx context.Context, req *http.Request, roundTripper *http3.RoundTripper, maxPacketsize uint64, defaultDatagramsQueueSize uint64) (*Conversation, error) {
 	conv := &Conversation{
 		controlStream:       nil,
 		channelsAcceptQueue: util.NewAcceptQueue[Channel](),
@@ -63,6 +64,34 @@ func EstablishNewClientConversation(req *http.Request, roundTripper *http3.Round
 	if rsp.StatusCode == 200 {
 		conv.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
 		conv.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
+
+		go func() {
+			// TODO: this hijacks the datagrams for the whole quic connection, so the server
+			//		 currently does not work for several conversations in the same QUIC connection
+			qconn := conv.streamCreator.(quic.Connection)
+			for {
+				dgram, err := qconn.ReceiveMessage(ctx)
+				if err != nil {
+					log.Error().Msgf("could not receive message from conn: %s", err)
+					return
+				}
+				buf := &util.BytesReadCloser{Reader: bytes.NewReader(dgram)}
+				convID, err := util.ReadVarInt(buf)
+				if err != nil {
+					log.Error().Msgf("could not read conv id from datagram on conv %d: %s", conv.controlStream.StreamID(), err)
+					return
+				}
+				if convID == uint64(conv.controlStream.StreamID()) {
+					err = conv.AddDatagram(ctx, dgram)
+					if err != nil {
+						log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
+						return
+					}
+				} else {
+					log.Error().Msgf("discarding datagram with invalid conv id %d", convID)
+				}
+			}
+		}()
 		return conv, nil
 	} else {
 		return nil, fmt.Errorf("returned non-200 status code: %d", rsp.StatusCode)
