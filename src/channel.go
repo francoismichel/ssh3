@@ -79,8 +79,10 @@ type Channel interface {
 	ChannelType() string
 	confirmChannel(maxPacketSize uint64) error
 	setDatagramSender(func(datagram []byte) error)
-	addDatagram(ctx context.Context, datagram []byte) error
+	waitAddDatagram(ctx context.Context, datagram []byte) error
+	addDatagram(datagram []byte) bool
 	maybeSendHeader() error
+	setDgramQueue(*util.DatagramsQueue)
 }
 
 type channelImpl struct {
@@ -330,8 +332,13 @@ func (c *channelImpl) sendMessage(m ssh3.Message) error {
 }
 
 // blocks until the datagram is added
-func (c *channelImpl) addDatagram(ctx context.Context, datagram []byte) error {
+func (c *channelImpl) waitAddDatagram(ctx context.Context, datagram []byte) error {
 	return c.datagramsQueue.WaitAdd(ctx, datagram)
+}
+
+// blocks until the datagram is added
+func (c *channelImpl) addDatagram(datagram []byte) bool {
+	return c.datagramsQueue.Add(datagram)
 }
 
 func (c *channelImpl) ReceiveDatagram(ctx context.Context) ([]byte, error) {
@@ -365,4 +372,8 @@ func (c *channelImpl) ChannelType() string {
 
 func (c *channelImpl) setDatagramSender(datagramSender func(datagram []byte) error) {
 	c.datagramSender = datagramSender
+}
+
+func (c *channelImpl) setDgramQueue(q *util.DatagramsQueue) {
+	c.datagramsQueue = q
 }

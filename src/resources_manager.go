@@ -39,17 +39,36 @@ func (m * conversationsManager) removeConversation(conversation *Conversation) {
 
 type channelsManager struct {
 	channels map[util.ChannelID]Channel
+	danglingDgramQueues map[util.ChannelID]*util.DatagramsQueue
 	lock sync.Mutex
 }
 
 func newChannelsManager() *channelsManager {
-	return &channelsManager{ channels: make(map[util.ChannelID]Channel)}
+	return &channelsManager{ channels: make(map[util.ChannelID]Channel), danglingDgramQueues: make(map[util.ChannelID]*util.DatagramsQueue)}
 }
 
 func (m *channelsManager) addChannel(channel Channel) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
+	if dgramsQueue, ok := m.danglingDgramQueues[channel.ChannelID()]; ok {
+		channel.setDgramQueue(dgramsQueue)
+		delete(m.danglingDgramQueues, channel.ChannelID())
+	}
 	m.channels[util.ChannelID(channel.ChannelID())] = channel
+}
+
+func (m *channelsManager) addDanglingDatagramsQueue(id util.ChannelID, queue *util.DatagramsQueue) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	// let's first check if a channel has recently been added
+	if channel, ok := m.channels[id]; ok {
+		dgram := queue.Next()
+		for ; dgram != nil ; dgram = queue.Next() {
+			channel.addDatagram(dgram)
+		}
+	} else {
+		m.danglingDgramQueues[id] = queue
+	}
 }
 
 func (m *channelsManager) getChannel(id util.ChannelID) (Channel, bool) {

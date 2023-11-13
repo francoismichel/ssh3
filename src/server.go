@@ -142,8 +142,13 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 					if convID == uint64(conv.controlStream.StreamID()) {
 						err = conv.AddDatagram(ctx, dgram[buf.Size()-int64(buf.Len()):])
 						if err != nil {
-							log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
-							return
+							switch e := err.(type) {
+							case util.ChannelNotFound:
+								log.Warn().Msgf("could not find channel %d, queue datagram in the meantime", e.ChannelID)
+							default:
+								log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
+								return
+							}
 						}
 					} else {
 						log.Error().Msgf("discarding datagram with invalid conv id %d", convID)

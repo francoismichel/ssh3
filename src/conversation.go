@@ -179,9 +179,12 @@ func (c *Conversation) AddDatagram(ctx context.Context, datagram []byte) error {
 	}
 	channel, ok := c.channelsManager.getChannel(channelID)
 	if !ok {
+		dgramQueue := util.NewDatagramsQueue(10)
+		dgramQueue.Add(datagram)
+		c.channelsManager.addDanglingDatagramsQueue(channelID, dgramQueue)
 		return util.ChannelNotFound{ChannelID: channelID}
 	}
-	return channel.addDatagram(ctx, datagram[buf.Size()-int64(buf.Len()):])
+	return channel.waitAddDatagram(ctx, datagram[buf.Size()-int64(buf.Len()):])
 }
 
 func (c *Conversation) Close() {
