@@ -31,13 +31,17 @@ package linux_util
 #include <unistd.h>
 #include <shadow.h>
 #include <crypt.h>
+#include <errno.h>
 size_t size_of_shadow() { return sizeof(struct spwd); }
 size_t size_of_crypt_data() { return sizeof(struct crypt_data); }
+int get_errno() { return errno; }
 */
 import "C"
 import (
 	"fmt"
+	"ssh3/src/auth"
 	"ssh3/src/util"
+	"syscall"
 	"unsafe"
 )
 
@@ -102,6 +106,62 @@ func Crypt(clearPassword, setting string) (string, error) {
 		return "", fmt.Errorf("bad password hashing")
 	}
 	return hashedPassword, nil
+}
+
+func SetEUid(uid int32) error {
+	ret := C.seteuid(C.__uid_t(uid))
+	if ret != 0 {
+		return syscall.Errno(C.get_errno())
+	}
+	return nil
+}
+
+func SetEGid(gid int32) error {
+	ret := C.setegid(C.__uid_t(gid))
+	if ret != 0 {
+		return syscall.Errno(C.get_errno())
+	}
+	return nil
+}
+
+func GetEUid() int32 {
+	return int32(C.geteuid())
+}
+
+func GetUid() int32 {
+	return int32(C.getuid())
+}
+
+func GetEGid() int32 {
+	return int32(C.geteuid())
+}
+
+func GetGid() int32 {
+	return int32(C.getgid())
+}
+
+func TemporarilySetUserIDs(user *auth.User) error {
+	err := SetEUid((int32(user.Uid)))
+	if err != nil {
+		return err
+	}
+	err = SetEGid(int32(user.Gid))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func RestoreUserIDs() error {
+	err := SetEUid(GetUid())
+	if err != nil {
+		return err
+	}
+	err = SetEGid(GetGid())
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 /*
