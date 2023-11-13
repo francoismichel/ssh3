@@ -31,8 +31,10 @@ package linux_util
 #include <unistd.h>
 #include <shadow.h>
 #include <crypt.h>
+#include <errno.h>
 size_t size_of_shadow() { return sizeof(struct spwd); }
 size_t size_of_crypt_data() { return sizeof(struct crypt_data); }
+int get_errno() { return errno; }
 */
 import "C"
 import (
@@ -102,6 +104,22 @@ func Crypt(clearPassword, setting string) (string, error) {
 		return "", fmt.Errorf("bad password hashing")
 	}
 	return hashedPassword, nil
+}
+
+func GetEUid() int32 {
+	return int32(C.geteuid())
+}
+
+func GetUid() int32 {
+	return int32(C.getuid())
+}
+
+func GetEGid() int32 {
+	return int32(C.geteuid())
+}
+
+func GetGid() int32 {
+	return int32(C.getgid())
 }
 
 /*

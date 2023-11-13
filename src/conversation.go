@@ -2,6 +2,8 @@ package ssh3
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/quic-go/quic-go"
@@ -61,11 +63,11 @@ type Conversation struct {
 	channelsAcceptQueue *acceptQueue[*Channel]
 }
 
-func NewClientConversation(controlStream http3.Stream, roundTripper *http3.RoundTripper, streamCreator http3.StreamCreator, maxPacketsize uint64) *Conversation {
+func EstablishNewClientConversation(req *http.Request, roundTripper *http3.RoundTripper, maxPacketsize uint64) (*Conversation, error) {
 	conv := &Conversation{
-		controlStream: controlStream,
+		controlStream: nil,
 		channelsAcceptQueue: newAcceptQueue[*Channel](),
-		streamCreator: streamCreator,
+		streamCreator: nil,
 		maxPacketSize: maxPacketsize,
 	}
 	roundTripper.StreamHijacker = func(frameType http3.FrameType, qconn quic.Connection, stream quic.Stream, err error) (bool, error) {
@@ -75,6 +77,7 @@ func NewClientConversation(controlStream http3.Stream, roundTripper *http3.Round
 		if frameType != SSH_FRAME_TYPE {
 			return false, nil
 		}
+
 		channelInfo, err := parseHeader(uint64(stream.StreamID()), &StreamByteReader{stream})
 		if err != nil {
 			return false, err
@@ -84,7 +87,18 @@ func NewClientConversation(controlStream http3.Stream, roundTripper *http3.Round
 		conv.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
-	return conv
+	rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true,})
+	if err != nil {
+		return nil, err
+	}
+
+	if rsp.StatusCode == 200 {
+		conv.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
+		conv.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
+		return conv, nil
+	} else {
+		return nil, fmt.Errorf("returned non-200 status code: %d", rsp.StatusCode)
+	}
 }
 
 func NewServerConversation(controlStream http3.Stream, streamCreator http3.StreamCreator, maxPacketsize uint64) *Conversation {

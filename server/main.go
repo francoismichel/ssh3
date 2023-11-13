@@ -1,6 +1,3 @@
-//go:build windows
-// +build windows
-
 package main
 
 import (
@@ -10,9 +7,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
@@ -35,73 +34,73 @@ import (
 	"ssh3/src/linux_server"
 	ssh3Messages "ssh3/src/message"
 	util "ssh3/src/util"
+	"ssh3/src/util/linux_util"
 )
 
-var signals = map[string]os.Signal {
-	"SIGABRT":    syscall.Signal(0x6),
-	"SIGALRM":    syscall.Signal(0xe),
-	"SIGBUS":     syscall.Signal(0x7),
-	"SIGCHLD":    syscall.Signal(0x11),
-	"SIGCLD":     syscall.Signal(0x11),
-	"SIGCONT":    syscall.Signal(0x12),
-	"SIGFPE":     syscall.Signal(0x8),
-	"SIGHUP":     syscall.Signal(0x1),
-	"SIGILL":     syscall.Signal(0x4),
-	"SIGINT":     syscall.Signal(0x2),
-	"SIGIO":      syscall.Signal(0x1d),
-	"SIGIOT":     syscall.Signal(0x6),
-	"SIGKILL":    syscall.Signal(0x9),
-	"SIGPIPE":    syscall.Signal(0xd),
-	"SIGPOLL":    syscall.Signal(0x1d),
-	"SIGPROF":    syscall.Signal(0x1b),
-	"SIGPWR":     syscall.Signal(0x1e),
-	"SIGQUIT":    syscall.Signal(0x3),
-	"SIGSEGV":    syscall.Signal(0xb),
-	"SIGSTKFLT":  syscall.Signal(0x10),
-	"SIGSTOP":    syscall.Signal(0x13),
-	"SIGSYS":     syscall.Signal(0x1f),
-	"SIGTERM":    syscall.Signal(0xf),
-	"SIGTRAP":    syscall.Signal(0x5),
-	"SIGTSTP":    syscall.Signal(0x14),
-	"SIGTTIN":    syscall.Signal(0x15),
-	"SIGTTOU":    syscall.Signal(0x16),
-	"SIGUNUSED":  syscall.Signal(0x1f),
-	"SIGURG":     syscall.Signal(0x17),
-	"SIGUSR1":    syscall.Signal(0xa),
-	"SIGUSR2":    syscall.Signal(0xc),
-	"SIGVTALRM":  syscall.Signal(0x1a),
-	"SIGWINCH":   syscall.Signal(0x1c),
-	"SIGXCPU":    syscall.Signal(0x18),
-	"SIGXFSZ":    syscall.Signal(0x19),
+var signals = map[string]os.Signal{
+	"SIGABRT":   syscall.Signal(0x6),
+	"SIGALRM":   syscall.Signal(0xe),
+	"SIGBUS":    syscall.Signal(0x7),
+	"SIGCHLD":   syscall.Signal(0x11),
+	"SIGCLD":    syscall.Signal(0x11),
+	"SIGCONT":   syscall.Signal(0x12),
+	"SIGFPE":    syscall.Signal(0x8),
+	"SIGHUP":    syscall.Signal(0x1),
+	"SIGILL":    syscall.Signal(0x4),
+	"SIGINT":    syscall.Signal(0x2),
+	"SIGIO":     syscall.Signal(0x1d),
+	"SIGIOT":    syscall.Signal(0x6),
+	"SIGKILL":   syscall.Signal(0x9),
+	"SIGPIPE":   syscall.Signal(0xd),
+	"SIGPOLL":   syscall.Signal(0x1d),
+	"SIGPROF":   syscall.Signal(0x1b),
+	"SIGPWR":    syscall.Signal(0x1e),
+	"SIGQUIT":   syscall.Signal(0x3),
+	"SIGSEGV":   syscall.Signal(0xb),
+	"SIGSTKFLT": syscall.Signal(0x10),
+	"SIGSTOP":   syscall.Signal(0x13),
+	"SIGSYS":    syscall.Signal(0x1f),
+	"SIGTERM":   syscall.Signal(0xf),
+	"SIGTRAP":   syscall.Signal(0x5),
+	"SIGTSTP":   syscall.Signal(0x14),
+	"SIGTTIN":   syscall.Signal(0x15),
+	"SIGTTOU":   syscall.Signal(0x16),
+	"SIGUNUSED": syscall.Signal(0x1f),
+	"SIGURG":    syscall.Signal(0x17),
+	"SIGUSR1":   syscall.Signal(0xa),
+	"SIGUSR2":   syscall.Signal(0xc),
+	"SIGVTALRM": syscall.Signal(0x1a),
+	"SIGWINCH":  syscall.Signal(0x1c),
+	"SIGXCPU":   syscall.Signal(0x18),
+	"SIGXFSZ":   syscall.Signal(0x19),
 }
 
 type channelType uint64
 
-const ( 
+const (
 	LARVAL = channelType(iota)
 	OPEN
-	
-
 )
 
 type openPty struct {
-	pty *os.File	// pty used by the server/user to communicate with the running process
-	tty *os.File	// tty used by the running process to communicate with the server/user
+	pty     *os.File // pty used by the server/user to communicate with the running process
+	tty     *os.File // tty used by the running process to communicate with the server/user
 	winSize *pty.Winsize
-	term string
+	term    string
 }
 
 type runningCommand struct {
 	exec.Cmd
-	stdoutR io.Reader
-	stderrR io.Reader
-	stdinW  io.Writer
+	stdoutR             io.Reader
+	stderrR             io.Reader
+	stdinW              io.Writer
 }
 
 type runningSession struct {
 	channelState channelType
-	pty *openPty
-	runningCmd *runningCommand
+	pty          *openPty
+	runningCmd   *runningCommand
+	authAgentSocketPath string
 }
 
 var runningSessions = make(map[*ssh3.Channel]*runningSession)
@@ -127,17 +126,20 @@ type Size interface {
 	Size() int64
 }
 
-func setupEnv(user *auth.User, runningCommand *runningCommand) {
-	// TODO: set the environment like in do_setup_env of https://github.com/openssh/openssh-portable/blob/master/session.c	
+func setupEnv(user *auth.User, runningCommand *runningCommand, authAgentSocketPath string) {
+	// TODO: set the environment like in do_setup_env of https://github.com/openssh/openssh-portable/blob/master/session.c
 	runningCommand.Cmd.Env = append(runningCommand.Cmd.Env,
-									fmt.Sprintf("HOME=%s", user.Dir),
-									fmt.Sprintf("USER=%s", user.Username),
-									fmt.Sprintf("PATH=%s", "/usr/bin:/bin:/usr/sbin:/sbin"),
-									)
+		fmt.Sprintf("HOME=%s", user.Dir),
+		fmt.Sprintf("USER=%s", user.Username),
+		fmt.Sprintf("PATH=%s", "/usr/bin:/bin:/usr/sbin:/sbin"),
+	)
+	if authAgentSocketPath != "" {
+		runningCommand.Cmd.Env = append(runningCommand.Cmd.Env, fmt.Sprintf("SSH_AUTH_SOCK=%s", authAgentSocketPath))
+	}
 }
 
-func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.User, runningCommand *runningCommand) error {
-	setupEnv(user, runningCommand)
+func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.User, runningCommand *runningCommand, authAgentSocketPath string) error {
+	setupEnv(user, runningCommand, authAgentSocketPath)
 	if openPty != nil {
 		err := util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
 		if err != nil {
@@ -149,17 +151,17 @@ func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.Use
 			return err
 		}
 	}
-	
+
 	go func() {
 
 		type readResult struct {
 			data []byte
-			err error
+			err  error
 		}
-	
+
 		stdoutChan := make(chan readResult, 1)
 		stderrChan := make(chan readResult, 1)
-	
+
 		readStdout := func() {
 			if runningCommand.stdoutR != nil {
 				for {
@@ -167,7 +169,7 @@ func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.Use
 					n, err := runningCommand.stdoutR.Read(buf)
 					out := make([]byte, n)
 					copy(out, buf[:n])
-					stdoutChan <- readResult{ data: out, err: err }
+					stdoutChan <- readResult{data: out, err: err}
 					if err != nil {
 						return
 					}
@@ -181,17 +183,17 @@ func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.Use
 					n, err := runningCommand.stderrR.Read(buf)
 					out := make([]byte, n)
 					copy(out, buf[:n])
-					stderrChan <- readResult{ data: out, err: err }
+					stderrChan <- readResult{data: out, err: err}
 					if err != nil {
 						return
 					}
 				}
 			}
 		}
-	
+
 		go readStdout()
 		go readStderr()
-	
+
 		defer func() {
 			err := runningCommand.Wait()
 			exitstatus := uint64(0)
@@ -201,8 +203,8 @@ func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.Use
 				}
 			}
 			channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
-				WantReply: false,
-				ChannelRequest: &ssh3Messages.ExitStatusRequest{ ExitStatus: exitstatus },
+				WantReply:      false,
+				ChannelRequest: &ssh3Messages.ExitStatusRequest{ExitStatus: exitstatus},
 			})
 		}()
 		for {
@@ -218,7 +220,7 @@ func execCmdInBackground(channel *ssh3.Channel, openPty *openPty, user *auth.Use
 					fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
 					return
 				}
-			
+
 			case stderrResult := <-stderrChan:
 				buf, err := stderrResult.data, stderrResult.err
 				_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_STDERR)
@@ -259,9 +261,9 @@ func newPtyReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.PtyR
 	setWinsize(pty, request.CharWidth, request.CharHeight, request.PixelWidth, request.PixelHeight)
 
 	session.pty = &openPty{
-		pty: pty,
-		tty: tty,
-		term: request.Term,
+		pty:     pty,
+		tty:     tty,
+		term:    request.Term,
 		winSize: winSize,
 	}
 
@@ -295,11 +297,11 @@ func newShellReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.Sh
 	if session.pty != nil {
 		stdoutW = session.pty.tty
 		stderrW = session.pty.tty
-		stdinR  = session.pty.tty
+		stdinR = session.pty.tty
 
 		stdoutR = session.pty.pty
 		stderrR = nil
-		stdinW =  session.pty.pty
+		stdinW = session.pty.pty
 	} else {
 		stdoutR, stdoutW, err = os.Pipe()
 		if err != nil {
@@ -318,17 +320,17 @@ func newShellReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.Sh
 	cmd := user.CreateShellCommand(env, stdoutW, stderrW, stdinR)
 
 	runningCommand := &runningCommand{
-		Cmd: *cmd,
+		Cmd:     *cmd,
 		stdoutR: stdoutR,
 		stderrR: stderrR,
-		stdinW: stdinW,
+		stdinW:  stdinW,
 	}
 
 	session.runningCmd = runningCommand
 
 	session.channelState = OPEN
 
-	return execCmdInBackground(channel, session.pty, user, session.runningCmd)
+	return execCmdInBackground(channel, session.pty, user, session.runningCmd, session.authAgentSocketPath)
 }
 
 func newExecReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.ExecRequest, wantReply bool) error {
@@ -358,7 +360,7 @@ func newSignalReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.S
 		if runningSession.runningCmd == nil {
 			return fmt.Errorf("there is no running command on Channel %d (conv %d) to feed the received data", channel.ChannelID, channel.ConversationID)
 		}
-		signal, ok := signals["SIG" + request.SignalNameWithoutSig]
+		signal, ok := signals["SIG"+request.SignalNameWithoutSig]
 		if !ok {
 			return fmt.Errorf("unhandled signal SIG%s", request.SignalNameWithoutSig)
 		}
@@ -387,8 +389,6 @@ func newDataReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.Dat
 		return fmt.Errorf("cannot receive data for channel in LARVAL state (channel %d, conv %d)", channel.ChannelID, channel.ConversationID)
 	}
 
-	
-
 	switch channel.ChannelType {
 	case "session":
 		if runningSession.runningCmd == nil {
@@ -406,13 +406,100 @@ func newDataReq(user *auth.User, channel *ssh3.Channel, request ssh3Messages.Dat
 	return nil
 }
 
+func handleAuthAgentSocketConn(conn net.Conn, conversation *ssh3.Conversation) {
+	channel, err := conversation.OpenChannel("agent-connection", 30000)
+	if err != nil {
+		log.Error().Msgf("could not open channel: %s", err.Error())
+		return
+	}
+	go func() {
+		defer channel.Close()
+		buf := make([]byte, channel.MaxPacketSize)
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				log.Info().Msgf("could not read data socket %d: %s", channel.ChannelID, err.Error())
+				return
+			}
+			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if err != nil {
+				log.Info().Msgf("could not write data on agent channel %d: %s", channel.ChannelID, err.Error())
+				return
+			}
+		}
+	}()
+	for {
+		genericMessage, err := channel.NextMessage()
+		if err != nil {
+			log.Error().Msgf("could not get data from channel %d: %s", channel.ChannelID, err.Error())
+			return
+		}
+		switch message := genericMessage.(type) {
+		case *ssh3Messages.DataOrExtendedDataMessage:
+			_, err := conn.Write([]byte(message.Data))
+			if err != nil {
+				log.Error().Msgf("could not write data to channel %d: %s", channel.ChannelID, err.Error())
+				return
+			}
+		default:
+			log.Error().Msgf("unhandled message type on agent channel %T", message)
+			return
+		}
+	}
+}
+
+func listenAndAcceptAuthSockets(cancel context.CancelFunc, conversation *ssh3.Conversation, listener net.Listener, maxSSHPacketSize uint64) {
+	defer cancel()
+	defer listener.Close()
+	for {
+		log.Debug().Msg("waiting for new agent connections to forward")
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Error().Msgf("error while listening for agent connections: %s", err.Error())
+			cancel()
+			return
+		}
+		// new ssh agent client
+		go handleAuthAgentSocketConn(conn, conversation)
+	}
+}
+
+func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Context, conv *ssh3.Conversation, user *auth.User) (string, error) {
+
+	sockPath, err := linux_util.NewUnixSocketPath()
+	if err != nil {
+		return "", err
+	}
+
+	var listener net.ListenConfig
+	agentSock, err := listener.Listen(ctx, "unix", sockPath)
+	if err != nil {
+		log.Error().Msgf("could not listen on agent socket: %s", err.Error())
+		return "", err
+	}
+	
+	sockDir := path.Dir(sockPath)
+	err = os.Chown(sockDir, int(user.Uid), int(user.Gid))
+	if err != nil {
+		log.Error().Msgf("could chown the directory of the listening socket at %s: %s", sockPath, err.Error())
+		return "", err
+	}
+	err = os.Chown(sockPath, int(user.Uid), int(user.Gid))
+	if err != nil {
+		log.Error().Msgf("could chown the listening socket at %s: %s", sockPath, err.Error())
+		return "", err
+	}
+
+	go listenAndAcceptAuthSockets(cancel, conv, agentSock, 30000)
+	return sockPath, nil
+}
+
 func main() {
 	bs := binds{}
 	flag.Var(&bs, "bind", "bind to")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	urlPath := flag.String("url-path", "/ssh3-term", "the path on which the ssh3 server listens")
 	flag.Parse()
-
 
 	if len(bs) == 0 {
 		bs = binds{"localhost:6121"}
@@ -423,18 +510,20 @@ func main() {
 		util.ConfigureLogger("debug")
 	} else {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
-		
+
 		logFileName := os.Getenv("SSH3_LOG_FILE")
 		if logFileName == "" {
 			logFileName = "/var/log/ssh3.log"
 		}
-		logFile, err := os.OpenFile(logFileName, os.O_CREATE | os.O_APPEND | os.O_WRONLY, 0644)
+		logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cannot open log file %s: %s\n", logFileName, err.Error())
 			return
 		}
 		log.Logger = log.Output(logFile)
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
 
 	quicConf := &quic.Config{}
 
@@ -465,8 +554,8 @@ func main() {
 					}
 					runningSessions[channel] = &runningSession{
 						channelState: LARVAL,
-						pty: nil,
-						runningCmd: nil,
+						pty:          nil,
+						runningCmd:   nil,
 					}
 					go func() {
 						defer channel.Close()
@@ -477,29 +566,39 @@ func main() {
 								return
 							}
 							switch message := genericMessage.(type) {
-								case *ssh3Messages.ChannelRequestMessage:
-									switch requestMessage := message.ChannelRequest.(type) {
-										case *ssh3Messages.PtyRequest:
-											err = newPtyReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-										case *ssh3Messages.X11Request:
-											err = newX11Req(authenticatedUser, channel, *requestMessage, message.WantReply)
-										case *ssh3Messages.ShellRequest:
-											err = newShellReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-										case *ssh3Messages.ExecRequest:
-											err = newExecReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-										case *ssh3Messages.SubsystemRequest:
-											err = newSubsystemReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-										case *ssh3Messages.WindowChangeRequest:
-											err = newWindowChangeReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-										case *ssh3Messages.SignalRequest:
-											err = newSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-										case *ssh3Messages.ExitStatusRequest:
-											err = newExitStatusReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-										case *ssh3Messages.ExitSignalRequest:
-											err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+							case *ssh3Messages.ChannelRequestMessage:
+								switch requestMessage := message.ChannelRequest.(type) {
+								case *ssh3Messages.PtyRequest:
+									err = newPtyReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.X11Request:
+									err = newX11Req(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.ShellRequest:
+									err = newShellReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.ExecRequest:
+									err = newExecReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.SubsystemRequest:
+									err = newSubsystemReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.WindowChangeRequest:
+									err = newWindowChangeReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.SignalRequest:
+									err = newSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.ExitStatusRequest:
+									err = newExitStatusReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.ExitSignalRequest:
+									err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								}
+							case *ssh3Messages.DataOrExtendedDataMessage:
+								runningSession, ok := runningSessions[channel]
+								if ok && runningSession.channelState == LARVAL {
+									if message.Data == string("forward-agent") {
+										runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(cancel, ctx, conv, authenticatedUser)
+									} else {
+										// invalid data on larval state
+										err = fmt.Errorf("invalid data on ssh channel with LARVAL state")
 									}
-								case *ssh3Messages.DataOrExtendedDataMessage:
+								} else {
 									err = newDataReq(authenticatedUser, channel, *message)
+								}
 							}
 							if err != nil {
 								fmt.Fprintf(os.Stderr, "error while processing message: %+v: %+v\n", genericMessage, err)
@@ -513,7 +612,7 @@ func main() {
 			mux.HandleFunc(*urlPath, linux_server.HandleAuths(ssh3Handler))
 			server.Handler = mux
 			err = server.ListenAndServeTLS(certFile, keyFile)
-			
+
 			if err != nil {
 				fmt.Println(err)
 			}

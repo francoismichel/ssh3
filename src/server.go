@@ -23,6 +23,8 @@ type Server struct {
 	// conversations map[]
 }
 
+// Creates a new server handling http requests for SSH conversations
+
 func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler ServerConversationHandler) *Server {
 	ssh3Server := &Server{
 		maxPacketSize:       maxPacketSize,
