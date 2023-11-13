@@ -478,7 +478,11 @@ func main() {
 							}
 						}()
 					}
-					channel.SendDatagram(buf[:n])
+					err = channel.SendDatagram(buf[:n])
+					if err != nil {
+						log.Error().Msgf("could not send datagram: %s", err)
+						return
+					}
 				}
 			}()
 		}
