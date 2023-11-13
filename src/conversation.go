@@ -141,6 +141,12 @@ func (c *Conversation) OpenUDPForwardingChannel(maxPacketSize uint64, datagramsQ
 	additionalBytes := buildForwardingChannelAdditionalBytes(remoteAddr.IP, uint16(remoteAddr.Port))
 
 	channel := NewChannel(uint64(c.controlStream.StreamID()), uint64(str.StreamID()), "direct-udp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel.setDatagramSender(func(datagram []byte) error {
+		buf := util.AppendVarInt(nil, uint64(c.controlStream.StreamID()))
+		buf = util.AppendVarInt(buf, channel.ChannelID())
+		buf = append(buf, datagram...)
+		return c.datagramSender.SendDatagram(buf)
+	})
 	c.channelsManager.addChannel(channel)
 	return &UDPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
 }
