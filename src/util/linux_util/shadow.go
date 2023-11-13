@@ -39,9 +39,7 @@ int get_errno() { return errno; }
 import "C"
 import (
 	"fmt"
-	"ssh3/src/auth"
 	"ssh3/src/util"
-	"syscall"
 	"unsafe"
 )
 
@@ -108,22 +106,6 @@ func Crypt(clearPassword, setting string) (string, error) {
 	return hashedPassword, nil
 }
 
-func SetEUid(uid int32) error {
-	ret := C.seteuid(C.__uid_t(uid))
-	if ret != 0 {
-		return syscall.Errno(C.get_errno())
-	}
-	return nil
-}
-
-func SetEGid(gid int32) error {
-	ret := C.setegid(C.__gid_t(gid))
-	if ret != 0 {
-		return syscall.Errno(C.get_errno())
-	}
-	return nil
-}
-
 func GetEUid() int32 {
 	return int32(C.geteuid())
 }
@@ -138,30 +120,6 @@ func GetEGid() int32 {
 
 func GetGid() int32 {
 	return int32(C.getgid())
-}
-
-func TemporarilySetUserIDs(user *auth.User) error {
-	err := SetEGid(int32(user.Gid))
-	if err != nil {
-		return err
-	}
-	err = SetEUid((int32(user.Uid)))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func RestoreUserIDs() error {
-	err := SetEUid(GetUid())
-	if err != nil {
-		return err
-	}
-	err = SetEGid(GetGid())
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 /*

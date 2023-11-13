@@ -465,11 +465,6 @@ func listenAndAcceptAuthSockets(cancel context.CancelFunc, conversation *ssh3.Co
 
 func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Context, conv *ssh3.Conversation, user *auth.User) (string, error) {
 
-	err := linux_util.TemporarilySetUserIDs(user)
-	if err != nil {
-		log.Error().Msgf("could not temporarily set effective UIDs of user %s: %s", user.Username, err)
-		return "", err
-	}
 	sockPath, err := linux_util.NewUnixSocketPath()
 	if err != nil {
 		return "", err
@@ -481,11 +476,9 @@ func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Conte
 		log.Error().Msgf("could not listen on agent socket: %s", err.Error())
 		return "", err
 	}
-	err = linux_util.RestoreUserIDs()
-	if err != nil {
-		log.Error().Msgf("could not resture effective UIDs: %s", err)
-		return "", err
-	}
+	
+	os.Chown(sockPath, int(user.Uid), int(user.Gid))
+
 	go listenAndAcceptAuthSockets(cancel, conv, agentSock, 30000)
 	return sockPath, nil
 }
