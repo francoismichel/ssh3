@@ -117,7 +117,7 @@ func SetEUid(uid int32) error {
 }
 
 func SetEGid(gid int32) error {
-	ret := C.setegid(C.__uid_t(gid))
+	ret := C.setegid(C.__gid_t(gid))
 	if ret != 0 {
 		return syscall.Errno(C.get_errno())
 	}
@@ -141,11 +141,11 @@ func GetGid() int32 {
 }
 
 func TemporarilySetUserIDs(user *auth.User) error {
-	err := SetEUid((int32(user.Uid)))
+	err := SetEGid(int32(user.Gid))
 	if err != nil {
 		return err
 	}
-	err = SetEGid(int32(user.Gid))
+	err = SetEUid((int32(user.Uid)))
 	if err != nil {
 		return err
 	}
