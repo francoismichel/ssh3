@@ -463,18 +463,27 @@ func listenAndAcceptAuthSockets(cancel context.CancelFunc, conversation *ssh3.Co
 	}
 }
 
-func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Context, conv *ssh3.Conversation) (string, error) {
+func openAgentSocketAndForwardAgent(cancel context.CancelFunc, ctx context.Context, conv *ssh3.Conversation, user *auth.User) (string, error) {
 
+	err := linux_util.TemporarilySetUserIDs(user)
+	if err != nil {
+		log.Error().Msgf("could not temporarily set effective UIDs of user %s: %s", user.Username, err)
+		return "", err
+	}
 	sockPath, err := linux_util.NewUnixSocketPath()
 	if err != nil {
 		return "", err
 	}
 
-
 	var listener net.ListenConfig
 	agentSock, err := listener.Listen(ctx, "unix", sockPath)
 	if err != nil {
 		log.Error().Msgf("could not listen on agent socket: %s", err.Error())
+		return "", err
+	}
+	err = linux_util.RestoreUserIDs()
+	if err != nil {
+		log.Error().Msgf("could not resture effective UIDs: %s", err)
 		return "", err
 	}
 	go listenAndAcceptAuthSockets(cancel, conv, agentSock, 30000)
@@ -578,7 +587,7 @@ func main() {
 								runningSession, ok := runningSessions[channel]
 								if ok && runningSession.channelState == LARVAL {
 									if message.Data == string("forward-agent") {
-										runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(cancel, ctx, conv)
+										runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(cancel, ctx, conv, authenticatedUser)
 									} else {
 										// invalid data on larval state
 										err = fmt.Errorf("invalid data on ssh channel with LARVAL state")
