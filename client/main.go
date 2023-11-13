@@ -58,7 +58,7 @@ func getWinsize() (windowSize, error) {
 	return winSize, err
 }
 
-func forwardAgent(parent context.Context, channel *ssh3.Channel) error {
+func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	sockPath := os.Getenv("SSH_AUTH_SOCK")
 	if sockPath == "" {
 		return fmt.Errorf("no auth socket in SSH_AUTH_SOCK env var")
@@ -99,7 +99,7 @@ func forwardAgent(parent context.Context, channel *ssh3.Channel) error {
 		}
 	}()
 
-	buf := make([]byte, channel.MaxPacketSize)
+	buf := make([]byte, channel.MaxPacketSize())
 	for {
 		select {
 		case <-ctx.Done():
@@ -361,7 +361,7 @@ func main() {
 					if err != nil {
 						log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
 						return
-					} else if forwardChannel.ChannelType != "agent-connection" {
+					} else if forwardChannel.ChannelType() != "agent-connection" {
 						log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType)
 						return
 					}
@@ -420,7 +420,7 @@ func main() {
 		}
 
 		go func() {
-			buf := make([]byte, channel.MaxPacketSize)
+			buf := make([]byte, channel.MaxPacketSize())
 			for {
 				n, err := os.Stdin.Read(buf)
 				if n > 0 {
@@ -439,37 +439,43 @@ func main() {
 		
 		if localUDPAddr != nil && remoteUDPAddr != nil {
 			log.Debug().Msgf("start forwarding from %s to %s", localUDPAddr, remoteUDPAddr)
-			var addressFamily util.SSHForwardingAddressFamily
-			if len(remoteUDPAddr.IP) == 4 {
-				addressFamily = util.SSHAFIpv4
-			} else {
-				addressFamily = util.SSHAFIpv6
-			}
-			err = channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
-				WantReply: false,
-				ChannelRequest: &ssh3Messages.ForwardingRequest{
-					Protocol: util.SSHProtocolUDP,
-					AddressFamily: addressFamily,
-					IpAddress: remoteUDPAddr.IP,
-					Port: uint16(remoteUDPAddr.Port),
-				},
-			})
-			if err != nil {
-				log.Error().Msgf("could not forward UDP: %s", err)
-				return
-			}
 			conn, err := net.ListenUDP("udp", localUDPAddr)
 			if err != nil {
 				log.Error().Msgf("could listen on UDP socket: %s", err)
 				return
 			}
+			forwardings := make(map[*net.UDPAddr]ssh3.Channel)
 			go func() {
 				buf := make([]byte, 1500)
 				for {
-					n, err := conn.Read(buf)
+					n, addr, err := conn.ReadFromUDP(buf)
 					if err != nil {
 						log.Error().Msgf("could read on UDP socket: %s", err)
 						return
+					}
+					channel, ok := forwardings[addr]
+					if !ok {
+						channel, err = conv.OpenUDPForwardingChannel(30000, 10, localUDPAddr, remoteUDPAddr)
+						if err != nil {
+							log.Error().Msgf("could open new UDP forwarding channel: %s", err)
+							return
+						}
+						forwardings[addr] = channel
+
+						go func() {
+							for {
+								dgram, err := channel.ReceiveDatagram(ctx)
+								if err != nil {
+									log.Error().Msgf("could open receive datagram on channel: %s", err)
+									return
+								}
+								_, err = conn.WriteToUDP(dgram, addr)
+								if err != nil {
+									log.Error().Msgf("could open write datagram on socket: %s", err)
+									return
+								}
+							}
+						}()
 					}
 					channel.SendDatagram(buf[:n])
 				}

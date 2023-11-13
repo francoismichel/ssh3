@@ -60,7 +60,15 @@ func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *
 		}
 
 		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream},
-							     stream, nil, conversation.channelsManager, false, false, true, defaultDatagramQueueSize)
+			stream, nil, conversation.channelsManager, false, false, true, defaultDatagramQueueSize, nil)
+
+		if channelInfo.ChannelType == "direct-udp" {
+			udpAddr, err := parseUDPForwardingHeader(channelInfo.ChannelID, &StreamByteReader{stream})
+			if err != nil {
+				return false, err
+			}
+			newChannel = UDPForwardingChannelImpl{Channel: newChannel, RemoteAddr: udpAddr}
+		}
 		conversation.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
