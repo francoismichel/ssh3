@@ -65,7 +65,7 @@ func (i *RSAPubKeyIdentity) Verify(genericCandidate interface{}) bool {
 			if _, ok = claims["exp"]; !ok {
 				return false
 			}
-			if clientId, ok := claims["client_id"]; !ok || clientId != i.username {
+			if clientId, ok := claims["client_id"]; !ok || clientId != fmt.Sprintf("ssh3-%s", i.username) {
 				return false
 			}
 			if jti, ok := claims["jti"]; !ok || jti != "unused" {

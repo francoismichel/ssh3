@@ -400,6 +400,11 @@ func main() {
 	}
 	req.Proto = "ssh3"
 
+	username := parsedUrl.User.Username()
+	if username == "" {
+		username = parsedUrl.Query().Get("user")
+	}
+	parsedUrl.Query().Get("user")
 	if *passwordAuthentication || (oidcConfig == nil && *privKeyFile == "") {
 		fmt.Printf("password for %s:", parsedUrl.String())
 		password, err := term.ReadPassword(int(syscall.Stdin))
@@ -408,12 +413,6 @@ func main() {
 			fmt.Fprintf(os.Stdin, "could not get password\n")
 			return
 		}
-		
-		username := parsedUrl.User.Username()
-		if username == "" {
-			username = parsedUrl.Query().Get("user")
-		}
-		parsedUrl.Query().Get("user")
 		req.SetBasicAuth(username, string(password))
 	} else if oidcConfig != nil {
 		token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
@@ -442,12 +441,12 @@ func main() {
 		rsaKey := key.(crypto.PrivateKey).(*rsa.PrivateKey)
 
 		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-			"iss": parsedUrl.User.Username(),
+			"iss": username,
 			"iat": jwt.NewNumericDate(time.Now()),
 			"exp": jwt.NewNumericDate(time.Now().Add(10*time.Second)),
 			"sub": "ssh3",
 			"aud": "unused",
-			"client_id": parsedUrl.User.Username(),
+			"client_id": fmt.Sprintf("ssh3-%s", username),
 			"jti": "unused",
 		})
 		signedString, err := token.SignedString(rsaKey)
