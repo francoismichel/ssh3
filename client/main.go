@@ -135,7 +135,9 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 		defer channel.Close()
 		for {
 			genericMessage, err := channel.NextMessage()
-			if err != nil {
+			if err == io.EOF {
+				log.Info().Msgf("eof on tcp-forwarding channel %d", channel.ChannelID())
+			} else if err != nil {
 				log.Error().Msgf("could get message from tcp forwarding channel: %s", err)
 				return
 			}
@@ -145,7 +147,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
 					_, err := conn.Write([]byte(message.Data))
 					if err != nil {
-						log.Error().Msgf("could not write datagram on UDP socket: %s", err)
+						log.Error().Msgf("could not write datagram on TCP socket: %s", err)
 						return
 					}
 				} else {

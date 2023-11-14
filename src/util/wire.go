@@ -208,7 +208,7 @@ func ParseSSHString(buf Reader) (string, error) {
 	}
 	out := make([]byte, length)
 	n, err := io.ReadFull(buf, out)
-	if err != nil && err != io.EOF {
+	if (err != nil && err != io.EOF) || n != int(length) {
 		return "", err
 	}
 	return string(out[:n]), err

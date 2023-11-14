@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	util "ssh3/src/util"
 )
@@ -79,13 +80,13 @@ func ParseRequestMessage(buf util.Reader) (*ChannelRequestMessage, error) {
 		return nil, fmt.Errorf("invalid request message type %s", requestType)
 	}
 	channelRequest, err := parseFunc(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	return &ChannelRequestMessage{
 		WantReply:      wantReply,
 		ChannelRequest: channelRequest,
-	}, nil
+	}, err
 }
 
 type ChannelRequest interface {
@@ -128,7 +129,7 @@ func ParsePtyRequest(buf util.Reader) (ChannelRequest, error) {
 		return nil, err
 	}
 	encodedTerminalModes, err := util.ParseSSHString(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	return &PtyRequest{
@@ -138,7 +139,7 @@ func ParsePtyRequest(buf util.Reader) (ChannelRequest, error) {
 		PixelWidth:           pixelWidth,
 		PixelHeight:          pixelHeight,
 		EncodedTerminalModes: encodedTerminalModes,
-	}, nil
+	}, err
 }
 
 func (r *PtyRequest) Length() int {
@@ -205,7 +206,7 @@ func ParseX11Request(buf util.Reader) (ChannelRequest, error) {
 		return nil, err
 	}
 	x11ScreenNumber, err := util.ReadVarInt(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	return &X11Request{
@@ -213,7 +214,7 @@ func ParseX11Request(buf util.Reader) (ChannelRequest, error) {
 		X11AuthenticationProtocol: x11AuthenticationProtocol,
 		X11AuthenticationCookie:   x11AuthenticationCookie,
 		X11ScreenNumber:           x11ScreenNumber,
-	}, nil
+	}, err
 }
 
 func (r *X11Request) Length() int {
@@ -286,12 +287,12 @@ var _ ChannelRequest = &ExecRequest{}
 
 func ParseExecRequest(buf util.Reader) (ChannelRequest, error) {
 	command, err := util.ParseSSHString(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, bufio.ErrAdvanceTooFar
 	}
 	return &ExecRequest{
 		Command: command,
-	}, nil
+	}, err
 }
 
 func (r *ExecRequest) Length() int {
@@ -314,12 +315,12 @@ var _ ChannelRequest = &SubsystemRequest{}
 
 func ParseSubsystemRequest(buf util.Reader) (ChannelRequest, error) {
 	subsystemName, err := util.ParseSSHString(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, bufio.ErrAdvanceTooFar
 	}
 	return &SubsystemRequest{
 		SubsystemName: subsystemName,
-	}, nil
+	}, err
 }
 
 func (r *SubsystemRequest) Length() int {
@@ -357,7 +358,7 @@ func ParseWindowChangeRequest(buf util.Reader) (ChannelRequest, error) {
 		return nil, err
 	}
 	pixelHeight, err := util.ReadVarInt(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	return &WindowChangeRequest{
@@ -365,7 +366,7 @@ func ParseWindowChangeRequest(buf util.Reader) (ChannelRequest, error) {
 		CharHeight:  charHeight,
 		PixelWidth:  pixelWidth,
 		PixelHeight: pixelHeight,
-	}, nil
+	}, err
 }
 
 func (r *WindowChangeRequest) Length() int {
@@ -401,12 +402,12 @@ var _ ChannelRequest = &SignalRequest{}
 
 func ParseSignalRequest(buf util.Reader) (ChannelRequest, error) {
 	signalNameWithoutSig, err := util.ParseSSHString(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, bufio.ErrAdvanceTooFar
 	}
 	return &SignalRequest{
 		SignalNameWithoutSig: signalNameWithoutSig,
-	}, nil
+	}, err
 }
 
 func (r *SignalRequest) Length() int {
@@ -429,12 +430,12 @@ var _ ChannelRequest = &ExitStatusRequest{}
 
 func ParseExitStatusRequest(buf util.Reader) (ChannelRequest, error) {
 	exitStatus, err := util.ReadVarInt(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	return &ExitStatusRequest{
 		ExitStatus: exitStatus,
-	}, nil
+	}, err
 }
 
 func (r *ExitStatusRequest) Length() int {
@@ -480,7 +481,7 @@ func ParseExitSignalRequest(buf util.Reader) (ChannelRequest, error) {
 	}
 
 	languageTag, err := util.ParseSSHString(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, bufio.ErrAdvanceTooFar
 	}
 	return &ExitSignalRequest{
@@ -488,7 +489,7 @@ func ParseExitSignalRequest(buf util.Reader) (ChannelRequest, error) {
 		CoreDumped:           coreDumped,
 		ErrorMessageUTF8:     errorMessageUTF8,
 		LanguageTag:          languageTag,
-	}, nil
+	}, err
 }
 
 func (r *ExitSignalRequest) Length() int {
@@ -574,7 +575,7 @@ func ParseForwardingRequest(buf util.Reader) (ChannelRequest, error) {
 
 	var portBuf [2]byte
 	_, err = buf.Read(portBuf[:])
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	port := binary.BigEndian.Uint16(portBuf[:])
@@ -584,7 +585,7 @@ func ParseForwardingRequest(buf util.Reader) (ChannelRequest, error) {
 		AddressFamily: addressFamily,
 		IpAddress:     address,
 		Port:          port,
-	}, nil
+	}, err
 }
 
 func (r *ForwardingRequest) Length() int {
