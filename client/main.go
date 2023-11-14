@@ -274,7 +274,9 @@ func main() {
 	var remoteTCPAddr *net.TCPAddr = nil
 	if *forwardUDP != "" {
 		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardUDP)
-		log.Error().Msgf("UDP forwarding parsing error %s", err)
+		if err != nil {
+			log.Error().Msgf("UDP forwarding parsing error %s", err)
+		}
 		remoteUDPAddr = &net.UDPAddr{
 			IP: remoteIP,
 			Port: remotePort,
@@ -296,7 +298,9 @@ func main() {
 	}
 	if *forwardTCP != "" {
 		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardTCP)
-		log.Error().Msgf("UDP forwarding parsing error %s", err)
+		if err != nil {
+			log.Error().Msgf("UDP forwarding parsing error %s", err)
+		}
 		remoteTCPAddr = &net.TCPAddr{
 			IP: remoteIP,
 			Port: remotePort,
