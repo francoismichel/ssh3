@@ -167,7 +167,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
 					_, err := conn.Write([]byte(message.Data))
 					if err != nil {
-						log.Error().Msgf("could not write datagram on TCP socket: %s", err)
+						log.Error().Msgf("could not write data on TCP socket: %s", err)
 						return
 					}
 				} else {
@@ -191,12 +191,12 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 			}
 			n, err := conn.Read(buf)
 			if err != nil && err != io.EOF {
-				log.Error().Msgf("could read datagram on UDP socket: %s", err)
+				log.Error().Msgf("could read data on TCP socket: %s", err)
 				return
 			}
 			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
 			if errWrite != nil {
-				log.Error().Msgf("could send datagram on channel: %s", err)
+				log.Error().Msgf("could send data on channel: %s", errWrite)
 				return
 			}
 			if err == io.EOF {
