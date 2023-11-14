@@ -21,17 +21,22 @@ type Conversation struct {
 	streamCreator   http3.StreamCreator
 	messageSender   util.MessageSender
 	channelsManager *channelsManager
+	context			context.Context
+	cancelContext	context.CancelCauseFunc
 
 	channelsAcceptQueue *util.AcceptQueue[Channel]
 }
 
-func EstablishNewClientConversation(ctx context.Context, req *http.Request, roundTripper *http3.RoundTripper, maxPacketsize uint64, defaultDatagramsQueueSize uint64) (*Conversation, error) {
+func EstablishNewClientConversation(req *http.Request, roundTripper *http3.RoundTripper, maxPacketsize uint64, defaultDatagramsQueueSize uint64) (*Conversation, error) {
+	backgroundCtx, backgroundCancelCauseFunc := context.WithCancelCause(context.Background())
 	conv := &Conversation{
 		controlStream:       nil,
 		channelsAcceptQueue: util.NewAcceptQueue[Channel](),
 		streamCreator:       nil,
 		maxPacketSize:       maxPacketsize,
 		channelsManager:     newChannelsManager(),
+		context:			 backgroundCtx,
+		cancelContext: 		 backgroundCancelCauseFunc, 
 	}
 	roundTripper.StreamHijacker = func(frameType http3.FrameType, qconn quic.Connection, stream quic.Stream, err error) (bool, error) {
 		if err != nil {
@@ -59,13 +64,15 @@ func EstablishNewClientConversation(ctx context.Context, req *http.Request, roun
 	if rsp.StatusCode == 200 {
 		conv.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
 		conv.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
-		conv.messageSender = conv.streamCreator.(quic.Connection)
+		qconn := conv.streamCreator.(quic.Connection)
+		conv.messageSender = qconn
+		conv.context, conv.cancelContext = context.WithCancelCause(qconn.Context())
 		go func() {
 			// TODO: this hijacks the datagrams for the whole quic connection, so the server
 			//		 currently does not work for several conversations in the same QUIC connection
-			qconn := conv.streamCreator.(quic.Connection)
+			
 			for {
-				dgram, err := qconn.ReceiveMessage(ctx)
+				dgram, err := qconn.ReceiveMessage(conv.Context())
 				if err != nil {
 					log.Error().Msgf("could not receive message from conn: %s", err)
 					return
@@ -77,7 +84,7 @@ func EstablishNewClientConversation(ctx context.Context, req *http.Request, roun
 					return
 				}
 				if convID == uint64(conv.controlStream.StreamID()) {
-					err = conv.AddDatagram(ctx, dgram[buf.Size()-int64(buf.Len()):])
+					err = conv.AddDatagram(conv.Context(), dgram[buf.Size()-int64(buf.Len()):])
 					if err != nil {
 						log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
 						return
@@ -93,7 +100,8 @@ func EstablishNewClientConversation(ctx context.Context, req *http.Request, roun
 	}
 }
 
-func NewServerConversation(controlStream http3.Stream, streamCreator http3.StreamCreator, messageSender util.MessageSender, maxPacketsize uint64) *Conversation {
+func NewServerConversation(ctx context.Context, controlStream http3.Stream, streamCreator http3.StreamCreator, messageSender util.MessageSender, maxPacketsize uint64) *Conversation {
+	backgroundContext, backgroundCancelFunc := context.WithCancelCause(ctx)
 	conv := &Conversation{
 		controlStream:       controlStream,
 		channelsAcceptQueue: util.NewAcceptQueue[Channel](),
@@ -101,6 +109,8 @@ func NewServerConversation(controlStream http3.Stream, streamCreator http3.Strea
 		maxPacketSize:       maxPacketsize,
 		messageSender: 		 messageSender,
 		channelsManager:     newChannelsManager(),
+		context: 			 backgroundContext,
+		cancelContext: 		 backgroundCancelFunc,
 	}
 	return conv
 }
@@ -193,6 +203,11 @@ func (c *Conversation) AddDatagram(ctx context.Context, datagram []byte) error {
 
 func (c *Conversation) Close() {
 	c.controlStream.Close()
+	c.cancelContext(nil)
+}
+
+func (c *Conversation) Context() context.Context {
+	return c.context
 }
 
 func (c *Conversation) getDatagramSenderForChannel(channelID util.ChannelID) func(datagram []byte) error {

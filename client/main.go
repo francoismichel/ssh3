@@ -72,6 +72,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	go func() {
 		var err error = nil
 		var genericMessage ssh3Messages.Message
+		defer channel.CloseRead()
 		for {
 			select {
 			case <-ctx.Done():
@@ -82,14 +83,22 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 				return
 			default:
 				genericMessage, err = channel.NextMessage()
-				if err != nil {
+				if err != nil && err != io.EOF {
 					err = fmt.Errorf("error when getting message on channel %d: %s", channel.ChannelID(), err.Error())
 					cancel(err)
 					return
 				}
+				if genericMessage == nil {
+					return
+				}
 				switch message := genericMessage.(type) {
 				case *ssh3Messages.DataOrExtendedDataMessage:
-					c.Write([]byte(message.Data))
+					_, err = c.Write([]byte(message.Data))
+					if err != nil {
+						err = fmt.Errorf("error when writing on unix socker for agent forwarding channel %d: %s", channel.ChannelID(), err.Error())
+						cancel(err)
+						return
+					}
 				default:
 					err = fmt.Errorf("unhandled message type on agent channel %d: %T", channel.ChannelID(), message)
 					cancel(err)
@@ -132,13 +141,24 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 
 func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
 	go func() {
-		defer channel.Close()
+		defer conn.CloseWrite()
+		defer channel.CloseRead()
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			genericMessage, err := channel.NextMessage()
 			if err == io.EOF {
 				log.Info().Msgf("eof on tcp-forwarding channel %d", channel.ChannelID())
 			} else if err != nil {
 				log.Error().Msgf("could get message from tcp forwarding channel: %s", err)
+				return
+			}
+
+			// nothing to process
+			if genericMessage == nil {
 				return
 			}
 
@@ -160,17 +180,26 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 
 	go func() {
-		defer conn.Close()
+		defer channel.CloseWrite()
+		defer conn.CloseRead()
 		buf := make([]byte, channel.MaxPacketSize())
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			n, err := conn.Read(buf)
-			if err != nil {
+			if err != nil && err != io.EOF {
 				log.Error().Msgf("could read datagram on UDP socket: %s", err)
 				return
 			}
-			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
-			if err != nil {
+			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if errWrite != nil {
 				log.Error().Msgf("could send datagram on channel: %s", err)
+				return
+			}
+			if err == io.EOF {
 				return
 			}
 		}
@@ -275,8 +304,6 @@ func main() {
 			return
 		}
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
 
 	// default to oidc if no password or privkey
 	var err error = nil
@@ -417,12 +444,13 @@ func main() {
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
 		}
 
-		conv, err := ssh3.EstablishNewClientConversation(ctx, req, roundTripper, 30000, 10)
+		conv, err := ssh3.EstablishNewClientConversation(req, roundTripper, 30000, 10)
 		if err != nil {
 			log.Error().Msgf("Could not open channel: %+v", err)
 			os.Exit(-1)
 		}
 
+		ctx := conv.Context()
 
 		channel, err := conv.OpenChannel("session", 30000, 0)
 		if err != nil {
@@ -451,7 +479,7 @@ func main() {
 						err = forwardAgent(ctx, forwardChannel)
 						if err != nil {
 							log.Error().Msgf("agent forwarding error: %s", err.Error())
-							cancel()
+							conv.Close()
 						}
 					}()
 				}

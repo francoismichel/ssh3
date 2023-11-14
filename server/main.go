@@ -140,8 +140,14 @@ func setupEnv(user *auth.User, runningCommand *runningCommand, authAgentSocketPa
 
 func forwardUDPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.UDPConn) {
 	go func() {
-		defer channel.Close()
+		defer conn.Close()
+		defer channel.CloseRead()
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			datagram, err := channel.ReceiveDatagram(ctx)
 			if err != nil {
 				log.Error().Msgf("could not receive datagram: %s", err)
@@ -156,9 +162,15 @@ func forwardUDPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 
 	go func() {
+		defer channel.CloseWrite()
 		defer conn.Close()
 		buf := make([]byte, 1500)
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			n, err := conn.Read(buf)
 			if err != nil {
 				log.Error().Msgf("could read datagram on UDP socket: %s", err)
@@ -175,11 +187,24 @@ func forwardUDPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 
 func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
 	go func() {
-		defer channel.Close()
+		defer conn.CloseWrite()
+		defer channel.CloseRead()
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			genericMessage, err := channel.NextMessage()
-			if err != nil {
+			if err == io.EOF {
+				log.Info().Msgf("eof on tcp-forwarding channel %d", channel.ChannelID())
+			} else if err != nil {
 				log.Error().Msgf("could get message from tcp forwarding channel: %s", err)
+				return
+			}
+
+			// nothing to process
+			if genericMessage == nil {
 				return
 			}
 
@@ -188,7 +213,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
 					_, err := conn.Write([]byte(message.Data))
 					if err != nil {
-						log.Error().Msgf("could not write datagram on UDP socket: %s", err)
+						log.Error().Msgf("could not write datagram on TCP socket: %s", err)
 						return
 					}
 				} else {
@@ -201,17 +226,26 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 
 	go func() {
-		defer conn.Close()
+		defer channel.CloseWrite()
+		defer conn.CloseRead()
 		buf := make([]byte, channel.MaxPacketSize())
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			n, err := conn.Read(buf)
-			if err != nil {
+			if err != nil && err != io.EOF {
 				log.Error().Msgf("could read datagram on UDP socket: %s", err)
 				return
 			}
-			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
-			if err != nil {
+			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if errWrite != nil {
 				log.Error().Msgf("could send datagram on channel: %s", err)
+				return
+			}
+			if err == io.EOF {
 				return
 			}
 		}
@@ -568,8 +602,8 @@ func listenAndAcceptAuthSockets(cancel context.CancelCauseFunc, conversation *ss
 	}
 }
 
-func openAgentSocketAndForwardAgent(cancel context.CancelCauseFunc, ctx context.Context, conv *ssh3.Conversation, user *auth.User) (string, error) {
-
+func openAgentSocketAndForwardAgent(parent context.Context, conv *ssh3.Conversation, user *auth.User) (string, error) {
+	ctx, cancel := context.WithCancelCause(parent)
 	sockPath, err := linux_util.NewUnixSocketPath()
 	if err != nil {
 		return "", err
@@ -652,18 +686,17 @@ func main() {
 				if err != nil {
 					return err
 				}
-				ctx, cancel := context.WithCancelCause(ctx)
 				for {
-					channel, err := conv.AcceptChannel(context.Background())
+					channel, err := conv.AcceptChannel(conv.Context())
 					if err != nil {
 						return err
 					}
 
 					switch c := channel.(type) {
 					case *ssh3.UDPForwardingChannelImpl:
-						handleUDPForwardingChannel(ctx, authenticatedUser, conv, c)
+						handleUDPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
 					case *ssh3.TCPForwardingChannelImpl:
-						handleTCPForwardingChannel(ctx, authenticatedUser, conv, c)
+						handleTCPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
 					default:
 						runningSessions[channel] = &runningSession{
 							channelState: LARVAL,
@@ -671,11 +704,16 @@ func main() {
 							runningCmd:   nil,
 						}
 						go func() {
+							// handle the main sessionChannel, once it ends, the whole conversation ends
 							defer channel.Close()
+							defer conv.Close()
 							for {
 								genericMessage, err := channel.NextMessage()
-								if err != nil {
+								if err != nil && err != io.EOF {
 									fmt.Printf("error when getting message: %+v", err)
+									return
+								}
+								if genericMessage == nil {
 									return
 								}
 								switch message := genericMessage.(type) {
@@ -704,7 +742,7 @@ func main() {
 									runningSession, ok := runningSessions[channel]
 									if ok && runningSession.channelState == LARVAL {
 										if message.Data == string("forward-agent") {
-											runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(cancel, ctx, conv, authenticatedUser)
+											runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(conv.Context(), conv, authenticatedUser)
 										} else {
 											// invalid data on larval state
 											err = fmt.Errorf("invalid data on ssh channel with LARVAL state")
