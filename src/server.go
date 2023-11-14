@@ -1,6 +1,8 @@
 package ssh3
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,6 +12,8 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog/log"
+
+	"ssh3/src/util"
 )
 
 type ServerConversationHandler func(authenticatedUsername string, conversation *Conversation) error
@@ -25,7 +29,7 @@ type Server struct {
 
 // Creates a new server handling http requests for SSH conversations
 
-func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler ServerConversationHandler) *Server {
+func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *http3.Server, conversationHandler ServerConversationHandler) *Server {
 	ssh3Server := &Server{
 		maxPacketSize:       maxPacketSize,
 		h3Server:            h3Server,
@@ -52,12 +56,22 @@ func NewServer(maxPacketSize uint64, h3Server *http3.Server, conversationHandler
 			return false, err
 		}
 
-		conversation, ok := conversationsManager.getConversation(ConversationID(channelInfo.ConversationID))
+		conversation, ok := conversationsManager.getConversation(util.ConversationID(channelInfo.ConversationID))
 		if !ok {
 			return false, fmt.Errorf("could not find SSH3 conversation with id %d for new channel %d on conn %+v", channelInfo.ConversationID, channelInfo.ChannelID, qconn)
 		}
 
-		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, false, false, true)
+		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream},
+			stream, nil, conversation.channelsManager, false, false, true, defaultDatagramQueueSize, nil)
+
+		if channelInfo.ChannelType == "direct-udp" {
+			udpAddr, err := parseUDPForwardingHeader(channelInfo.ChannelID, &StreamByteReader{stream})
+			if err != nil {
+				return false, err
+			}
+			newChannel.setDatagramSender(conversation.getDatagramSenderForChannel(channelInfo.ChannelID))
+			newChannel = &UDPForwardingChannelImpl{Channel: newChannel, RemoteAddr: udpAddr}
+		}
 		conversation.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
@@ -90,7 +104,7 @@ func (s *Server) removeConnection(streamCreator http3.StreamCreator) {
 
 type SSH3Handler = auth.AuthenticatedHandlerFunc
 
-func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
+func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 
 	return func(authenticatedUsername string, w http.ResponseWriter, r *http.Request) {
 		log.Info().Msgf("got request: method: %s, URL: %s", r.Method, r.URL.String())
@@ -104,12 +118,44 @@ func (s *Server) GetHTTPHandlerFunc() SSH3Handler {
 				fmt.Fprintf(os.Stderr, "failed to hijack")
 				return
 			}
-			hijacker.StreamCreator()
 
 			streamCreator := hijacker.StreamCreator()
-			conv := NewServerConversation(str, streamCreator, s.maxPacketSize)
+			conv := NewServerConversation(str, streamCreator, streamCreator.(quic.Connection), s.maxPacketSize)
 			conversationsManager := s.getOrCreateConversationsManager(streamCreator)
 			conversationsManager.addConversation(conv)
+
+			go func() {
+				// TODO: this hijacks the datagrams for the whole quic connection, so the server
+				//		 currently does not work for several conversations in the same QUIC connection
+				qconn := streamCreator.(quic.Connection)
+				for {
+					dgram, err := qconn.ReceiveMessage(ctx)
+					if err != nil {
+						log.Error().Msgf("could not receive message from conn: %s", err)
+						return
+					}
+					buf := &util.BytesReadCloser{Reader: bytes.NewReader(dgram)}
+					convID, err := util.ReadVarInt(buf)
+					if err != nil {
+						log.Error().Msgf("could not read conv id from datagram on conv %d: %s", conv.controlStream.StreamID(), err)
+						return
+					}
+					if convID == uint64(conv.controlStream.StreamID()) {
+						err = conv.AddDatagram(ctx, dgram[buf.Size()-int64(buf.Len()):])
+						if err != nil {
+							switch e := err.(type) {
+							case util.ChannelNotFound:
+								log.Warn().Msgf("could not find channel %d, queue datagram in the meantime", e.ChannelID)
+							default:
+								log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
+								return
+							}
+						}
+					} else {
+						log.Error().Msgf("discarding datagram with invalid conv id %d", convID)
+					}
+				}
+			}()
 			go func() {
 				defer conv.Close()
 				defer conversationsManager.removeConversation(conv)

@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -56,7 +58,7 @@ func getWinsize() (windowSize, error) {
 	return winSize, err
 }
 
-func forwardAgent(parent context.Context, channel *ssh3.Channel) error {
+func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	sockPath := os.Getenv("SSH_AUTH_SOCK")
 	if sockPath == "" {
 		return fmt.Errorf("no auth socket in SSH_AUTH_SOCK env var")
@@ -97,7 +99,7 @@ func forwardAgent(parent context.Context, channel *ssh3.Channel) error {
 		}
 	}()
 
-	buf := make([]byte, channel.MaxPacketSize)
+	buf := make([]byte, channel.MaxPacketSize())
 	for {
 		select {
 		case <-ctx.Done():
@@ -140,6 +142,7 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc (currently not working)")
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
+	forwardUDP := flag.String("forward-udp", "", "if set, takes a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
@@ -150,6 +153,52 @@ func main() {
 		util.ConfigureLogger("debug")
 	} else {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+	}
+
+	var localUDPAddr *net.UDPAddr = nil
+	var remoteUDPAddr *net.UDPAddr = nil
+	if *forwardUDP != "" {
+		array := strings.Split(*forwardUDP, "/")
+		localPort, err := strconv.Atoi(array[0])
+		if err != nil {
+			log.Error().Msgf("could not convert %s to int: %s", array[0], err)
+			return
+		} else if localPort > 0xFFFF {
+			log.Error().Msgf("UDP port too large %d", localPort)
+			return
+		}
+		array = strings.Split(array[1], "@")
+		remoteIP := net.ParseIP(array[0])
+		if remoteIP == nil {
+			log.Error().Msgf("could not parse IP %s", array[0])
+			return
+		}
+		remotePort, err := strconv.Atoi(array[1])
+		if err != nil {
+			log.Error().Msgf("could not convert %s to int: %s", array[1], err)
+			return
+		} else if localPort > 0xFFFF {
+			log.Error().Msgf("UDP port too large %d", remotePort)
+			return
+		}
+		remoteUDPAddr = &net.UDPAddr{
+			IP: remoteIP,
+			Port: remotePort,
+		}
+		if len(remoteIP) == 4 {
+			localUDPAddr = &net.UDPAddr{
+				IP: net.IPv4(127, 0, 0, 1),
+				Port: localPort,
+			}
+		} else if len(remoteIP) == 16 {
+			localUDPAddr = &net.UDPAddr{
+				IP: net.IPv6loopback,
+				Port: localPort,
+			}
+		} else {
+			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+			return
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -218,6 +267,7 @@ func main() {
 			KeyLogWriter:       keyLog,
 		},
 		QuicConfig: &qconf,
+		EnableDatagrams: true,
 	}
 
 	defer roundTripper.Close()
@@ -287,14 +337,14 @@ func main() {
 			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
 		}
 
-		conv, err := ssh3.EstablishNewClientConversation(req, roundTripper, 30000)
+		conv, err := ssh3.EstablishNewClientConversation(ctx, req, roundTripper, 30000, 10)
 		if err != nil {
 			log.Error().Msgf("Could not open channel: %+v", err)
 			os.Exit(-1)
 		}
 
 
-		channel, err := conv.OpenChannel("session", 30000)
+		channel, err := conv.OpenChannel("session", 30000, 0)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not open channel: %+v", err)
 			os.Exit(-1)
@@ -312,7 +362,7 @@ func main() {
 					if err != nil {
 						log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
 						return
-					} else if forwardChannel.ChannelType != "agent-connection" {
+					} else if forwardChannel.ChannelType() != "agent-connection" {
 						log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType)
 						return
 					}
@@ -371,7 +421,7 @@ func main() {
 		}
 
 		go func() {
-			buf := make([]byte, channel.MaxPacketSize)
+			buf := make([]byte, channel.MaxPacketSize())
 			for {
 				n, err := os.Stdin.Read(buf)
 				if n > 0 {
@@ -388,9 +438,59 @@ func main() {
 			}
 		}()
 		
+		if localUDPAddr != nil && remoteUDPAddr != nil {
+			log.Debug().Msgf("start forwarding from %s to %s", localUDPAddr, remoteUDPAddr)
+			conn, err := net.ListenUDP("udp", localUDPAddr)
+			if err != nil {
+				log.Error().Msgf("could listen on UDP socket: %s", err)
+				return
+			}
+			forwardings := make(map[string]ssh3.Channel)
+			go func() {
+				buf := make([]byte, 1500)
+				for {
+					n, addr, err := conn.ReadFromUDP(buf)
+					if err != nil {
+						log.Error().Msgf("could read on UDP socket: %s", err)
+						return
+					}
+					channel, ok := forwardings[addr.String()]
+					if !ok {
+						channel, err = conv.OpenUDPForwardingChannel(30000, 10, localUDPAddr, remoteUDPAddr)
+						if err != nil {
+							log.Error().Msgf("could open new UDP forwarding channel: %s", err)
+							return
+						}
+						forwardings[addr.String()] = channel
+
+						go func() {
+							for {
+								dgram, err := channel.ReceiveDatagram(ctx)
+								if err != nil {
+									log.Error().Msgf("could open receive datagram on channel: %s", err)
+									return
+								}
+								_, err = conn.WriteToUDP(dgram, addr)
+								if err != nil {
+									log.Error().Msgf("could open write datagram on socket: %s", err)
+									return
+								}
+							}
+						}()
+					}
+					err = channel.SendDatagram(buf[:n])
+					if err != nil {
+						log.Error().Msgf("could not send datagram: %s", err)
+						return
+					}
+				}
+			}()
+		}
+
 		defer conv.Close()
 		defer term.Restore(int(fd), oldState)
 		defer fmt.Printf("\r")
+		
 
 		for {
 			genericMessage, err := channel.NextMessage()
