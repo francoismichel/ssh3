@@ -141,7 +141,6 @@ func setupEnv(user *auth.User, runningCommand *runningCommand, authAgentSocketPa
 func forwardUDPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.UDPConn) {
 	go func() {
 		defer conn.Close()
-		defer channel.CloseRead()
 		for {
 			select {
 			case <-ctx.Done():
@@ -162,7 +161,7 @@ func forwardUDPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 
 	go func() {
-		defer channel.CloseWrite()
+		defer channel.Close()
 		defer conn.Close()
 		buf := make([]byte, 1500)
 		for {
@@ -188,7 +187,6 @@ func forwardUDPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
 	go func() {
 		defer conn.CloseWrite()
-		defer channel.CloseRead()
 		for {
 			select {
 			case <-ctx.Done():
@@ -226,7 +224,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 
 	go func() {
-		defer channel.CloseWrite()
+		defer channel.Close()
 		defer conn.CloseRead()
 		buf := make([]byte, channel.MaxPacketSize())
 		for {
@@ -237,12 +235,12 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 			}
 			n, err := conn.Read(buf)
 			if err != nil && err != io.EOF {
-				log.Error().Msgf("could read datagram on UDP socket: %s", err)
+				log.Error().Msgf("could read data on TCP socket: %s", err)
 				return
 			}
 			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
 			if errWrite != nil {
-				log.Error().Msgf("could send datagram on channel: %s", err)
+				log.Error().Msgf("could send data on channel: %s", err)
 				return
 			}
 			if err == io.EOF {

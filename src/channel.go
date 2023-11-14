@@ -74,8 +74,6 @@ type Channel interface {
 	SendDatagram(datagram []byte) error
 	SendRequest(r *ssh3.ChannelRequestMessage) error
 	Close()
-	CloseRead()
-	CloseWrite()
 	MaxPacketSize() uint64
 	WriteData(dataBuf []byte, dataType ssh3.SSHDataType) (int, error)
 	ChannelType() string
@@ -384,18 +382,8 @@ func (c *channelImpl) SendRequest(r *ssh3.ChannelRequestMessage) error {
 	return c.sendMessage(r)
 }
 
-
-func (c *channelImpl) CloseRead() {
-	c.recv.Close()
-}
-
-func (c *channelImpl) CloseWrite() {
-	c.send.Close()
-}
-
 func (c *channelImpl) Close() {
-	c.CloseRead()
-	c.CloseWrite()
+	c.send.Close()
 }
 
 func (c *channelImpl) MaxPacketSize() uint64 {

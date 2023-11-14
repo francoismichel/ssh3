@@ -25,7 +25,7 @@ const (
 // Reader implements both the io.ByteReader and io.Reader interfaces.
 type Reader interface {
 	io.ByteReader
-	io.ReadCloser
+	io.Reader
 }
 
 type byteReader struct {

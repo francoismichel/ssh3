@@ -72,7 +72,6 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	go func() {
 		var err error = nil
 		var genericMessage ssh3Messages.Message
-		defer channel.CloseRead()
 		for {
 			select {
 			case <-ctx.Done():
@@ -142,7 +141,6 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
 	go func() {
 		defer conn.CloseWrite()
-		defer channel.CloseRead()
 		for {
 			select {
 			case <-ctx.Done():
@@ -180,7 +178,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 
 	go func() {
-		defer channel.CloseWrite()
+		defer channel.Close()
 		defer conn.CloseRead()
 		buf := make([]byte, channel.MaxPacketSize())
 		for {
