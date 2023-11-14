@@ -77,13 +77,13 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 			case <-ctx.Done():
 				err = context.Cause(ctx)
 				if err != nil {
-					log.Error().Msgf("reading message stopped on channel %d: %s", channel.ChannelID, err.Error())
+					log.Error().Msgf("reading message stopped on channel %d: %s", channel.ChannelID(), err.Error())
 				}
 				return
 			default:
 				genericMessage, err = channel.NextMessage()
 				if err != nil {
-					err = fmt.Errorf("error when getting message on channel %d: %s", channel.ChannelID, err.Error())
+					err = fmt.Errorf("error when getting message on channel %d: %s", channel.ChannelID(), err.Error())
 					cancel(err)
 					return
 				}
@@ -91,7 +91,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 				case *ssh3Messages.DataOrExtendedDataMessage:
 					c.Write([]byte(message.Data))
 				default:
-					err = fmt.Errorf("unhandled message type on agent channel %d: %T", channel.ChannelID, message)
+					err = fmt.Errorf("unhandled message type on agent channel %d: %T", channel.ChannelID(), message)
 					cancel(err)
 					return
 				}
@@ -105,7 +105,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 		case <-ctx.Done():
 			err = context.Cause(ctx)
 			if err != nil {
-				log.Error().Msgf("ending agent forwarding on channel %d: %s", channel.ChannelID, err.Error())
+				log.Error().Msgf("ending agent forwarding on channel %d: %s", channel.ChannelID(), err.Error())
 			}
 			return err
 		default:
@@ -441,7 +441,7 @@ func main() {
 						log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
 						return
 					} else if forwardChannel.ChannelType() != "agent-connection" {
-						log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType)
+						log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType())
 						return
 					}
 					log.Debug().Msg("new agent connection, forwarding")
