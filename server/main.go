@@ -242,7 +242,16 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 			}
 			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
 			if errWrite != nil {
-				log.Error().Msgf("could send data on channel: %s", err)
+				switch quicErr := errWrite.(type) {
+				case *quic.StreamError:
+					if quicErr.Remote && quicErr.ErrorCode == 42 {
+						log.Info().Msgf("writing was canceled by the remote: %s, closing the socket", errWrite)
+					} else {
+						log.Error().Msgf("unhandled quic stream error: %+v", quicErr)
+					}
+				default:
+					log.Error().Msgf("could send data on channel: %s", errWrite)
+				}
 				return
 			}
 			if err == io.EOF {
