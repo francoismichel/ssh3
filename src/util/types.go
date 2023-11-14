@@ -37,6 +37,14 @@ func (e ChannelNotFound) Error() string {
 	return fmt.Sprintf("Channel not found: %d", e.ChannelID)
 }
 
+type InvalidSSHString struct {
+	Reason error
+}
+
+func (e InvalidSSHString) Error() string {
+	return fmt.Sprintf("invalid SSH string: %s", e.Reason)
+}
+
 type BytesReadCloser struct {
 	*bytes.Reader
 }

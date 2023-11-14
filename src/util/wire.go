@@ -204,11 +204,14 @@ func VarIntLen(i uint64) uint64 {
 func ParseSSHString(buf Reader) (string, error) {
 	length, err := ReadVarInt(buf)
 	if err != nil {
-		return "", err
+		return "", InvalidSSHString{err}
 	}
 	out := make([]byte, length)
 	n, err := io.ReadFull(buf, out)
-	if (err != nil && err != io.EOF) || n != int(length) {
+	if n != int(length) {
+		return "", InvalidSSHString{fmt.Errorf("expected length %d, read length %d", length, n)}
+	}
+	if err != nil && err != io.EOF{
 		return "", err
 	}
 	return string(out[:n]), err
