@@ -245,7 +245,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				switch quicErr := errWrite.(type) {
 				case *quic.StreamError:
 					if quicErr.Remote && quicErr.ErrorCode == 42 {
-						log.Info().Msgf("writing was canceled by the remote: %s, closing the socket", errWrite)
+						log.Info().Msgf("writing was canceled by the remote, closing the socket", errWrite)
 					} else {
 						log.Error().Msgf("unhandled quic stream error: %+v", quicErr)
 					}
