@@ -47,12 +47,7 @@ func EstablishNewClientConversation(ctx context.Context, req *http.Request, roun
 		}
 
 		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, nil, conv.channelsManager, false, false, true, defaultDatagramsQueueSize, nil)
-		newChannel.setDatagramSender(func(datagram []byte) error {
-			buf := util.AppendVarInt(nil, uint64(conv.controlStream.StreamID()))
-			buf = util.AppendVarInt(buf, newChannel.ChannelID())
-			buf = append(buf, datagram...)
-			return conv.messageSender.SendMessage(buf)
-		})
+		newChannel.setDatagramSender(conv.getDatagramSenderForChannel(newChannel.ChannelID()))
 		conv.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
@@ -142,12 +137,7 @@ func (c *Conversation) OpenUDPForwardingChannel(maxPacketSize uint64, datagramsQ
 	additionalBytes := buildForwardingChannelAdditionalBytes(remoteAddr.IP, uint16(remoteAddr.Port))
 
 	channel := NewChannel(uint64(c.controlStream.StreamID()), uint64(str.StreamID()), "direct-udp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
-	channel.setDatagramSender(func(datagram []byte) error {
-		buf := util.AppendVarInt(nil, uint64(c.controlStream.StreamID()))
-		buf = util.AppendVarInt(buf, channel.ChannelID())
-		buf = append(buf, datagram...)
-		return c.messageSender.SendMessage(buf)
-	})
+	channel.setDatagramSender(c.getDatagramSenderForChannel(channel.ChannelID()))
 	channel.maybeSendHeader()
 	c.channelsManager.addChannel(channel)
 	return &UDPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
@@ -189,4 +179,13 @@ func (c *Conversation) AddDatagram(ctx context.Context, datagram []byte) error {
 
 func (c *Conversation) Close() {
 	c.controlStream.Close()
+}
+
+func (c *Conversation) getDatagramSenderForChannel(channelID util.ChannelID) func(datagram []byte) error {
+	return func(datagram []byte) error {
+		buf := util.AppendVarInt(nil, uint64(c.controlStream.StreamID()))
+		buf = util.AppendVarInt(buf, channelID)
+		buf = append(buf, datagram...)
+		return c.messageSender.SendMessage(buf)
+	}
 }
