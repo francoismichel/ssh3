@@ -207,11 +207,11 @@ func ParseSSHString(buf Reader) (string, error) {
 		return "", err
 	}
 	out := make([]byte, length)
-	_, err = io.ReadFull(buf, out)
-	if err != nil {
+	n, err := io.ReadFull(buf, out)
+	if err != nil && err != io.EOF {
 		return "", err
 	}
-	return string(out), nil
+	return string(out[:n]), err
 }
 
 func WriteSSHString(out []byte, s string) (int, error) {
