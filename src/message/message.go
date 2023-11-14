@@ -2,6 +2,7 @@ package ssh3
 
 import (
 	"errors"
+	"io"
 	"ssh3/src/util"
 )
 
@@ -143,7 +144,7 @@ var _ Message = &DataOrExtendedDataMessage{}
 
 func ParseDataMessage(buf util.Reader) (*DataOrExtendedDataMessage, error) {
 	data, err := util.ParseSSHString(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	return &DataOrExtendedDataMessage{
@@ -185,13 +186,13 @@ func ParseExtendedDataMessage(buf util.Reader) (*DataOrExtendedDataMessage, erro
 		return nil, err
 	}
 	data, err := util.ParseSSHString(buf)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	return &DataOrExtendedDataMessage{
 		DataType: SSHDataType(dataType),
 		Data: data,
-	}, nil
+	}, err
 }
 
 func ParseMessage(r util.Reader) (Message, error) {
@@ -207,17 +208,11 @@ func ParseMessage(r util.Reader) (Message, error) {
 		case SSH_MSG_CHANNEL_OPEN_FAILURE:
 			return ParseChannelOpenFailureMessage(r)
 		case SSH_MSG_CHANNEL_DATA, SSH_MSG_CHANNEL_EXTENDED_DATA:
-			var dataMessage *DataOrExtendedDataMessage
-			var err error
 			if typeId == SSH_MSG_CHANNEL_DATA {
-				dataMessage, err = ParseDataMessage(r)
+				return ParseDataMessage(r)
 			} else {
-				dataMessage, err = ParseExtendedDataMessage(r)
+				return ParseExtendedDataMessage(r)
 			}
-			if err != nil {
-				return nil, err
-			}
-			return dataMessage, nil
 		default:
 			panic("not implemented")
 	}
