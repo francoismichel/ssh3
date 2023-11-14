@@ -129,6 +129,75 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 }
 
 
+
+func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
+	go func() {
+		defer channel.Close()
+		for {
+			genericMessage, err := channel.NextMessage()
+			if err != nil {
+				log.Error().Msgf("could get message from tcp forwarding channel: %s", err)
+				return
+			}
+
+			switch message := genericMessage.(type) {
+			case *ssh3Messages.DataOrExtendedDataMessage:
+				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
+					_, err := conn.Write([]byte(message.Data))
+					if err != nil {
+						log.Error().Msgf("could not write datagram on UDP socket: %s", err)
+						return
+					}
+				} else {
+					log.Warn().Msgf("ignoring message data of unexpected type %d on TCP forwarding channel %d", message.DataType, channel.ChannelID())
+				}
+			default:
+				log.Warn().Msgf("ignoring message of type %T on TCP forwarding channel %d", message, channel.ChannelID())
+			}
+		}
+	}()
+
+	go func() {
+		defer conn.Close()
+		buf := make([]byte, channel.MaxPacketSize())
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				log.Error().Msgf("could read datagram on UDP socket: %s", err)
+				return
+			}
+			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if err != nil {
+				log.Error().Msgf("could send datagram on channel: %s", err)
+				return
+			}
+		}
+	}()
+}
+
+
+func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort int, err error) {
+	array := strings.Split(addrPort, "/")
+	localPort, err = strconv.Atoi(array[0])
+	if err != nil {
+		return 0, nil, 0, fmt.Errorf("could not convert %s to int: %s", array[0], err)
+	} else if localPort > 0xFFFF {
+		return 0, nil, 0, fmt.Errorf("UDP port too large %d", localPort)
+	}
+	array = strings.Split(array[1], "@")
+	remoteIP = net.ParseIP(array[0])
+	if remoteIP == nil {
+		return 0, nil, 0, fmt.Errorf("could not parse IP %s", array[0])
+	}
+	remotePort, err = strconv.Atoi(array[1])
+	if err != nil {
+		return 0, nil, 0, fmt.Errorf("could not convert %s to int: %s", array[1], err)
+	} else if localPort > 0xFFFF {
+		return 0, nil, 0, fmt.Errorf("UDP port too large %d", remotePort)
+	}
+	return localPort, remoteIP, remotePort, err
+}
+
 func main() {
 	// verbose := flag.Bool("v", false, "verbose")
 	// quiet := flag.Bool("q", false, "don't print the data")
@@ -143,6 +212,7 @@ func main() {
 	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc (currently not working)")
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	forwardUDP := flag.String("forward-udp", "", "if set, takes a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
+	forwardTCP := flag.String("forward-tcp", "", "if set, takes a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	urls := flag.Args()
@@ -157,30 +227,11 @@ func main() {
 
 	var localUDPAddr *net.UDPAddr = nil
 	var remoteUDPAddr *net.UDPAddr = nil
+	var localTCPAddr *net.TCPAddr = nil
+	var remoteTCPAddr *net.TCPAddr = nil
 	if *forwardUDP != "" {
-		array := strings.Split(*forwardUDP, "/")
-		localPort, err := strconv.Atoi(array[0])
-		if err != nil {
-			log.Error().Msgf("could not convert %s to int: %s", array[0], err)
-			return
-		} else if localPort > 0xFFFF {
-			log.Error().Msgf("UDP port too large %d", localPort)
-			return
-		}
-		array = strings.Split(array[1], "@")
-		remoteIP := net.ParseIP(array[0])
-		if remoteIP == nil {
-			log.Error().Msgf("could not parse IP %s", array[0])
-			return
-		}
-		remotePort, err := strconv.Atoi(array[1])
-		if err != nil {
-			log.Error().Msgf("could not convert %s to int: %s", array[1], err)
-			return
-		} else if localPort > 0xFFFF {
-			log.Error().Msgf("UDP port too large %d", remotePort)
-			return
-		}
+		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardUDP)
+		log.Error().Msgf("UDP forwarding parsing error %s", err)
 		remoteUDPAddr = &net.UDPAddr{
 			IP: remoteIP,
 			Port: remotePort,
@@ -192,6 +243,28 @@ func main() {
 			}
 		} else if len(remoteIP) == 16 {
 			localUDPAddr = &net.UDPAddr{
+				IP: net.IPv6loopback,
+				Port: localPort,
+			}
+		} else {
+			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+			return
+		}
+	}
+	if *forwardTCP != "" {
+		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardTCP)
+		log.Error().Msgf("UDP forwarding parsing error %s", err)
+		remoteTCPAddr = &net.TCPAddr{
+			IP: remoteIP,
+			Port: remotePort,
+		}
+		if len(remoteIP) == 4 {
+			localTCPAddr = &net.TCPAddr{
+				IP: net.IPv4(127, 0, 0, 1),
+				Port: localPort,
+			}
+		} else if len(remoteIP) == 16 {
+			localTCPAddr = &net.TCPAddr{
 				IP: net.IPv6loopback,
 				Port: localPort,
 			}
@@ -488,6 +561,30 @@ func main() {
 						log.Error().Msgf("could not send datagram: %s", err)
 						return
 					}
+				}
+			}()
+		}
+		
+		if localTCPAddr != nil && remoteTCPAddr != nil {
+			log.Debug().Msgf("start forwarding from %s to %s", localTCPAddr, remoteTCPAddr)
+			conn, err := net.ListenTCP("tcp", localTCPAddr)
+			if err != nil {
+				log.Error().Msgf("could listen on TCP socket: %s", err)
+				return
+			}
+			go func() {
+				for {
+					conn, err := conn.AcceptTCP()
+					if err != nil {
+						log.Error().Msgf("could read on UDP socket: %s", err)
+						return
+					}
+					forwardingChannel, err := conv.OpenTCPForwardingChannel(30000, 10, localTCPAddr, remoteTCPAddr)
+					if err != nil {
+						log.Error().Msgf("could open new UDP forwarding channel: %s", err)
+						return
+					}
+					forwardTCPInBackground(ctx, forwardingChannel, conn)
 				}
 			}()
 		}

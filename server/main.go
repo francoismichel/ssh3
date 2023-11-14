@@ -173,6 +173,51 @@ func forwardUDPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 }
 
+func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
+	go func() {
+		defer channel.Close()
+		for {
+			genericMessage, err := channel.NextMessage()
+			if err != nil {
+				log.Error().Msgf("could get message from tcp forwarding channel: %s", err)
+				return
+			}
+
+			switch message := genericMessage.(type) {
+			case *ssh3Messages.DataOrExtendedDataMessage:
+				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
+					_, err := conn.Write([]byte(message.Data))
+					if err != nil {
+						log.Error().Msgf("could not write datagram on UDP socket: %s", err)
+						return
+					}
+				} else {
+					log.Warn().Msgf("ignoring message data of unexpected type %d on TCP forwarding channel %d", message.DataType, channel.ChannelID())
+				}
+			default:
+				log.Warn().Msgf("ignoring message of type %T on TCP forwarding channel %d", message, channel.ChannelID())
+			}
+		}
+	}()
+
+	go func() {
+		defer conn.Close()
+		buf := make([]byte, channel.MaxPacketSize())
+		for {
+			n, err := conn.Read(buf)
+			if err != nil {
+				log.Error().Msgf("could read datagram on UDP socket: %s", err)
+				return
+			}
+			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if err != nil {
+				log.Error().Msgf("could send datagram on channel: %s", err)
+				return
+			}
+		}
+	}()
+}
+
 func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *auth.User, runningCommand *runningCommand, authAgentSocketPath string) error {
 	setupEnv(user, runningCommand, authAgentSocketPath)
 	if openPty != nil {
@@ -426,6 +471,18 @@ func handleUDPForwardingChannel(ctx context.Context, user *auth.User, conv *ssh3
 	return nil
 }
 
+func handleTCPForwardingChannel(ctx context.Context, user *auth.User, conv *ssh3.Conversation, channel *ssh3.TCPForwardingChannelImpl) error {
+	// TODO: currently, the rights for socket creation are not checked. The socket is opened with the process's uid and gid
+	// Not sure how to handled that in go since we cannot temporarily change the uid/gid without potentially impacting every
+	// other goroutine
+	conn, err := net.DialTCP("tcp", nil, channel.RemoteAddr)
+	if err != nil {
+		return err
+	}
+	forwardTCPInBackground(ctx, channel, conn)
+	return nil
+}
+
 func newDataReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
 	runningSession, ok := runningSessions[channel]
 	if !ok {
@@ -605,6 +662,8 @@ func main() {
 					switch c := channel.(type) {
 					case *ssh3.UDPForwardingChannelImpl:
 						handleUDPForwardingChannel(ctx, authenticatedUser, conv, c)
+					case *ssh3.TCPForwardingChannelImpl:
+						handleTCPForwardingChannel(ctx, authenticatedUser, conv, c)
 					default:
 						runningSessions[channel] = &runningSession{
 							channelState: LARVAL,

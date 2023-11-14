@@ -143,6 +143,20 @@ func (c *Conversation) OpenUDPForwardingChannel(maxPacketSize uint64, datagramsQ
 	return &UDPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
 }
 
+func (c *Conversation) OpenTCPForwardingChannel(maxPacketSize uint64, datagramsQueueSize uint64, localAddr *net.TCPAddr, remoteAddr *net.TCPAddr) (Channel, error) {
+
+	str, err := c.streamCreator.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+	additionalBytes := buildForwardingChannelAdditionalBytes(remoteAddr.IP, uint16(remoteAddr.Port))
+
+	channel := NewChannel(uint64(c.controlStream.StreamID()), uint64(str.StreamID()), "direct-tcp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel.maybeSendHeader()
+	c.channelsManager.addChannel(channel)
+	return &TCPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
+}
+
 func (c *Conversation) AcceptChannel(ctx context.Context) (Channel, error) {
 	for {
 		if channel := c.channelsAcceptQueue.Next(); channel != nil {
