@@ -293,7 +293,12 @@ func main() {
 				return
 			}
 			
-			req.SetBasicAuth(parsedUrl.User.Username(), string(password))
+			username := parsedUrl.User.Username()
+			if username == "" {
+				username = parsedUrl.Query().Get("user")
+			}
+			parsedUrl.Query().Get("user")
+			req.SetBasicAuth(username, string(password))
 		} else if oidcConfig != nil {
 			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
 			if err != nil {
