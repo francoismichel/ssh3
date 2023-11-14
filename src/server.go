@@ -69,7 +69,7 @@ func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *
 			if err != nil {
 				return false, err
 			}
-			newChannel = UDPForwardingChannelImpl{Channel: newChannel, RemoteAddr: udpAddr}
+			newChannel = &UDPForwardingChannelImpl{Channel: newChannel, RemoteAddr: udpAddr}
 		}
 		conversation.channelsAcceptQueue.Add(newChannel)
 		return true, nil
