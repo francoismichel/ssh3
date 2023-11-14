@@ -74,7 +74,9 @@ func EstablishNewClientConversation(req *http.Request, roundTripper *http3.Round
 			for {
 				dgram, err := qconn.ReceiveMessage(conv.Context())
 				if err != nil {
-					log.Error().Msgf("could not receive message from conn: %s", err)
+					if err != context.Canceled {
+						log.Error().Msgf("could not receive message from conn: %s", err)
+					}
 					return
 				}
 				buf := &util.BytesReadCloser{Reader: bytes.NewReader(dgram)}

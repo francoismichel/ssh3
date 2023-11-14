@@ -138,7 +138,9 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 				for {
 					dgram, err := qconn.ReceiveMessage(ctx)
 					if err != nil {
-						log.Error().Msgf("could not receive message from conn: %s", err)
+						if err != context.Canceled {
+							log.Error().Msgf("could not receive message from conn: %s", err)
+						}
 						return
 					}
 					buf := &util.BytesReadCloser{Reader: bytes.NewReader(dgram)}

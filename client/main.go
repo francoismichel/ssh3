@@ -670,10 +670,10 @@ func main() {
 				case *ssh3Messages.SignalRequest:
 					fmt.Fprintf(os.Stderr, "signal request not implemented\n")
 				case *ssh3Messages.ExitStatusRequest:
-					fmt.Fprintf(os.Stderr, "ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
+					log.Info().Msgf("ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
 					return
 				case *ssh3Messages.ExitSignalRequest:
-					fmt.Fprintf(os.Stderr, "ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
+					log.Info().Msgf("ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
 					return
 			}
 		case *ssh3Messages.DataOrExtendedDataMessage:
