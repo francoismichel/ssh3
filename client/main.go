@@ -260,9 +260,8 @@ func main() {
 	addr := args[0]
 	command := args[1:]
 
-
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	if *verbose {
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 		util.ConfigureLogger("debug")
 	} else {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
