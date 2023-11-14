@@ -116,6 +116,11 @@ type UDPForwardingChannelImpl struct {
 	Channel
 }
 
+type TCPForwardingChannelImpl struct {
+	RemoteAddr *net.TCPAddr
+	Channel
+}
+
 func buildHeader(conversationID uint64, channelType string, maxPacketSize uint64, additionalBytes []byte) []byte {
 	channelTypeBuf := make([]byte, util.SSHStringLen(channelType))
 	util.WriteSSHString(channelTypeBuf, channelType)
@@ -170,10 +175,10 @@ func parseHeader(channelID uint64, r util.Reader) (*ChannelInfo, error) {
 	}, nil
 }
 
-func parseUDPForwardingHeader(channelID uint64, buf util.Reader) (*net.UDPAddr, error) {
+func parseForwardingHeader(channelID uint64, buf util.Reader) (net.IP, uint16, error) {
 	addressFamily, err := util.ReadVarInt(buf)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	var address net.IP
@@ -182,23 +187,42 @@ func parseUDPForwardingHeader(channelID uint64, buf util.Reader) (*net.UDPAddr, 
 	} else if addressFamily == util.SSHAFIpv6 {
 		address = make([]byte, 16)
 	} else {
-		return nil, fmt.Errorf("invalid address family: %d", addressFamily)
+		return nil, 0, fmt.Errorf("invalid address family: %d", addressFamily)
 	}
 
 	_, err = buf.Read(address)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	var portBuf [2]byte
 	_, err = buf.Read(portBuf[:])
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	port := binary.BigEndian.Uint16(portBuf[:])
 
+	return address, port, nil
+}
+
+func parseUDPForwardingHeader(channelID uint64, buf util.Reader) (*net.UDPAddr, error) {
+	address, port, err := parseForwardingHeader(channelID, buf)
+	if err != nil {
+		return nil, err
+	}
 	return &net.UDPAddr{
-		IP:   address,
+		IP: address,
+		Port: int(port),
+	}, nil
+}
+
+func parseTCPForwardingHeader(channelID uint64, buf util.Reader) (*net.TCPAddr, error) {
+	address, port, err := parseForwardingHeader(channelID, buf)
+	if err != nil {
+		return nil, err
+	}
+	return &net.TCPAddr{
+		IP: address,
 		Port: int(port),
 	}, nil
 }
