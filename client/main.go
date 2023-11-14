@@ -255,7 +255,10 @@ func main() {
 	forwardTCP := flag.String("forward-tcp", "", "if set, takes a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
-	urls := flag.Args()
+	args := flag.Args()
+
+	addr := args[0]
+	command := args[1:]
 
 
 	if *verbose {
@@ -383,297 +386,306 @@ func main() {
 
 	defer roundTripper.Close()
 
-	for _, addr := range urls {
-		log.Printf("GET %s", addr)
-		parsedUrl, err := url.Parse(addr)
+	log.Printf("GET %s", addr)
+	parsedUrl, err := url.Parse(addr)
+	if err != nil {
+		log.Fatal().Msgf("%s", err)
+	}
+	req, err := http.NewRequest("CONNECT", addr, nil)
+	if err != nil {
+		log.Fatal().Msgf("%s", err)
+	}
+	req.Proto = "ssh3"
+
+	if *passwordAuthentication || (oidcConfig == nil && *privKeyFile == "") {
+		fmt.Printf("password for %s:", parsedUrl.String())
+		password, err := term.ReadPassword(int(syscall.Stdin))
+	
 		if err != nil {
-			log.Fatal().Msgf("%s", err)
-		}
-		req, err := http.NewRequest("CONNECT", addr, nil)
-		if err != nil {
-			log.Fatal().Msgf("%s", err)
-		}
-		req.Proto = "ssh3"
-
-		if *passwordAuthentication || (oidcConfig == nil && *privKeyFile == "") {
-			fmt.Printf("password for %s:", parsedUrl.String())
-			password, err := term.ReadPassword(int(syscall.Stdin))
-		
-			if err != nil {
-				fmt.Fprintf(os.Stdin, "could not get password\n")
-				return
-			}
-			
-			username := parsedUrl.User.Username()
-			if username == "" {
-				username = parsedUrl.Query().Get("user")
-			}
-			parsedUrl.Query().Get("user")
-			req.SetBasicAuth(username, string(password))
-		} else if oidcConfig != nil {
-			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
-			if err != nil {
-				log.Error().Msgf("could not get token: %s", err)
-				return
-			}
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-		} else if *privKeyFile != "" {
-			file, err := os.Open(*privKeyFile)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "could not open private key file:", err)
-				return
-			}
-			keyBytes, err := io.ReadAll(file)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "could not load private key file:", err)
-				return
-			}
-			key, err := ssh.ParseRawPrivateKey(keyBytes)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
-				return
-			}
-
-			rsaKey := key.(crypto.PrivateKey).(*rsa.PrivateKey)
-
-			token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-				"iss": parsedUrl.User.Username(),
-				"iat": jwt.NewNumericDate(time.Now()),
-				"exp": jwt.NewNumericDate(time.Now().Add(10*time.Second)),
-				"sub": "ssh3",
-				"aud": "unused",
-				"client_id": parsedUrl.User.Username(),
-				"jti": "unused",
-			})
-			signedString, err := token.SignedString(rsaKey)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
-				return
-			}
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
-		}
-
-		conv, err := ssh3.EstablishNewClientConversation(req, roundTripper, 30000, 10)
-		if err != nil {
-			log.Error().Msgf("Could not open channel: %+v", err)
-			os.Exit(-1)
-		}
-
-		ctx := conv.Context()
-
-		channel, err := conv.OpenChannel("session", 30000, 0)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could not open channel: %+v", err)
-			os.Exit(-1)
+			fmt.Fprintf(os.Stdin, "could not get password\n")
+			return
 		}
 		
-		if *forwardSSHAgent {
-			_, err := channel.WriteData([]byte("forward-agent"), ssh3Messages.SSH_EXTENDED_DATA_NONE)
-			if err != nil {
-				log.Error().Msgf("could not forward agent: %s", err.Error())
-				return
-			}
-			go func() {
-				for {
-					forwardChannel, err := conv.AcceptChannel(ctx)
-					if err != nil {
-						log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
-						return
-					} else if forwardChannel.ChannelType() != "agent-connection" {
-						log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType())
-						return
-					}
-					log.Debug().Msg("new agent connection, forwarding")
-					go func() {
-						err = forwardAgent(ctx, forwardChannel)
-						if err != nil {
-							log.Error().Msgf("agent forwarding error: %s", err.Error())
-							conv.Close()
-						}
-					}()
-				}
-			}()
+		username := parsedUrl.User.Username()
+		if username == "" {
+			username = parsedUrl.Query().Get("user")
 		}
-
-		windowSize, err := getWinsize()
+		parsedUrl.Query().Get("user")
+		req.SetBasicAuth(username, string(password))
+	} else if oidcConfig != nil {
+		token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
-			os.Exit(-1)
+			log.Error().Msgf("could not get token: %s", err)
+			return
 		}
-		err = channel.SendRequest(
-			&ssh3Messages.ChannelRequestMessage{
-				WantReply: true,
-				ChannelRequest: &ssh3Messages.PtyRequest{
-					Term: os.Getenv("TERM"),
-					CharWidth: uint64(windowSize.NCols),
-					CharHeight: uint64(windowSize.NRows),
-					PixelWidth: uint64(windowSize.PixelWidth),
-					PixelHeight: uint64(windowSize.PixelHeight),
-				},
-			},
-		)
-
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	} else if *privKeyFile != "" {
+		file, err := os.Open(*privKeyFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
+			fmt.Fprintln(os.Stderr, "could not open private key file:", err)
+			return
+		}
+		keyBytes, err := io.ReadAll(file)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not load private key file:", err)
+			return
+		}
+		key, err := ssh.ParseRawPrivateKey(keyBytes)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
 			return
 		}
 
+		rsaKey := key.(crypto.PrivateKey).(*rsa.PrivateKey)
+
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+			"iss": parsedUrl.User.Username(),
+			"iat": jwt.NewNumericDate(time.Now()),
+			"exp": jwt.NewNumericDate(time.Now().Add(10*time.Second)),
+			"sub": "ssh3",
+			"aud": "unused",
+			"client_id": parsedUrl.User.Username(),
+			"jti": "unused",
+		})
+		signedString, err := token.SignedString(rsaKey)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
+			return
+		}
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
+	}
+
+	conv, err := ssh3.EstablishNewClientConversation(req, roundTripper, 30000, 10)
+	if err != nil {
+		log.Error().Msgf("Could not open channel: %+v", err)
+		os.Exit(-1)
+	}
+
+	ctx := conv.Context()
+
+	channel, err := conv.OpenChannel("session", 30000, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not open channel: %+v", err)
+		os.Exit(-1)
+	}
+	
+	if *forwardSSHAgent {
+		_, err := channel.WriteData([]byte("forward-agent"), ssh3Messages.SSH_EXTENDED_DATA_NONE)
+		if err != nil {
+			log.Error().Msgf("could not forward agent: %s", err.Error())
+			return
+		}
+		go func() {
+			for {
+				forwardChannel, err := conv.AcceptChannel(ctx)
+				if err != nil {
+					log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
+					return
+				} else if forwardChannel.ChannelType() != "agent-connection" {
+					log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType())
+					return
+				}
+				log.Debug().Msg("new agent connection, forwarding")
+				go func() {
+					err = forwardAgent(ctx, forwardChannel)
+					if err != nil {
+						log.Error().Msgf("agent forwarding error: %s", err.Error())
+						conv.Close()
+					}
+				}()
+			}
+		}()
+	}
+
+	windowSize, err := getWinsize()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
+		os.Exit(-1)
+	}
+	err = channel.SendRequest(
+		&ssh3Messages.ChannelRequestMessage{
+			WantReply: true,
+			ChannelRequest: &ssh3Messages.PtyRequest{
+				Term: os.Getenv("TERM"),
+				CharWidth: uint64(windowSize.NCols),
+				CharHeight: uint64(windowSize.NRows),
+				PixelWidth: uint64(windowSize.PixelWidth),
+				PixelHeight: uint64(windowSize.PixelHeight),
+			},
+		},
+	)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
+		return
+	}
+
+	if len(command) == 0 {
 		err = channel.SendRequest(
 			&ssh3Messages.ChannelRequestMessage{
 				WantReply: true,
 				ChannelRequest: &ssh3Messages.ShellRequest{},
 			},
 		)
+	} else {
+		channel.SendRequest(
+			&ssh3Messages.ChannelRequestMessage{
+				WantReply: true,
+				ChannelRequest: &ssh3Messages.ExecRequest{
+					Command: strings.Join(command, " "),
+				},
+			},
+		)
+	}
 
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could send shell request: %+v", err)
-			return
-		}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could send shell request: %+v", err)
+		return
+	}
 
-		fd := os.Stdin.Fd()
+	fd := os.Stdin.Fd()
 
-		oldState, err := term.MakeRaw(int(fd))
-		if err != nil {
-			log.Fatal().Msgf("%s", err)
-		}
+	oldState, err := term.MakeRaw(int(fd))
+	if err != nil {
+		log.Fatal().Msgf("%s", err)
+	}
 
-		go func() {
-			buf := make([]byte, channel.MaxPacketSize())
-			for {
-				n, err := os.Stdin.Read(buf)
-				if n > 0 {
-					_, err2 := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
-					if err2 != nil {
-						fmt.Fprintf(os.Stderr, "could not write data on channel: %+v", err2)
-						return
-					}
-				}
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "could not read data from stdin: %+v", err)
+	go func() {
+		buf := make([]byte, channel.MaxPacketSize())
+		for {
+			n, err := os.Stdin.Read(buf)
+			if n > 0 {
+				_, err2 := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+				if err2 != nil {
+					fmt.Fprintf(os.Stderr, "could not write data on channel: %+v", err2)
 					return
 				}
 			}
-		}()
-		
-		if localUDPAddr != nil && remoteUDPAddr != nil {
-			log.Debug().Msgf("start forwarding from %s to %s", localUDPAddr, remoteUDPAddr)
-			conn, err := net.ListenUDP("udp", localUDPAddr)
 			if err != nil {
-				log.Error().Msgf("could listen on UDP socket: %s", err)
+				fmt.Fprintf(os.Stderr, "could not read data from stdin: %+v", err)
 				return
 			}
-			forwardings := make(map[string]ssh3.Channel)
-			go func() {
-				buf := make([]byte, 1500)
-				for {
-					n, addr, err := conn.ReadFromUDP(buf)
-					if err != nil {
-						log.Error().Msgf("could read on UDP socket: %s", err)
-						return
-					}
-					channel, ok := forwardings[addr.String()]
-					if !ok {
-						channel, err = conv.OpenUDPForwardingChannel(30000, 10, localUDPAddr, remoteUDPAddr)
-						if err != nil {
-							log.Error().Msgf("could open new UDP forwarding channel: %s", err)
-							return
-						}
-						forwardings[addr.String()] = channel
-
-						go func() {
-							for {
-								dgram, err := channel.ReceiveDatagram(ctx)
-								if err != nil {
-									log.Error().Msgf("could open receive datagram on channel: %s", err)
-									return
-								}
-								_, err = conn.WriteToUDP(dgram, addr)
-								if err != nil {
-									log.Error().Msgf("could open write datagram on socket: %s", err)
-									return
-								}
-							}
-						}()
-					}
-					err = channel.SendDatagram(buf[:n])
-					if err != nil {
-						log.Error().Msgf("could not send datagram: %s", err)
-						return
-					}
-				}
-			}()
 		}
-		
-		if localTCPAddr != nil && remoteTCPAddr != nil {
-			log.Debug().Msgf("start forwarding from %s to %s", localTCPAddr, remoteTCPAddr)
-			conn, err := net.ListenTCP("tcp", localTCPAddr)
-			if err != nil {
-				log.Error().Msgf("could listen on TCP socket: %s", err)
-				return
-			}
-			go func() {
-				for {
-					conn, err := conn.AcceptTCP()
-					if err != nil {
-						log.Error().Msgf("could read on UDP socket: %s", err)
-						return
-					}
-					forwardingChannel, err := conv.OpenTCPForwardingChannel(30000, 10, localTCPAddr, remoteTCPAddr)
+	}()
+	
+	if localUDPAddr != nil && remoteUDPAddr != nil {
+		log.Debug().Msgf("start forwarding from %s to %s", localUDPAddr, remoteUDPAddr)
+		conn, err := net.ListenUDP("udp", localUDPAddr)
+		if err != nil {
+			log.Error().Msgf("could listen on UDP socket: %s", err)
+			return
+		}
+		forwardings := make(map[string]ssh3.Channel)
+		go func() {
+			buf := make([]byte, 1500)
+			for {
+				n, addr, err := conn.ReadFromUDP(buf)
+				if err != nil {
+					log.Error().Msgf("could read on UDP socket: %s", err)
+					return
+				}
+				channel, ok := forwardings[addr.String()]
+				if !ok {
+					channel, err = conv.OpenUDPForwardingChannel(30000, 10, localUDPAddr, remoteUDPAddr)
 					if err != nil {
 						log.Error().Msgf("could open new UDP forwarding channel: %s", err)
 						return
 					}
-					forwardTCPInBackground(ctx, forwardingChannel, conn)
-				}
-			}()
-		}
+					forwardings[addr.String()] = channel
 
-		defer conv.Close()
-		defer term.Restore(int(fd), oldState)
-		defer fmt.Printf("\r")
-		
-
-		for {
-			genericMessage, err := channel.NextMessage()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Could not get message: %+v\n", err)
-				os.Exit(-1)
-			}
-			switch message := genericMessage.(type) {
-			case *ssh3Messages.ChannelRequestMessage:
-				switch requestMessage := message.ChannelRequest.(type) {
-					case *ssh3Messages.PtyRequest:
-						fmt.Fprintf(os.Stderr, "pty request not implemented\n")
-					case *ssh3Messages.X11Request:
-						fmt.Fprintf(os.Stderr, "x11 request not implemented\n")
-					case *ssh3Messages.ShellRequest:
-						fmt.Fprintf(os.Stderr, "shell request not implemented\n")
-					case *ssh3Messages.ExecRequest:
-						fmt.Fprintf(os.Stderr, "exec request not implemented\n")
-					case *ssh3Messages.SubsystemRequest:
-						fmt.Fprintf(os.Stderr, "subsystem request not implemented\n")
-					case *ssh3Messages.WindowChangeRequest:
-						fmt.Fprintf(os.Stderr, "windowchange request not implemented\n")
-					case *ssh3Messages.SignalRequest:
-						fmt.Fprintf(os.Stderr, "signal request not implemented\n")
-					case *ssh3Messages.ExitStatusRequest:
-						fmt.Fprintf(os.Stderr, "ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
-						return
-					case *ssh3Messages.ExitSignalRequest:
-						fmt.Fprintf(os.Stderr, "ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
-						return
+					go func() {
+						for {
+							dgram, err := channel.ReceiveDatagram(ctx)
+							if err != nil {
+								log.Error().Msgf("could open receive datagram on channel: %s", err)
+								return
+							}
+							_, err = conn.WriteToUDP(dgram, addr)
+							if err != nil {
+								log.Error().Msgf("could open write datagram on socket: %s", err)
+								return
+							}
+						}
+					}()
 				}
-			case *ssh3Messages.DataOrExtendedDataMessage:
-				switch message.DataType {
-				case ssh3Messages.SSH_EXTENDED_DATA_NONE:
-					_, err = os.Stdout.Write([]byte(message.Data))
-					if err != nil {
-						log.Fatal().Msgf("%s", err)
-					}
+				err = channel.SendDatagram(buf[:n])
+				if err != nil {
+					log.Error().Msgf("could not send datagram: %s", err)
+					return
 				}
 			}
-		}
-
+		}()
 	}
+	
+	if localTCPAddr != nil && remoteTCPAddr != nil {
+		log.Debug().Msgf("start forwarding from %s to %s", localTCPAddr, remoteTCPAddr)
+		conn, err := net.ListenTCP("tcp", localTCPAddr)
+		if err != nil {
+			log.Error().Msgf("could listen on TCP socket: %s", err)
+			return
+		}
+		go func() {
+			for {
+				conn, err := conn.AcceptTCP()
+				if err != nil {
+					log.Error().Msgf("could read on UDP socket: %s", err)
+					return
+				}
+				forwardingChannel, err := conv.OpenTCPForwardingChannel(30000, 10, localTCPAddr, remoteTCPAddr)
+				if err != nil {
+					log.Error().Msgf("could open new UDP forwarding channel: %s", err)
+					return
+				}
+				forwardTCPInBackground(ctx, forwardingChannel, conn)
+			}
+		}()
+	}
+
+	defer conv.Close()
+	defer term.Restore(int(fd), oldState)
+	defer fmt.Printf("\r")
+	
+
+	for {
+		genericMessage, err := channel.NextMessage()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not get message: %+v\n", err)
+			os.Exit(-1)
+		}
+		switch message := genericMessage.(type) {
+		case *ssh3Messages.ChannelRequestMessage:
+			switch requestMessage := message.ChannelRequest.(type) {
+				case *ssh3Messages.PtyRequest:
+					fmt.Fprintf(os.Stderr, "pty request not implemented\n")
+				case *ssh3Messages.X11Request:
+					fmt.Fprintf(os.Stderr, "x11 request not implemented\n")
+				case *ssh3Messages.ShellRequest:
+					fmt.Fprintf(os.Stderr, "shell request not implemented\n")
+				case *ssh3Messages.ExecRequest:
+					fmt.Fprintf(os.Stderr, "exec request not implemented\n")
+				case *ssh3Messages.SubsystemRequest:
+					fmt.Fprintf(os.Stderr, "subsystem request not implemented\n")
+				case *ssh3Messages.WindowChangeRequest:
+					fmt.Fprintf(os.Stderr, "windowchange request not implemented\n")
+				case *ssh3Messages.SignalRequest:
+					fmt.Fprintf(os.Stderr, "signal request not implemented\n")
+				case *ssh3Messages.ExitStatusRequest:
+					fmt.Fprintf(os.Stderr, "ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
+					return
+				case *ssh3Messages.ExitSignalRequest:
+					fmt.Fprintf(os.Stderr, "ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
+					return
+			}
+		case *ssh3Messages.DataOrExtendedDataMessage:
+			switch message.DataType {
+			case ssh3Messages.SSH_EXTENDED_DATA_NONE:
+				_, err = os.Stdout.Write([]byte(message.Data))
+				if err != nil {
+					log.Fatal().Msgf("%s", err)
+				}
+			}
+		}
+	}
+
 }
 

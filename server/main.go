@@ -397,7 +397,7 @@ func newX11Req(user *auth.User, channel ssh3.Channel, request ssh3Messages.X11Re
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newShellReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.ShellRequest, wantReply bool) error {
+func newCommand(user *auth.User, channel ssh3.Channel, command string, args ...string) error {
 	var session *runningSession
 	session, ok := runningSessions[channel]
 	if !ok {
@@ -440,8 +440,8 @@ func newShellReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.She
 		}
 	}
 
-	cmd := user.CreateShellCommand(env, stdoutW, stderrW, stdinR)
 
+	cmd := user.CreateCommand(env, stdoutW, stderrW, stdinR, command, args...)
 	runningCommand := &runningCommand{
 		Cmd:     *cmd,
 		stdoutR: stdoutR,
@@ -456,8 +456,13 @@ func newShellReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.She
 	return execCmdInBackground(channel, session.pty, user, session.runningCmd, session.authAgentSocketPath)
 }
 
-func newExecReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.ExecRequest, wantReply bool) error {
-	return fmt.Errorf("%T not implemented", request)
+func newShellReq(user *auth.User, channel ssh3.Channel, wantReply bool) error {
+	return newCommand(user, channel, user.Shell)
+}
+
+// similar behaviour to OpenSSH; exec requests are just pasted in the user's shell
+func newCommandInShellReq(user *auth.User, channel ssh3.Channel, wantReply bool, command string) error {
+	return newCommand(user, channel, user.Shell, "-c", command)
 }
 
 func newSubsystemReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
@@ -733,9 +738,9 @@ func main() {
 									case *ssh3Messages.X11Request:
 										err = newX11Req(authenticatedUser, channel, *requestMessage, message.WantReply)
 									case *ssh3Messages.ShellRequest:
-										err = newShellReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+										err = newShellReq(authenticatedUser, channel, message.WantReply)
 									case *ssh3Messages.ExecRequest:
-										err = newExecReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+										err = newCommandInShellReq(authenticatedUser, channel, message.WantReply, requestMessage.Command)
 									case *ssh3Messages.SubsystemRequest:
 										err = newSubsystemReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 									case *ssh3Messages.WindowChangeRequest:

@@ -72,13 +72,14 @@ func GetUser(username string) (*User, error) {
     return &s, nil
 }
 
-func (u *User) CreateShellCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader) *exec.Cmd {
-	return u.CreateCommand(u.Shell, addEnv, stdout, stderr, stdin)
+
+func (u *User) CreateShell(addEnv string, stdout, stderr io.Writer, stdin io.Reader) *exec.Cmd {
+	return u.CreateCommand(addEnv, stdout, stderr, stdin, u.Shell)
 }
 
 
-func (u *User) CreateCommand(command string, addEnv string, stdout, stderr io.Writer, stdin io.Reader) *exec.Cmd {
-	cmd := exec.Command(command)
+func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader, command string, args ...string) *exec.Cmd {
+	cmd := exec.Command(command, args...)
 	
 	cmd.Env = append(cmd.Env, addEnv)
 	cmd.Dir = u.Dir
