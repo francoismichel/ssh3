@@ -479,7 +479,9 @@ func main() {
 			for {
 				forwardChannel, err := conv.AcceptChannel(ctx)
 				if err != nil {
-					log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
+					if err != context.Canceled {
+						log.Error().Msgf("could not accept forwarding channel: %s", err.Error())
+					}
 					return
 				} else if forwardChannel.ChannelType() != "agent-connection" {
 					log.Error().Msgf("unexpected server-initiated channel: %s", channel.ChannelType())
