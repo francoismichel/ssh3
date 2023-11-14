@@ -167,17 +167,9 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 					if err != nil {
 						log.Error().Msgf("could not write data on TCP socket: %s", err)
 						// signal the write error to the peer
-						_, err = channel.WriteData([]byte(err.Error()), ssh3Messages.SSH_EXTENDED_DATA_STDERR)
-						if err != nil {
-							log.Error().Msgf("could not signal write error to the peer: %s", err)
-						}
+						channel.CancelRead()
 						return
 					}
-				} else if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_STDERR {
-					// this is how we announce a write error from the remote socket
-					log.Error().Msgf("received TCP forwarding error from the peer: %s", message.Data)
-					channel.Close()
-					return
 				} else {
 					log.Warn().Msgf("ignoring message data of unexpected type %d on TCP forwarding channel %d", message.DataType, channel.ChannelID())
 				}

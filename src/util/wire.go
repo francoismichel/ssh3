@@ -22,6 +22,7 @@ const (
 	maxVarInt8 = 4611686018427387903
 )
 
+
 // Reader implements both the io.ByteReader and io.Reader interfaces.
 type Reader interface {
 	io.ByteReader
@@ -29,7 +30,7 @@ type Reader interface {
 }
 
 type byteReader struct {
-	io.ReadCloser
+	io.Reader
 }
 
 var _ Reader = &byteReader{}
@@ -37,7 +38,7 @@ var _ Reader = &byteReader{}
 // NewReader returns a Reader for r.
 // If r already implements both io.ByteReader and io.Reader, NewReader returns r.
 // Otherwise, r is wrapped to add the missing interfaces.
-func NewReader(r io.ReadCloser) Reader {
+func NewReader(r io.Reader) Reader {
 	if r, ok := r.(Reader); ok {
 		return r
 	}
@@ -46,7 +47,7 @@ func NewReader(r io.ReadCloser) Reader {
 
 func (r *byteReader) ReadByte() (byte, error) {
 	var b [1]byte
-	n, err := r.ReadCloser.Read(b[:])
+	n, err := r.Reader.Read(b[:])
 	if n == 1 && err == io.EOF {
 		err = nil
 	}

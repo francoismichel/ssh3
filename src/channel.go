@@ -8,6 +8,8 @@ import (
 	"net"
 	ssh3 "ssh3/src/message"
 	"ssh3/src/util"
+
+	"github.com/quic-go/quic-go"
 )
 
 type ChannelOpenFailure struct {
@@ -73,6 +75,7 @@ type Channel interface {
 	ReceiveDatagram(ctx context.Context) ([]byte, error)
 	SendDatagram(datagram []byte) error
 	SendRequest(r *ssh3.ChannelRequestMessage) error
+	CancelRead()
 	Close()
 	MaxPacketSize() uint64
 	WriteData(dataBuf []byte, dataType ssh3.SSHDataType) (int, error)
@@ -95,7 +98,7 @@ type channelImpl struct {
 
 	channelCloseListener
 
-	recv           util.Reader
+	recv           quic.ReceiveStream
 	send           io.WriteCloser
 	datagramsQueue *util.DatagramsQueue
 	PtyReqHandler
@@ -227,7 +230,7 @@ func parseTCPForwardingHeader(channelID uint64, buf util.Reader) (*net.TCPAddr, 
 	}, nil
 }
 
-func NewChannel(conversationID uint64, channelID uint64, channelType string, maxPacketSize uint64, recv util.Reader,
+func NewChannel(conversationID uint64, channelID uint64, channelType string, maxPacketSize uint64, recv quic.ReceiveStream,
 	send io.WriteCloser, datagramSender util.SSH3DatagramSenderFunc, channelCloseListener channelCloseListener, sendHeader bool, confirmSent bool,
 	confirmReceived bool, datagramsQueueSize uint64, additonalHeaderBytes []byte) Channel {
 	var header []byte = nil
@@ -264,7 +267,7 @@ func (c *channelImpl) ConversationID() util.ChannelID {
 // / after reading some but not all the bytes, nextMessage returns
 // / ErrUnexpectedEOF.
 func (c *channelImpl) nextMessage() (ssh3.Message, error) {
-	return ssh3.ParseMessage(c.recv)
+	return ssh3.ParseMessage(util.NewReader(c.recv))
 }
 
 // The returned  message will neither be ChannelOpenConfirmationMessage nor ChannelOpenFailureMessage
@@ -380,6 +383,10 @@ func (c *channelImpl) SendDatagram(datagram []byte) error {
 func (c *channelImpl) SendRequest(r *ssh3.ChannelRequestMessage) error {
 	//TODO: make it thread safe
 	return c.sendMessage(r)
+}
+
+func (c *channelImpl) CancelRead() {
+	c.recv.CancelRead(42)
 }
 
 func (c *channelImpl) Close() {
