@@ -279,12 +279,12 @@ func main() {
 			IP: remoteIP,
 			Port: remotePort,
 		}
-		if len(remoteIP) == 4 {
+		if remoteIP.To4() != nil {
 			localUDPAddr = &net.UDPAddr{
 				IP: net.IPv4(127, 0, 0, 1),
 				Port: localPort,
 			}
-		} else if len(remoteIP) == 16 {
+		} else if remoteIP.To16() != nil {
 			localUDPAddr = &net.UDPAddr{
 				IP: net.IPv6loopback,
 				Port: localPort,
@@ -301,12 +301,12 @@ func main() {
 			IP: remoteIP,
 			Port: remotePort,
 		}
-		if len(remoteIP) == 4 {
+		if remoteIP.To4() != nil {
 			localTCPAddr = &net.TCPAddr{
 				IP: net.IPv4(127, 0, 0, 1),
 				Port: localPort,
 			}
-		} else if len(remoteIP) == 16 {
+		} else if remoteIP.To16() != nil {
 			localTCPAddr = &net.TCPAddr{
 				IP: net.IPv6loopback,
 				Port: localPort,
