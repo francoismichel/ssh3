@@ -1,4 +1,4 @@
-package auth
+package util
 
 /*
 #include <stdlib.h>
@@ -10,7 +10,6 @@ import "C"
 import (
 	"io"
 	"os/exec"
-	"ssh3/src/util"
 	"syscall"
 	"unsafe"
 )
@@ -56,7 +55,7 @@ func GetUser(username string) (*User, error) {
 
     if unsafe.Pointer(cpasswd) == unsafe.Pointer(uintptr(0)) {
         if err == nil {
-            err = util.UserNotFound{Username: name}
+            err = UserNotFound{Username: name}
         }
 
         return nil, err

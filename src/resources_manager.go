@@ -7,24 +7,25 @@ import (
 	"ssh3/src/util"
 )
 
+type ControlStreamID = uint64
 
 type conversationsManager struct {
 	connection http3.StreamCreator
-	conversations map[util.ConversationID]*Conversation
+	conversations map[ControlStreamID]*Conversation
 	lock sync.Mutex
 }
 
 func newConversationManager(connection http3.StreamCreator) *conversationsManager {
-	return &conversationsManager{ connection: connection, conversations: make(map[util.ConversationID]*Conversation)}
+	return &conversationsManager{ connection: connection, conversations: make(map[ControlStreamID]*Conversation)}
 }
 
 func (m *conversationsManager) addConversation(conversation *Conversation) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	m.conversations[util.ConversationID(conversation.controlStream.StreamID())] = conversation
+	m.conversations[uint64(conversation.controlStream.StreamID())] = conversation
 }
 
-func (m *conversationsManager) getConversation(id util.ConversationID) (*Conversation, bool) {
+func (m *conversationsManager) getConversation(id ControlStreamID) (*Conversation, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	conv, ok := m.conversations[id]
@@ -34,7 +35,7 @@ func (m *conversationsManager) getConversation(id util.ConversationID) (*Convers
 func (m * conversationsManager) removeConversation(conversation *Conversation) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	delete(m.conversations, util.ConversationID(conversation.controlStream.StreamID()))
+	delete(m.conversations, uint64(conversation.controlStream.StreamID()))
 }
 
 type channelsManager struct {

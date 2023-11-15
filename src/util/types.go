@@ -5,10 +5,14 @@ import (
 	"fmt"
 )
 
+// a JWT bearer token, encoded following the JWT specification
+type JWTTokenString struct {
+	Token string
+}
+
 type SSHForwardingProtocol = uint64
 type SSHForwardingAddressFamily = uint64
 
-type ConversationID = uint64
 type ChannelID = uint64
 
 const (

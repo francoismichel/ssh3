@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"ssh3/src/util"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -15,11 +16,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 )
-
-// a JWT bearer token, encoded following the JWT specification
-type JWTTokenString struct {
-	Token string
-}
 
 /*
  * In ssh3, authorized_keys are replaced by authorized_identities where a use can specify classical
@@ -30,7 +26,7 @@ type JWTTokenString struct {
 type Identity interface {
 	// returns whether those the provided candidate contains a sufficient proof to
 	// be considered as equivalent to this identity
-	Verify(candidate interface{}) bool
+	Verify(candidate interface{}, base64ConversationID string) bool
 }
 
 type RSAPubKeyIdentity struct {
@@ -38,13 +34,13 @@ type RSAPubKeyIdentity struct {
 	pubkey   *rsa.PublicKey
 }
 
-func DefaultIdentitiesFileName(user *User) string {
+func DefaultIdentitiesFileName(user *util.User) string {
 	return path.Join(user.Dir, ".ssh3", "authorized_identities")
 }
 
-func (i *RSAPubKeyIdentity) Verify(genericCandidate interface{}) bool {
+func (i *RSAPubKeyIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
 	switch candidate := genericCandidate.(type) {
-	case JWTTokenString:
+	case util.JWTTokenString:
 		token, err := jwt.Parse(candidate.Token, func(unvalidatedToken *jwt.Token) (interface{}, error) {
 			switch unvalidatedToken.Method.Alg() {
 			case "RS256":
@@ -68,7 +64,8 @@ func (i *RSAPubKeyIdentity) Verify(genericCandidate interface{}) bool {
 			if clientId, ok := claims["client_id"]; !ok || clientId != fmt.Sprintf("ssh3-%s", i.username) {
 				return false
 			}
-			if jti, ok := claims["jti"]; !ok || jti != "unused" {
+			if jti, ok := claims["jti"]; !ok || jti != base64ConversationID {
+				log.Error().Msgf("rsa verification failed: the jti claim does not contain the base64-encoded conversation ID")
 				return false
 			}
 			// jti not checked yet
@@ -88,10 +85,11 @@ type OpenIDConnectIdentity struct {
 	email	  string
 }
 
-func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
+func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
+	// TODO: verify that the base64ConversationID is also present in the token
 	log.Debug().Msgf("verifying openid connect idenitity")
 	switch candidate := genericCandidate.(type) {
-	case JWTTokenString:
+	case util.JWTTokenString:
 		token, err := VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.Token)
 		if err != nil {
 			log.Error().Msgf("cannot verify raw token: %s", err.Error())
@@ -126,7 +124,7 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}) bool {
 	}
 }
 
-func ParseIdentity(user *User, identityStr string) (Identity, error) {
+func ParseIdentity(user *util.User, identityStr string) (Identity, error) {
 	out, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
 	if err == nil {
 		log.Debug().Msg("parsing ssh authorized key")
@@ -164,7 +162,7 @@ func ParseIdentity(user *User, identityStr string) (Identity, error) {
 	return nil, fmt.Errorf("unknown identity format")
 }
 
-func ParseAuthorizedIdentitiesFile(user *User, file *os.File) (identities []Identity, err error) {
+func ParseAuthorizedIdentitiesFile(user *util.User, file *os.File) (identities []Identity, err error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()

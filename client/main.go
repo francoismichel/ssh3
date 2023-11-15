@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -375,17 +376,25 @@ func main() {
 	var qconf quic.Config
 
 	qconf.MaxIncomingStreams = 10
+	qconf.Allow0RTT = true
+	qconf.EnableDatagrams = true
+
+	tlsConf := &tls.Config{
+		RootCAs:            pool,
+		InsecureSkipVerify: *insecure,
+		KeyLogWriter:       keyLog,
+		NextProtos: []string{http3.NextProtoH3},
+	}
 
 	qconf.KeepAlivePeriod = 1*time.Second
 	roundTripper := &http3.RoundTripper{
-		TLSClientConfig: &tls.Config{
-			RootCAs:            pool,
-			InsecureSkipVerify: *insecure,
-			KeyLogWriter:       keyLog,
-		},
+		TLSClientConfig: tlsConf,
 		QuicConfig: &qconf,
 		EnableDatagrams: true,
 	}
+
+	ctx, _ := context.WithCancelCause(context.Background())
+
 
 	defer roundTripper.Close()
 
@@ -394,6 +403,42 @@ func main() {
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
+
+	host, port := parsedUrl.Hostname(), parsedUrl.Port()
+	if port == "" {
+		port = "443"
+	}
+	qClient, err := quic.DialAddrEarly(ctx,
+		fmt.Sprintf("%s:%s", host, port),
+		tlsConf,
+		&qconf)
+	if err != nil {
+		log.Error().Msgf("could not create client QUIC connection: %s", err)
+		return
+	}
+
+	// dirty hack: ensure only one QUIC connection is used
+	roundTripper.Dial = func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+		return qClient, nil
+	}
+
+	// Do 0RTT GET requests here if needed
+	// Currently, we don't need it but we could use it to retrieve
+	// convig or version info from the server
+	qClient.HandshakeComplete()
+	// Now, we're 1-RTT, we can get the TLS exporter and create the conversation
+	tls := qClient.ConnectionState().TLS
+	conv, err := ssh3.NewClientConversation(30000, 10, &tls)
+	if err != nil {
+		log.Error().Msgf("could not create new client conversation: %s", err)
+		return
+	}
+
+	convID := conv.ConversationID()
+	b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
+
+	// the connection struct is created, not build the request used to establish the connection
+
 	req, err := http.NewRequest("CONNECT", addr, nil)
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
@@ -439,7 +484,6 @@ func main() {
 		}
 
 		rsaKey := key.(crypto.PrivateKey).(*rsa.PrivateKey)
-
 		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 			"iss": username,
 			"iat": jwt.NewNumericDate(time.Now()),
@@ -447,7 +491,7 @@ func main() {
 			"sub": "ssh3",
 			"aud": "unused",
 			"client_id": fmt.Sprintf("ssh3-%s", username),
-			"jti": "unused",
+			"jti": b64ConvID,
 		})
 		signedString, err := token.SignedString(rsaKey)
 		if err != nil {
@@ -457,13 +501,13 @@ func main() {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
 	}
 
-	conv, err := ssh3.EstablishNewClientConversation(req, roundTripper, 30000, 10)
+	err = conv.EstablishClientConversation(req, roundTripper)
 	if err != nil {
 		log.Error().Msgf("Could not open channel: %+v", err)
 		os.Exit(-1)
 	}
 
-	ctx := conv.Context()
+	ctx = conv.Context()
 
 	channel, err := conv.OpenChannel("session", 30000, 0)
 	if err != nil {

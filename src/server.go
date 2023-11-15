@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"ssh3/src/auth"
 	"sync"
 
 	"github.com/quic-go/quic-go"
@@ -48,20 +47,33 @@ func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *
 
 		conversationsManager, ok := ssh3Server.getConversationsManager(qconn)
 		if !ok {
-			return false, fmt.Errorf("could not find SSH3 conversation for new channel %d on conn %+v", stream.StreamID(), qconn)
+			err := fmt.Errorf("could not find SSH3 conversation for new channel %d on conn %+v", stream.StreamID(), qconn)
+			log.Error().Msgf("%s", err)
+			return false, err
 		}
 
-		channelInfo, err := parseHeader(uint64(stream.StreamID()), &StreamByteReader{stream})
+		conversationControlStreamID, channelType, maxPacketSize, err := parseHeader(uint64(stream.StreamID()), &StreamByteReader{stream})
 		if err != nil {
 			return false, err
 		}
 
-		conversation, ok := conversationsManager.getConversation(util.ConversationID(channelInfo.ConversationID))
+		conversation, ok := conversationsManager.getConversation(conversationControlStreamID)
 		if !ok {
-			return false, fmt.Errorf("could not find SSH3 conversation with id %d for new channel %d on conn %+v", channelInfo.ConversationID, channelInfo.ChannelID, qconn)
+			err := fmt.Errorf("could not find SSH3 conversation with control stream id %d for new channel %d", conversationControlStreamID,
+								uint64(stream.StreamID()))
+			log.Error().Msgf("%s", err)
+			return false, err
 		}
 
-		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream},
+		channelInfo := &ChannelInfo{
+			ConversationID: conversation.conversationID,
+			ConversationStreamID: conversationControlStreamID,
+			ChannelID: uint64(stream.StreamID()),
+			ChannelType: channelType,
+			MaxPacketSize: maxPacketSize,
+		}
+
+		newChannel := NewChannel(channelInfo.ConversationStreamID, channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream},
 			stream, nil, conversation.channelsManager, false, false, true, defaultDatagramQueueSize, nil)
 
 		switch channelInfo.ChannelType {
@@ -109,28 +121,25 @@ func (s *Server) removeConnection(streamCreator http3.StreamCreator) {
 	delete(s.conversations, streamCreator)
 }
 
-type SSH3Handler = auth.AuthenticatedHandlerFunc
+type SSH3Handler = AuthenticatedHandlerFunc
 
 func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 
-	return func(authenticatedUsername string, w http.ResponseWriter, r *http.Request) {
+	return func(authenticatedUsername string, newConv *Conversation, w http.ResponseWriter, r *http.Request) {
 		log.Info().Msgf("got request: method: %s, URL: %s", r.Method, r.URL.String())
 		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
-			w.WriteHeader(200)
-			w.(http.Flusher).Flush()
-			str := r.Body.(http3.HTTPStreamer).HTTPStream()
-
 			hijacker, ok := w.(http3.Hijacker)
 			if !ok { // should never happen, unless quic-go change their API
 				fmt.Fprintf(os.Stderr, "failed to hijack")
 				return
 			}
-
 			streamCreator := hijacker.StreamCreator()
 			qconn := streamCreator.(quic.Connection)
-			conv := NewServerConversation(qconn.Context(), str, streamCreator, streamCreator.(quic.Connection), s.maxPacketSize)
 			conversationsManager := s.getOrCreateConversationsManager(streamCreator)
-			conversationsManager.addConversation(conv)
+			conversationsManager.addConversation(newConv)
+
+			w.WriteHeader(200)
+			w.(http.Flusher).Flush()
 
 			go func() {
 				// TODO: this hijacks the datagrams for the whole quic connection, so the server
@@ -146,17 +155,17 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 					buf := &util.BytesReadCloser{Reader: bytes.NewReader(dgram)}
 					convID, err := util.ReadVarInt(buf)
 					if err != nil {
-						log.Error().Msgf("could not read conv id from datagram on conv %d: %s", conv.controlStream.StreamID(), err)
+						log.Error().Msgf("could not read conv id from datagram on conv %d: %s", newConv.controlStream.StreamID(), err)
 						return
 					}
-					if convID == uint64(conv.controlStream.StreamID()) {
-						err = conv.AddDatagram(ctx, dgram[buf.Size()-int64(buf.Len()):])
+					if convID == uint64(newConv.controlStream.StreamID()) {
+						err = newConv.AddDatagram(ctx, dgram[buf.Size()-int64(buf.Len()):])
 						if err != nil {
 							switch e := err.(type) {
 							case util.ChannelNotFound:
 								log.Warn().Msgf("could not find channel %d, queue datagram in the meantime", e.ChannelID)
 							default:
-								log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
+								log.Error().Msgf("could not add datagram to conv id %d: %s", newConv.controlStream.StreamID(), err)
 								return
 							}
 						}
@@ -166,10 +175,10 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 				}
 			}()
 			go func() {
-				defer conv.Close()
-				defer conversationsManager.removeConversation(conv)
+				defer newConv.Close()
+				defer conversationsManager.removeConversation(newConv)
 				defer s.removeConnection(streamCreator)
-				if err := s.conversationHandler(authenticatedUsername, conv); err != nil {
+				if err := s.conversationHandler(authenticatedUsername, newConv); err != nil {
 					fmt.Fprintf(os.Stderr, "error while handing new conversation: %+v", err)
 					return
 				}

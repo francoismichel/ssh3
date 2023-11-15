@@ -30,7 +30,6 @@ import (
 
 	testdata "ssh3"
 	ssh3 "ssh3/src"
-	"ssh3/src/auth"
 	"ssh3/src/linux_server"
 	ssh3Messages "ssh3/src/message"
 	util "ssh3/src/util"
@@ -126,7 +125,7 @@ type Size interface {
 	Size() int64
 }
 
-func setupEnv(user *auth.User, runningCommand *runningCommand, authAgentSocketPath string) {
+func setupEnv(user *util.User, runningCommand *runningCommand, authAgentSocketPath string) {
 	// TODO: set the environment like in do_setup_env of https://github.com/openssh/openssh-portable/blob/master/session.c
 	runningCommand.Cmd.Env = append(runningCommand.Cmd.Env,
 		fmt.Sprintf("HOME=%s", user.Dir),
@@ -245,7 +244,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				switch quicErr := errWrite.(type) {
 				case *quic.StreamError:
 					if quicErr.Remote && quicErr.ErrorCode == 42 {
-						log.Info().Msgf("writing was canceled by the remote, closing the socket", errWrite)
+						log.Info().Msgf("writing was canceled by the remote, closing the socket")
 					} else {
 						log.Error().Msgf("unhandled quic stream error: %+v", quicErr)
 					}
@@ -261,7 +260,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 }
 
-func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *auth.User, runningCommand *runningCommand, authAgentSocketPath string) error {
+func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User, runningCommand *runningCommand, authAgentSocketPath string) error {
 	setupEnv(user, runningCommand, authAgentSocketPath)
 	if openPty != nil {
 		err := util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
@@ -361,7 +360,7 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *auth.User
 	return nil
 }
 
-func newPtyReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
+func newPtyReq(user *util.User, channel ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
 	var session *runningSession
 	session, ok := runningSessions[channel]
 	if !ok {
@@ -393,11 +392,11 @@ func newPtyReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.PtyRe
 	return nil
 }
 
-func newX11Req(user *auth.User, channel ssh3.Channel, request ssh3Messages.X11Request, wantReply bool) error {
+func newX11Req(user *util.User, channel ssh3.Channel, request ssh3Messages.X11Request, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newCommand(user *auth.User, channel ssh3.Channel, command string, args ...string) error {
+func newCommand(user *util.User, channel ssh3.Channel, command string, args ...string) error {
 	var session *runningSession
 	session, ok := runningSessions[channel]
 	if !ok {
@@ -456,24 +455,24 @@ func newCommand(user *auth.User, channel ssh3.Channel, command string, args ...s
 	return execCmdInBackground(channel, session.pty, user, session.runningCmd, session.authAgentSocketPath)
 }
 
-func newShellReq(user *auth.User, channel ssh3.Channel, wantReply bool) error {
+func newShellReq(user *util.User, channel ssh3.Channel, wantReply bool) error {
 	return newCommand(user, channel, user.Shell)
 }
 
 // similar behaviour to OpenSSH; exec requests are just pasted in the user's shell
-func newCommandInShellReq(user *auth.User, channel ssh3.Channel, wantReply bool, command string) error {
+func newCommandInShellReq(user *util.User, channel ssh3.Channel, wantReply bool, command string) error {
 	return newCommand(user, channel, user.Shell, "-c", command)
 }
 
-func newSubsystemReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
+func newSubsystemReq(user *util.User, channel ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newWindowChangeReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.WindowChangeRequest, wantReply bool) error {
+func newWindowChangeReq(user *util.User, channel ssh3.Channel, request ssh3Messages.WindowChangeRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newSignalReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
+func newSignalReq(user *util.User, channel ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
 	runningSession, ok := runningSessions[channel]
 	if !ok {
 		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID(), channel.ConversationID())
@@ -499,15 +498,15 @@ func newSignalReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.Si
 	return nil
 }
 
-func newExitStatusReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.ExitStatusRequest, wantReply bool) error {
+func newExitStatusReq(user *util.User, channel ssh3.Channel, request ssh3Messages.ExitStatusRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newExitSignalReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.ExitSignalRequest, wantReply bool) error {
+func newExitSignalReq(user *util.User, channel ssh3.Channel, request ssh3Messages.ExitSignalRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func handleUDPForwardingChannel(ctx context.Context, user *auth.User, conv *ssh3.Conversation, channel *ssh3.UDPForwardingChannelImpl) error {
+func handleUDPForwardingChannel(ctx context.Context, user *util.User, conv *ssh3.Conversation, channel *ssh3.UDPForwardingChannelImpl) error {
 	// TODO: currently, the rights for socket creation are not checked. The socket is opened with the process's uid and gid
 	// Not sure how to handled that in go since we cannot temporarily change the uid/gid without potentially impacting every
 	// other goroutine
@@ -519,7 +518,7 @@ func handleUDPForwardingChannel(ctx context.Context, user *auth.User, conv *ssh3
 	return nil
 }
 
-func handleTCPForwardingChannel(ctx context.Context, user *auth.User, conv *ssh3.Conversation, channel *ssh3.TCPForwardingChannelImpl) error {
+func handleTCPForwardingChannel(ctx context.Context, user *util.User, conv *ssh3.Conversation, channel *ssh3.TCPForwardingChannelImpl) error {
 	// TODO: currently, the rights for socket creation are not checked. The socket is opened with the process's uid and gid
 	// Not sure how to handled that in go since we cannot temporarily change the uid/gid without potentially impacting every
 	// other goroutine
@@ -531,7 +530,7 @@ func handleTCPForwardingChannel(ctx context.Context, user *auth.User, conv *ssh3
 	return nil
 }
 
-func newDataReq(user *auth.User, channel ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
+func newDataReq(user *util.User, channel ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
 	runningSession, ok := runningSessions[channel]
 	if !ok {
 		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID(), channel.ConversationID())
@@ -616,7 +615,7 @@ func listenAndAcceptAuthSockets(cancel context.CancelCauseFunc, conversation *ss
 	}
 }
 
-func openAgentSocketAndForwardAgent(parent context.Context, conv *ssh3.Conversation, user *auth.User) (string, error) {
+func openAgentSocketAndForwardAgent(parent context.Context, conv *ssh3.Conversation, user *util.User) (string, error) {
 	ctx, cancel := context.WithCancelCause(parent)
 	sockPath, err := linux_util.NewUnixSocketPath()
 	if err != nil {
@@ -675,9 +674,9 @@ func main() {
 		log.Logger = log.Output(logFile)
 	}
 
-	ctx, _ := context.WithCancel(context.Background())
-
-	quicConf := &quic.Config{}
+	quicConf := &quic.Config{
+		Allow0RTT: true,
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(len(bs))
@@ -696,7 +695,7 @@ func main() {
 
 			mux := http.NewServeMux()
 			ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
-				authenticatedUser, err := auth.GetUser(authenticatedUsername)
+				authenticatedUser, err := util.GetUser(authenticatedUsername)
 				if err != nil {
 					return err
 				}
@@ -775,8 +774,8 @@ func main() {
 
 				}
 			})
-			ssh3Handler := ssh3Server.GetHTTPHandlerFunc(ctx)
-			mux.HandleFunc(*urlPath, linux_server.HandleAuths(ssh3Handler))
+			ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
+			mux.HandleFunc(*urlPath, linux_server.HandleAuths(context.Background(), 30000, ssh3Handler))
 			server.Handler = mux
 			err = server.ListenAndServeTLS(certFile, keyFile)
 

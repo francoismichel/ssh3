@@ -1,14 +1,15 @@
-package auth
+package ssh3
 
 import (
 	"net/http"
 	"os"
+	"ssh3/src/auth"
 	"ssh3/src/util"
 )
 
-type AuthenticatedHandlerFunc func(authenticatedUserName string, w http.ResponseWriter, r *http.Request)
+type AuthenticatedHandlerFunc func(authenticatedUserName string, newConv *Conversation, w http.ResponseWriter, r *http.Request)
 
-type UnauthenticatedBearerFunc func(unauthenticatedBearerString string, w http.ResponseWriter, r *http.Request)
+type UnauthenticatedBearerFunc func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request)
 
 
 // BearerAuth returns the bearer token
@@ -34,32 +35,32 @@ func parseBearerAuth(auth string) (bearer string, ok bool) {
 	return string(auth[len(prefix):]), true
 }
 
-func HandleBearerAuth(username string, handlerFunc UnauthenticatedBearerFunc) http.HandlerFunc {
+func HandleBearerAuth(username string, base64ConversationID string, handlerFunc UnauthenticatedBearerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bearerString, ok := BearerAuth(r)
 		if !ok {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		handlerFunc(bearerString, w, r)
+		handlerFunc(bearerString, base64ConversationID, w, r)
 	}
 }
 
 // currently only supports RS256 and ES256 signing algorithms
-func HandleJWTAuth(username string, handlerFunc AuthenticatedHandlerFunc) UnauthenticatedBearerFunc {
-	return func(unauthenticatedBearerString string, w http.ResponseWriter, r *http.Request) {
-		user, err := GetUser(username)
+func HandleJWTAuth(username string, newConv *Conversation, handlerFunc AuthenticatedHandlerFunc) UnauthenticatedBearerFunc {
+	return func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request) {
+		user, err := util.GetUser(username)
 		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		identitiesFile, err := os.Open(DefaultIdentitiesFileName(user))
+		identitiesFile, err := os.Open(auth.DefaultIdentitiesFileName(user))
 		if err != nil {
 			// TODO: logging
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		identities, err := ParseAuthorizedIdentitiesFile(user, identitiesFile)
+		identities, err := auth.ParseAuthorizedIdentitiesFile(user, identitiesFile)
 		if err != nil {
 			// TODO: logging
 			w.WriteHeader(http.StatusUnauthorized)
@@ -67,10 +68,10 @@ func HandleJWTAuth(username string, handlerFunc AuthenticatedHandlerFunc) Unauth
 		}
 
 		for _, identity := range identities {
-			verified := identity.Verify(JWTTokenString{Token: unauthenticatedBearerString})
+			verified := identity.Verify(util.JWTTokenString{Token: unauthenticatedBearerString}, base64ConversationID)
 			if verified {
 				// authentication successful
-				handlerFunc(username, w, r)
+				handlerFunc(username, newConv, w, r)
 				return
 			}
 		}

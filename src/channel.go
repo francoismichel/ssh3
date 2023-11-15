@@ -63,14 +63,16 @@ type channelCloseListener interface {
 
 type ChannelInfo struct {
 	MaxPacketSize  uint64
-	ConversationID uint64
+	ConversationStreamID uint64 
+	ConversationID ConversationID 
 	ChannelID      uint64
 	ChannelType    string
 }
 
 type Channel interface {
 	ChannelID() util.ChannelID
-	ConversationID() util.ConversationID
+	ConversationID() ConversationID
+	ConversationStreamID() uint64
 	NextMessage() (ssh3.Message, error)
 	ReceiveDatagram(ctx context.Context) ([]byte, error)
 	SendDatagram(datagram []byte) error
@@ -124,12 +126,12 @@ type TCPForwardingChannelImpl struct {
 	Channel
 }
 
-func buildHeader(conversationID uint64, channelType string, maxPacketSize uint64, additionalBytes []byte) []byte {
+func buildHeader(conversationStreamID uint64, channelType string, maxPacketSize uint64, additionalBytes []byte) []byte {
 	channelTypeBuf := make([]byte, util.SSHStringLen(channelType))
 	util.WriteSSHString(channelTypeBuf, channelType)
 
 	buf := util.AppendVarInt(nil, 0xaf3627e6)
-	buf = util.AppendVarInt(buf, conversationID)
+	buf = util.AppendVarInt(buf, conversationStreamID)
 	buf = append(buf, channelTypeBuf...)
 	buf = util.AppendVarInt(buf, maxPacketSize)
 	if additionalBytes != nil {
@@ -157,25 +159,20 @@ func buildForwardingChannelAdditionalBytes(remoteAddr net.IP, port uint16) []byt
 	return buf
 }
 
-func parseHeader(channelID uint64, r util.Reader) (*ChannelInfo, error) {
-	conversationID, err := util.ReadVarInt(r)
+func parseHeader(channelID uint64, r util.Reader) (conversationControlStreamID ControlStreamID, channelType string, maxPacketSize uint64, err error) {
+	conversationControlStreamID, err = util.ReadVarInt(r)
 	if err != nil {
-		return nil, err
+		return 0, "", 0, err
 	}
-	channelType, err := util.ParseSSHString(r)
+	channelType, err = util.ParseSSHString(r)
 	if err != nil {
-		return nil, err
+		return 0, "", 0, err
 	}
-	maxPacketSize, err := util.ReadVarInt(r)
+	maxPacketSize, err = util.ReadVarInt(r)
 	if err != nil {
-		return nil, err
+		return 0, "", 0, err
 	}
-	return &ChannelInfo{
-		ConversationID: conversationID,
-		ChannelType:    channelType,
-		MaxPacketSize:  maxPacketSize,
-		ChannelID:      channelID,
-	}, nil
+	return conversationControlStreamID, channelType, maxPacketSize, nil
 }
 
 func parseForwardingHeader(channelID uint64, buf util.Reader) (net.IP, uint16, error) {
@@ -230,16 +227,17 @@ func parseTCPForwardingHeader(channelID uint64, buf util.Reader) (*net.TCPAddr, 
 	}, nil
 }
 
-func NewChannel(conversationID uint64, channelID uint64, channelType string, maxPacketSize uint64, recv quic.ReceiveStream,
+func NewChannel(conversationStreamID uint64, conversationID ConversationID, channelID uint64, channelType string, maxPacketSize uint64, recv quic.ReceiveStream,
 	send io.WriteCloser, datagramSender util.SSH3DatagramSenderFunc, channelCloseListener channelCloseListener, sendHeader bool, confirmSent bool,
 	confirmReceived bool, datagramsQueueSize uint64, additonalHeaderBytes []byte) Channel {
 	var header []byte = nil
 	if sendHeader {
-		header = buildHeader(conversationID, channelType, maxPacketSize, additonalHeaderBytes)
+		header = buildHeader(conversationStreamID, channelType, maxPacketSize, additonalHeaderBytes)
 	}
 	return &channelImpl{
 		ChannelInfo: ChannelInfo{
 			MaxPacketSize:  maxPacketSize,
+			ConversationStreamID: conversationStreamID,
 			ConversationID: conversationID,
 			ChannelID:      channelID,
 			ChannelType:    channelType,
@@ -259,7 +257,11 @@ func (c *channelImpl) ChannelID() util.ChannelID {
 	return c.ChannelInfo.ChannelID
 }
 
-func (c *channelImpl) ConversationID() util.ChannelID {
+func (c *channelImpl) ConversationStreamID() uint64 {
+	return c.ChannelInfo.ConversationStreamID
+}
+
+func (c *channelImpl) ConversationID() ConversationID {
 	return c.ChannelInfo.ConversationID
 }
 

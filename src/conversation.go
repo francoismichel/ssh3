@@ -3,6 +3,7 @@ package ssh3
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,29 +16,58 @@ import (
 
 const SSH_FRAME_TYPE = 0xaf3627e6
 
+type ConversationID = [32]byte
+
 type Conversation struct {
 	controlStream   http3.Stream
 	maxPacketSize   uint64
+	defaultDatagramsQueueSize   uint64
 	streamCreator   http3.StreamCreator
 	messageSender   util.MessageSender
 	channelsManager *channelsManager
 	context			context.Context
 	cancelContext	context.CancelCauseFunc
+	conversationID  ConversationID	// generated using TLS exporters
 
 	channelsAcceptQueue *util.AcceptQueue[Channel]
 }
 
-func EstablishNewClientConversation(req *http.Request, roundTripper *http3.RoundTripper, maxPacketsize uint64, defaultDatagramsQueueSize uint64) (*Conversation, error) {
+func GenerateConversationID(tls *tls.ConnectionState) (convID ConversationID, err error) {
+	ret, err := tls.ExportKeyingMaterial("EXPORTER-Channel-Binding", nil, 32)
+	if err != nil {
+		return convID, err
+	}
+	if len(ret) != len(convID) {
+		return convID, fmt.Errorf("TLS returned a tls-exporter with the wrong length (%d instead of %d)", len(ret), len(convID))
+	}
+	copy(convID[:], ret)
+	return convID, err
+}
+
+func NewClientConversation(maxPacketsize uint64, defaultDatagramsQueueSize uint64, tls *tls.ConnectionState)  (*Conversation, error) {
+	convID, err := GenerateConversationID(tls)
+	if err != nil {
+		log.Error().Msgf("could not generate conversation ID: %s", err)
+		return nil, err
+	}
 	backgroundCtx, backgroundCancelCauseFunc := context.WithCancelCause(context.Background())
 	conv := &Conversation{
 		controlStream:       nil,
 		channelsAcceptQueue: util.NewAcceptQueue[Channel](),
 		streamCreator:       nil,
 		maxPacketSize:       maxPacketsize,
+		defaultDatagramsQueueSize: defaultDatagramsQueueSize,
 		channelsManager:     newChannelsManager(),
 		context:			 backgroundCtx,
-		cancelContext: 		 backgroundCancelCauseFunc, 
+		cancelContext: 		 backgroundCancelCauseFunc,
+		conversationID: 	 convID,
 	}
+	return conv, nil
+}
+
+func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripper *http3.RoundTripper) error {
+
+
 	roundTripper.StreamHijacker = func(frameType http3.FrameType, qconn quic.Connection, stream quic.Stream, err error) (bool, error) {
 		if err != nil {
 			return false, err
@@ -46,33 +76,48 @@ func EstablishNewClientConversation(req *http.Request, roundTripper *http3.Round
 			return false, nil
 		}
 
-		channelInfo, err := parseHeader(uint64(stream.StreamID()), &StreamByteReader{stream})
+		controlStreamID, channelType, maxPacketSize, err := parseHeader(uint64(stream.StreamID()), &StreamByteReader{stream})
 		if err != nil {
 			return false, err
 		}
+		// todo: handle several conversations for the same client on the same connection ?
+		// This can be done by defining the conversation ID as a combination between the control stream ID
+		// and the tls exporter value, or computing the exporter value depending on the stream ID
+		if controlStreamID != uint64(c.controlStream.StreamID()) {
+			err := fmt.Errorf("wrong conversation control stream ID: %d instead of expected %d", controlStreamID, c.controlStream.StreamID())
+			log.Error().Msgf("%s", err)
+			return false, err
+		}
+		channelInfo := &ChannelInfo{
+			ConversationID: c.ConversationID(),
+			ConversationStreamID: controlStreamID,
+			ChannelID: uint64(stream.StreamID()),
+			ChannelType: channelType,
+			MaxPacketSize: maxPacketSize,
+		}
 
-		newChannel := NewChannel(channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, nil, conv.channelsManager, false, false, true, defaultDatagramsQueueSize, nil)
-		newChannel.setDatagramSender(conv.getDatagramSenderForChannel(newChannel.ChannelID()))
-		conv.channelsAcceptQueue.Add(newChannel)
+		newChannel := NewChannel(channelInfo.ConversationStreamID, channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, nil, c.channelsManager, false, false, true, c.defaultDatagramsQueueSize, nil)
+		newChannel.setDatagramSender(c.getDatagramSenderForChannel(newChannel.ChannelID()))
+		c.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
 	rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if rsp.StatusCode == 200 {
-		conv.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
-		conv.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
-		qconn := conv.streamCreator.(quic.Connection)
-		conv.messageSender = qconn
-		conv.context, conv.cancelContext = context.WithCancelCause(qconn.Context())
+		c.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
+		c.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
+		qconn := c.streamCreator.(quic.Connection)
+		c.messageSender = qconn
+		c.context, c.cancelContext = context.WithCancelCause(qconn.Context())
 		go func() {
 			// TODO: this hijacks the datagrams for the whole quic connection, so the server
 			//		 currently does not work for several conversations in the same QUIC connection
 			
 			for {
-				dgram, err := qconn.ReceiveMessage(conv.Context())
+				dgram, err := qconn.ReceiveMessage(c.Context())
 				if err != nil {
 					if err != context.Canceled {
 						log.Error().Msgf("could not receive message from conn: %s", err)
@@ -82,13 +127,13 @@ func EstablishNewClientConversation(req *http.Request, roundTripper *http3.Round
 				buf := &util.BytesReadCloser{Reader: bytes.NewReader(dgram)}
 				convID, err := util.ReadVarInt(buf)
 				if err != nil {
-					log.Error().Msgf("could not read conv id from datagram on conv %d: %s", conv.controlStream.StreamID(), err)
+					log.Error().Msgf("could not read conv id from datagram on conv %d: %s", c.controlStream.StreamID(), err)
 					return
 				}
-				if convID == uint64(conv.controlStream.StreamID()) {
-					err = conv.AddDatagram(conv.Context(), dgram[buf.Size()-int64(buf.Len()):])
+				if convID == uint64(c.controlStream.StreamID()) {
+					err = c.AddDatagram(c.Context(), dgram[buf.Size()-int64(buf.Len()):])
 					if err != nil {
-						log.Error().Msgf("could not add datagram to conv id %d: %s", conv.controlStream.StreamID(), err)
+						log.Error().Msgf("could not add datagram to conv id %d: %s", c.controlStream.StreamID(), err)
 						return
 					}
 				} else {
@@ -96,25 +141,34 @@ func EstablishNewClientConversation(req *http.Request, roundTripper *http3.Round
 				}
 			}
 		}()
-		return conv, nil
+		return nil
 	} else {
-		return nil, fmt.Errorf("returned non-200 status code: %d", rsp.StatusCode)
+		return fmt.Errorf("returned non-200 status code: %d", rsp.StatusCode)
 	}
 }
 
-func NewServerConversation(ctx context.Context, controlStream http3.Stream, streamCreator http3.StreamCreator, messageSender util.MessageSender, maxPacketsize uint64) *Conversation {
+func NewServerConversation(ctx context.Context, controlStream http3.Stream, qconn quic.Connection, messageSender util.MessageSender, maxPacketsize uint64) (*Conversation, error) {
 	backgroundContext, backgroundCancelFunc := context.WithCancelCause(ctx)
+
+	tls := qconn.ConnectionState().TLS
+	convID, err := GenerateConversationID(&tls)
+	if err != nil {
+		log.Error().Msgf("could not generate conversation ID on server")
+		return nil, err
+	}
+
 	conv := &Conversation{
 		controlStream:       controlStream,
 		channelsAcceptQueue: util.NewAcceptQueue[Channel](),
-		streamCreator:       streamCreator,
+		streamCreator:       qconn,
 		maxPacketSize:       maxPacketsize,
 		messageSender: 		 messageSender,
 		channelsManager:     newChannelsManager(),
 		context: 			 backgroundContext,
 		cancelContext: 		 backgroundCancelFunc,
+		conversationID: 	 convID,
 	}
-	return conv
+	return conv, nil
 }
 
 type StreamByteReader struct {
@@ -135,7 +189,7 @@ func (c *Conversation) OpenChannel(channelType string, maxPacketSize uint64, dat
 	if err != nil {
 		return nil, err
 	}
-	channel := NewChannel(uint64(c.controlStream.StreamID()), uint64(str.StreamID()), channelType, maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, nil)
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), channelType, maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, nil)
 	c.channelsManager.addChannel(channel)
 	return channel, nil
 }
@@ -148,7 +202,7 @@ func (c *Conversation) OpenUDPForwardingChannel(maxPacketSize uint64, datagramsQ
 	}
 	additionalBytes := buildForwardingChannelAdditionalBytes(remoteAddr.IP, uint16(remoteAddr.Port))
 
-	channel := NewChannel(uint64(c.controlStream.StreamID()), uint64(str.StreamID()), "direct-udp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "direct-udp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
 	channel.setDatagramSender(c.getDatagramSenderForChannel(channel.ChannelID()))
 	channel.maybeSendHeader()
 	c.channelsManager.addChannel(channel)
@@ -163,7 +217,7 @@ func (c *Conversation) OpenTCPForwardingChannel(maxPacketSize uint64, datagramsQ
 	}
 	additionalBytes := buildForwardingChannelAdditionalBytes(remoteAddr.IP, uint16(remoteAddr.Port))
 
-	channel := NewChannel(uint64(c.controlStream.StreamID()), uint64(str.StreamID()), "direct-tcp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "direct-tcp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
 	channel.maybeSendHeader()
 	c.channelsManager.addChannel(channel)
 	return &TCPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
@@ -219,4 +273,8 @@ func (c *Conversation) getDatagramSenderForChannel(channelID util.ChannelID) fun
 		buf = append(buf, datagram...)
 		return c.messageSender.SendMessage(buf)
 	}
+}
+
+func (c *Conversation) ConversationID() ConversationID {
+	return c.conversationID
 }
