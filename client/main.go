@@ -408,6 +408,8 @@ func main() {
 	if port == "" {
 		port = "443"
 	}
+	log.Debug().Msgf("dialing host at %s", fmt.Sprintf("%s:%s", host, port))
+	
 	qClient, err := quic.DialAddrEarly(ctx,
 		fmt.Sprintf("%s:%s", host, port),
 		tlsConf,
@@ -417,7 +419,6 @@ func main() {
 		return
 	}
 
-	log.Debug().Msgf("dialing host at %s", fmt.Sprintf("%s:%s", host, port))
 
 	// dirty hack: ensure only one QUIC connection is used
 	roundTripper.Dial = func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
