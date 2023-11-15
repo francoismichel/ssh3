@@ -417,6 +417,8 @@ func main() {
 		return
 	}
 
+	log.Debug().Msgf("dialing host at %s", fmt.Sprintf("%s:%s", host, port))
+
 	// dirty hack: ensure only one QUIC connection is used
 	roundTripper.Dial = func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 		return qClient, nil
@@ -426,6 +428,7 @@ func main() {
 	// Currently, we don't need it but we could use it to retrieve
 	// convig or version info from the server
 	qClient.HandshakeComplete()
+	log.Debug().Msgf("QUIC handshake complete")
 	// Now, we're 1-RTT, we can get the TLS exporter and create the conversation
 	tls := qClient.ConnectionState().TLS
 	conv, err := ssh3.NewClientConversation(30000, 10, &tls)
@@ -501,6 +504,7 @@ func main() {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
 	}
 
+	log.Debug().Msgf("send CONNECT request to the server")
 	err = conv.EstablishClientConversation(req, roundTripper)
 	if err != nil {
 		log.Error().Msgf("Could not open channel: %+v", err)
@@ -515,6 +519,8 @@ func main() {
 		os.Exit(-1)
 	}
 	
+	log.Debug().Msgf("opened new session channel")
+
 	if *forwardSSHAgent {
 		_, err := channel.WriteData([]byte("forward-agent"), ssh3Messages.SSH_EXTENDED_DATA_NONE)
 		if err != nil {
@@ -567,6 +573,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
 		return
 	}
+	log.Debug().Msgf("sent pty request for session")
 
 	if len(command) == 0 {
 		err = channel.SendRequest(
@@ -575,6 +582,7 @@ func main() {
 				ChannelRequest: &ssh3Messages.ShellRequest{},
 			},
 		)
+		log.Debug().Msgf("sent shell request")
 	} else {
 		channel.SendRequest(
 			&ssh3Messages.ChannelRequestMessage{
@@ -584,6 +592,7 @@ func main() {
 				},
 			},
 		)
+		log.Debug().Msgf("sent exec request for command \"%s\"", strings.Join(command, " "))
 	}
 
 	if err != nil {
@@ -731,6 +740,8 @@ func main() {
 				if err != nil {
 					log.Fatal().Msgf("%s", err)
 				}
+
+				log.Debug().Msgf("received data %s", message.Data)
 			}
 		}
 	}
