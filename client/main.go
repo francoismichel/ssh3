@@ -557,26 +557,26 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
 		os.Exit(-1)
 	}
-	err = channel.SendRequest(
-		&ssh3Messages.ChannelRequestMessage{
-			WantReply: true,
-			ChannelRequest: &ssh3Messages.PtyRequest{
-				Term: os.Getenv("TERM"),
-				CharWidth: uint64(windowSize.NCols),
-				CharHeight: uint64(windowSize.NRows),
-				PixelWidth: uint64(windowSize.PixelWidth),
-				PixelHeight: uint64(windowSize.PixelHeight),
-			},
-		},
-	)
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
-		return
-	}
-	log.Debug().Msgf("sent pty request for session")
-
 	if len(command) == 0 {
+		err = channel.SendRequest(
+			&ssh3Messages.ChannelRequestMessage{
+				WantReply: true,
+				ChannelRequest: &ssh3Messages.PtyRequest{
+					Term: os.Getenv("TERM"),
+					CharWidth: uint64(windowSize.NCols),
+					CharHeight: uint64(windowSize.NRows),
+					PixelWidth: uint64(windowSize.PixelWidth),
+					PixelHeight: uint64(windowSize.PixelHeight),
+				},
+			},
+		)
+	
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
+			return
+		}
+		log.Debug().Msgf("sent pty request for session")
+	
 		err = channel.SendRequest(
 			&ssh3Messages.ChannelRequestMessage{
 				WantReply: true,
@@ -743,6 +743,13 @@ func main() {
 				}
 
 				log.Debug().Msgf("received data %s", message.Data)
+			case ssh3Messages.SSH_EXTENDED_DATA_STDERR:
+				_, err = os.Stderr.Write([]byte(message.Data))
+				if err != nil {
+					log.Fatal().Msgf("%s", err)
+				}
+
+				log.Debug().Msgf("received stderr data %s", message.Data)
 			}
 		}
 	}
