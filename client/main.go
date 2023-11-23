@@ -584,6 +584,13 @@ func main() {
 			},
 		)
 		log.Debug().Msgf("sent shell request")
+		fd := os.Stdin.Fd()
+	
+		oldState, err := term.MakeRaw(int(fd))
+		if err != nil {
+			log.Fatal().Msgf("%s", err)
+		}
+		defer term.Restore(int(fd), oldState)
 	} else {
 		channel.SendRequest(
 			&ssh3Messages.ChannelRequestMessage{
@@ -599,13 +606,6 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could send shell request: %+v", err)
 		return
-	}
-
-	fd := os.Stdin.Fd()
-
-	oldState, err := term.MakeRaw(int(fd))
-	if err != nil {
-		log.Fatal().Msgf("%s", err)
 	}
 
 	go func() {
@@ -700,7 +700,6 @@ func main() {
 	}
 
 	defer conv.Close()
-	defer term.Restore(int(fd), oldState)
 	defer fmt.Printf("\r")
 	
 
