@@ -283,8 +283,10 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 
 		stdoutChan := make(chan readResult, 1)
 		stderrChan := make(chan readResult, 1)
+		execResultChan := make(chan error, 1)
 
 		readStdout := func() {
+			defer close(stdoutChan)
 			if runningCommand.stdoutR != nil {
 				for {
 					buf := make([]byte, channel.MaxPacketSize())
@@ -299,6 +301,7 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 			}
 		}
 		readStderr := func() {
+			defer close(stderrChan)
 			if runningCommand.stderrR != nil {
 				for {
 					buf := make([]byte, channel.MaxPacketSize())
@@ -315,45 +318,67 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 
 		go readStdout()
 		go readStderr()
+		go func() {
+			execResultChan <- runningCommand.Wait()
+			close(execResultChan)
+		}()
 
 		defer func() {
-			err := runningCommand.Wait()
-			exitstatus := uint64(0)
-			if err != nil {
-				if exitError, ok := err.(*exec.ExitError); ok {
-					exitstatus = uint64(exitError.ExitCode())
-				}
-			}
-			channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
-				WantReply:      false,
-				ChannelRequest: &ssh3Messages.ExitStatusRequest{ExitStatus: exitstatus},
-			})
 		}()
 		for {
 			select {
-			case stdoutResult := <-stdoutChan:
-				buf, err := stdoutResult.data, stdoutResult.err
-				_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_NONE)
-				if err2 != nil {
-					fmt.Fprintf(os.Stderr, "could not write the pty's output in an SSH message: %+v\n", err)
-					return
-				}
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
-					return
+			case stdoutResult, ok := <-stdoutChan:
+				if !ok {
+					// disable the channel: a select on a nil is always blocking
+					stdoutChan = nil
+				} else {
+					buf, err := stdoutResult.data, stdoutResult.err
+					_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_NONE)
+					if err2 != nil {
+						fmt.Fprintf(os.Stderr, "could not write the pty's output in an SSH message: %+v\n", err)
+						return
+					}
+					if err != nil && err != io.EOF {
+						fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
+					}
 				}
 
-			case stderrResult := <-stderrChan:
-				buf, err := stderrResult.data, stderrResult.err
-				_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_STDERR)
-				if err2 != nil {
-					fmt.Fprintf(os.Stderr, "could not write the pty's output in an SSH message: %+v\n", err)
-					return
+			case stderrResult, ok := <-stderrChan:
+				if !ok {
+					// disable the channel: a select on a nil is always blocking
+					stderrChan = nil
+				} else {
+					buf, err := stderrResult.data, stderrResult.err
+					_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_STDERR)
+					if err2 != nil {
+						fmt.Fprintf(os.Stderr, "could not write the pty's output in an SSH message: %+v\n", err)
+						return
+					}
+					if err != nil && err != io.EOF {
+						fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
+					}
 				}
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
-					return
+
+			case err, ok := <- execResultChan:
+				if !ok {
+					// disable the channel: a select on a nil is always blocking
+					execResultChan = nil
+				} else {
+					exitstatus := uint64(0)
+					if err != nil {
+						if exitError, ok := err.(*exec.ExitError); ok {
+							exitstatus = uint64(exitError.ExitCode())
+						}
+					}
+					channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
+						WantReply:      false,
+						ChannelRequest: &ssh3Messages.ExitStatusRequest{ExitStatus: exitstatus},
+					})
 				}
+			}
+			if stdoutChan == nil && stderrChan == nil && execResultChan == nil {
+				// both channels are closed, nothing else to do, return
+				return
 			}
 		}
 	}()
