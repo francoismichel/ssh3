@@ -72,12 +72,13 @@ func GetUser(username string) (*User, error) {
 }
 
 
-func (u *User) CreateShell(addEnv string, stdout, stderr io.Writer, stdin io.Reader) *exec.Cmd {
-	return u.CreateCommand(addEnv, stdout, stderr, stdin, u.Shell)
+func (u *User) CreateShell(addEnv string, stdout, stderr io.Writer, stdin io.Reader) (*exec.Cmd, error) {
+	cmd, _, _, _, err := u.CreateCommand(addEnv, stdout, stderr, stdin, u.Shell)
+	return cmd, err
 }
 
 
-func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader, command string, args ...string) *exec.Cmd {
+func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
 	cmd := exec.Command(command, args...)
 	
 	cmd.Env = append(cmd.Env, addEnv)
@@ -86,9 +87,46 @@ func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.R
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(u.Uid), Gid: uint32(u.Gid)}
 
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	cmd.Stdin = stdin
+	var err error
+	var stdoutR, stderrR io.Reader
+	var stdinW io.Writer
 
-	return cmd
+	if stdout == nil {
+		stdoutR, err = cmd.StdoutPipe()
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+	} else {
+		cmd.Stdout = stdout
+	}
+	if stderr == nil {
+		stderrR, err = cmd.StderrPipe()
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+	} else {
+		cmd.Stderr = stderr
+	}
+	if stdin == nil {
+		stdinW, err = cmd.StdinPipe()
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+	} else {
+		cmd.Stdin = stdin
+	}
+
+	return cmd, stdoutR, stderrR, stdinW, err
+}
+
+func (u *User) CreateCommandPipeOutput(addEnv string, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
+	cmd := exec.Command(command, args...)
+	
+	cmd.Env = append(cmd.Env, addEnv)
+	cmd.Dir = u.Dir
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(u.Uid), Gid: uint32(u.Gid)}
+
+	return u.CreateCommand(addEnv, nil, nil, nil, command, args...)
 }

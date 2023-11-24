@@ -442,6 +442,7 @@ func newCommand(user *util.User, channel ssh3.Channel, command string, args ...s
 	var stdoutR, stderrR, stdinR io.Reader
 	var stdoutW, stderrW, stdinW io.Writer
 	var err error = nil
+	var cmd *exec.Cmd
 
 	if session.pty != nil {
 		stdoutW = session.pty.tty
@@ -451,6 +452,7 @@ func newCommand(user *util.User, channel ssh3.Channel, command string, args ...s
 		stdoutR = session.pty.pty
 		stderrR = nil
 		stdinW = session.pty.pty
+		cmd, _, _, _, err = user.CreateCommand(env, stdoutW, stderrW, stdinR, command, args...)
 	} else {
 		stdoutR, stdoutW, err = os.Pipe()
 		if err != nil {
@@ -464,10 +466,10 @@ func newCommand(user *util.User, channel ssh3.Channel, command string, args ...s
 		if err != nil {
 			return err
 		}
+		cmd, stdoutR, stderrR, stdinW, err = user.CreateCommandPipeOutput(env, command, args...)
 	}
 
 
-	cmd := user.CreateCommand(env, stdoutW, stderrW, stdinR, command, args...)
 	runningCommand := &runningCommand{
 		Cmd:     *cmd,
 		stdoutR: stdoutR,
