@@ -372,10 +372,13 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 				}
 			}
 			if stdoutChan == nil && stderrChan == nil && execResultChan == nil {
-				channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
+				err := channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
 					WantReply:      false,
 					ChannelRequest: &ssh3Messages.ExitStatusRequest{ExitStatus: execExitStatus},
 				})
+				if err != nil {
+					log.Error().Msgf("Could not send exit status message to the peer: %s", err)
+				}
 				// both channels are closed, nothing else to do, return
 				return
 			}
