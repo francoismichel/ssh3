@@ -284,6 +284,7 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 		stdoutChan := make(chan readResult, 1)
 		stderrChan := make(chan readResult, 1)
 		execResultChan := make(chan error, 1)
+		execExitStatus := uint64(0)
 
 		readStdout := func() {
 			defer close(stdoutChan)
@@ -323,8 +324,6 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 			close(execResultChan)
 		}()
 
-		defer func() {
-		}()
 		for {
 			select {
 			case stdoutResult, ok := <-stdoutChan:
@@ -364,19 +363,19 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 					// disable the channel: a select on a nil is always blocking
 					execResultChan = nil
 				} else {
-					exitstatus := uint64(0)
+					execExitStatus = uint64(0)
 					if err != nil {
 						if exitError, ok := err.(*exec.ExitError); ok {
-							exitstatus = uint64(exitError.ExitCode())
+							execExitStatus = uint64(exitError.ExitCode())
 						}
 					}
-					channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
-						WantReply:      false,
-						ChannelRequest: &ssh3Messages.ExitStatusRequest{ExitStatus: exitstatus},
-					})
 				}
 			}
 			if stdoutChan == nil && stderrChan == nil && execResultChan == nil {
+				channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
+					WantReply:      false,
+					ChannelRequest: &ssh3Messages.ExitStatusRequest{ExitStatus: execExitStatus},
+				})
 				// both channels are closed, nothing else to do, return
 				return
 			}
