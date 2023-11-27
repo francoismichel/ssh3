@@ -558,24 +558,29 @@ func main() {
 		os.Exit(-1)
 	}
 	if len(command) == 0 {
-		err = channel.SendRequest(
-			&ssh3Messages.ChannelRequestMessage{
-				WantReply: true,
-				ChannelRequest: &ssh3Messages.PtyRequest{
-					Term: os.Getenv("TERM"),
-					CharWidth: uint64(windowSize.NCols),
-					CharHeight: uint64(windowSize.NRows),
-					PixelWidth: uint64(windowSize.PixelWidth),
-					PixelHeight: uint64(windowSize.PixelHeight),
+		// avoid requesting a pty on the other side if stdin is not a pty
+		// similar behaviour to OpenSSH
+		isATTY := term.IsTerminal(int(os.Stdin.Fd()))
+		if isATTY {
+			err = channel.SendRequest(
+				&ssh3Messages.ChannelRequestMessage{
+					WantReply: true,
+					ChannelRequest: &ssh3Messages.PtyRequest{
+						Term: os.Getenv("TERM"),
+						CharWidth: uint64(windowSize.NCols),
+						CharHeight: uint64(windowSize.NRows),
+						PixelWidth: uint64(windowSize.PixelWidth),
+						PixelHeight: uint64(windowSize.PixelHeight),
+					},
 				},
-			},
-		)
-	
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
-			return
+			)
+		
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
+				return
+			}
+			log.Debug().Msgf("sent pty request for session")
 		}
-		log.Debug().Msgf("sent pty request for session")
 	
 		err = channel.SendRequest(
 			&ssh3Messages.ChannelRequestMessage{
@@ -584,13 +589,16 @@ func main() {
 			},
 		)
 		log.Debug().Msgf("sent shell request")
-		fd := os.Stdin.Fd()
-	
-		oldState, err := term.MakeRaw(int(fd))
-		if err != nil {
-			log.Fatal().Msgf("%s", err)
+		// avoid making the terminal raw if stdin is not a TTY
+		// similar behaviour to OpenSSH
+		if isATTY {
+			fd := os.Stdin.Fd()
+			oldState, err := term.MakeRaw(int(fd))
+			if err != nil {
+				log.Fatal().Msgf("%s", err)
+			}
+			defer term.Restore(int(fd), oldState)
 		}
-		defer term.Restore(int(fd), oldState)
 	} else {
 		channel.SendRequest(
 			&ssh3Messages.ChannelRequestMessage{
