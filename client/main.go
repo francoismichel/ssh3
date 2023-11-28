@@ -552,16 +552,16 @@ func main() {
 		}()
 	}
 
-	windowSize, err := getWinsize()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
-		os.Exit(-1)
-	}
 	if len(command) == 0 {
 		// avoid requesting a pty on the other side if stdin is not a pty
 		// similar behaviour to OpenSSH
 		isATTY := term.IsTerminal(int(os.Stdin.Fd()))
 		if isATTY {
+			windowSize, err := getWinsize()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
+				os.Exit(-1)
+			}
 			err = channel.SendRequest(
 				&ssh3Messages.ChannelRequestMessage{
 					WantReply: true,
