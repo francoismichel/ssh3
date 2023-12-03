@@ -3,7 +3,7 @@ package auth
 import (
 	"bufio"
 	"context"
-	"crypto/rsa"
+	"crypto"
 	"fmt"
 	"os"
 	"path"
@@ -29,21 +29,23 @@ type Identity interface {
 	Verify(candidate interface{}, base64ConversationID string) bool
 }
 
-type RSAPubKeyIdentity struct {
+type PubKeyIdentity struct {
 	username string
-	pubkey   *rsa.PublicKey
+	pubkey   crypto.PublicKey
 }
 
 func DefaultIdentitiesFileName(user *util.User) string {
 	return path.Join(user.Dir, ".ssh3", "authorized_identities")
 }
 
-func (i *RSAPubKeyIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
+func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
 	switch candidate := genericCandidate.(type) {
 	case util.JWTTokenString:
 		token, err := jwt.Parse(candidate.Token, func(unvalidatedToken *jwt.Token) (interface{}, error) {
 			switch unvalidatedToken.Method.Alg() {
 			case "RS256":
+				return i.pubkey, nil
+			case "EdDSA":
 				return i.pubkey, nil
 			}
 			return nil, fmt.Errorf("unsupported signature algorithm '%s' for %T", unvalidatedToken.Method.Alg(), i)
@@ -52,7 +54,7 @@ func (i *RSAPubKeyIdentity) Verify(genericCandidate interface{}, base64Conversat
 		jwt.WithSubject("ssh3"),
 		jwt.WithIssuedAt(),
 		jwt.WithAudience("unused"),
-		jwt.WithValidMethods([]string{"RS256"}))
+		jwt.WithValidMethods([]string{"RS256", "EdDSA"}))
 		if err != nil || !token.Valid {
 			log.Error().Msgf("invalid private key token: %s", err)
 			return false
@@ -130,9 +132,11 @@ func ParseIdentity(user *util.User, identityStr string) (Identity, error) {
 		log.Debug().Msg("parsing ssh authorized key")
 		switch out.Type() {
 		case "ssh-rsa":
-			log.Debug().Msg("parsing ssh-rsa identity")
+			fallthrough
+		case "ssh-ed25519":
+			log.Debug().Msgf("parsing %s identity", out.Type())
 			cryptoPublicKey := out.(ssh.CryptoPublicKey)
-			return &RSAPubKeyIdentity{username: user.Username, pubkey: cryptoPublicKey.CryptoPublicKey().(*rsa.PublicKey)}, nil
+			return &PubKeyIdentity{username: user.Username, pubkey: cryptoPublicKey.CryptoPublicKey()}, nil
 		case "ecdsa-sha2-nistp256":
 			panic("not implemented")
 		}
