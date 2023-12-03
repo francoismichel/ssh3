@@ -34,8 +34,8 @@ type PubKeyIdentity struct {
 	pubkey   crypto.PublicKey
 }
 
-func DefaultIdentitiesFileName(user *util.User) string {
-	return path.Join(user.Dir, ".ssh3", "authorized_identities")
+func DefaultIdentitiesFileNames(user *util.User) []string {
+	return []string{path.Join(user.Dir, ".ssh3", "authorized_identities"), path.Join(user.Dir, ".ssh", "authorized_keys")}
 }
 
 func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
@@ -50,11 +50,11 @@ func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64Conversation
 			}
 			return nil, fmt.Errorf("unsupported signature algorithm '%s' for %T", unvalidatedToken.Method.Alg(), i)
 		},
-		jwt.WithIssuer(i.username),
-		jwt.WithSubject("ssh3"),
-		jwt.WithIssuedAt(),
-		jwt.WithAudience("unused"),
-		jwt.WithValidMethods([]string{"RS256", "EdDSA"}))
+			jwt.WithIssuer(i.username),
+			jwt.WithSubject("ssh3"),
+			jwt.WithIssuedAt(),
+			jwt.WithAudience("unused"),
+			jwt.WithValidMethods([]string{"RS256", "EdDSA"}))
 		if err != nil || !token.Valid {
 			log.Error().Msgf("invalid private key token: %s", err)
 			return false
@@ -84,7 +84,7 @@ func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64Conversation
 type OpenIDConnectIdentity struct {
 	clientID  string
 	issuerURL string
-	email	  string
+	email     string
 }
 
 func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
@@ -113,7 +113,7 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 			log.Error().Msgf("error verifying claims: %s", err)
 			return false
 		}
- 
+
 		valid := token != nil && claims.EmailVerified && claims.Email == i.email
 
 		if !valid {
@@ -148,18 +148,18 @@ func ParseIdentity(user *util.User, identityStr string) (Identity, error) {
 		tokens := strings.Fields(identityStr)
 		if len(tokens) != nExpectedTokens {
 			return nil, fmt.Errorf("bad identity format for oidc identity, %d tokens instead of the %d expected tokens, identity: %s",
-									len(tokens),
-									nExpectedTokens,
-									identityStr)
+				len(tokens),
+				nExpectedTokens,
+				identityStr)
 		}
 		clientID := tokens[1]
 		issuerURL := tokens[2]
 		email := tokens[3]
 		log.Debug().Msgf("oidc identity parsing success: client_id: %s, issuer_url: %s, email: %s", clientID, issuerURL, email)
 		return &OpenIDConnectIdentity{
-			clientID: clientID,
+			clientID:  clientID,
 			issuerURL: issuerURL,
-			email: email,
+			email:     email,
 		}, nil
 	}
 	// either error or identity not implemented

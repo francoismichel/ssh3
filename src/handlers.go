@@ -5,12 +5,13 @@ import (
 	"os"
 	"ssh3/src/auth"
 	"ssh3/src/util"
+
+	"github.com/rs/zerolog/log"
 )
 
 type AuthenticatedHandlerFunc func(authenticatedUserName string, newConv *Conversation, w http.ResponseWriter, r *http.Request)
 
 type UnauthenticatedBearerFunc func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request)
-
 
 // BearerAuth returns the bearer token
 // Authorization header, if the request uses HTTP Basic Authentication.
@@ -46,7 +47,7 @@ func HandleBearerAuth(username string, base64ConversationID string, handlerFunc 
 	}
 }
 
-// currently only supports RS256 and ES256 signing algorithms
+// currently only supports RS256 and EdDSA signing algorithms
 func HandleJWTAuth(username string, newConv *Conversation, handlerFunc AuthenticatedHandlerFunc) UnauthenticatedBearerFunc {
 	return func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request) {
 		user, err := util.GetUser(username)
@@ -54,17 +55,25 @@ func HandleJWTAuth(username string, newConv *Conversation, handlerFunc Authentic
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		identitiesFile, err := os.Open(auth.DefaultIdentitiesFileName(user))
-		if err != nil {
-			// TODO: logging
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		identities, err := auth.ParseAuthorizedIdentitiesFile(user, identitiesFile)
-		if err != nil {
-			// TODO: logging
-			w.WriteHeader(http.StatusUnauthorized)
-			return
+
+		filenames := auth.DefaultIdentitiesFileNames(user)
+		var identities []auth.Identity
+		for _, filename := range filenames {
+			identitiesFile, err := os.Open(filename)
+			if err == nil {
+				newIdentities, err := auth.ParseAuthorizedIdentitiesFile(user, identitiesFile)
+				if err != nil {
+					// TODO: logging
+					log.Error().Msgf("error when parsing authorized identities: %s", err)
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+				identities = append(identities, newIdentities...)
+			} else if !os.IsNotExist(err) {
+				log.Error().Msgf("error could not open %s: %s", filename, err)
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
 		}
 
 		for _, identity := range identities {
