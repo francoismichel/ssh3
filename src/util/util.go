@@ -8,11 +8,9 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	ptylib "github.com/creack/pty"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -213,12 +211,10 @@ func (m *AgentSigningMethod) Sign(signingString string, key interface{}) ([]byte
 	if !ok {
 		return nil, fmt.Errorf("bad key type: %T instead of ssh.PublicKey", pk)
 	}
-	before := time.Now()
 	signature, err := m.Agent.SignWithFlags(pk, []byte(signingString), agent.SignatureFlagRsaSha256)
 	if err != nil {
 		return nil, err
 	}
-	log.Error().Msgf("elapsed: %+v", time.Since(before))
 	return signature.Blob, nil
 }
 
