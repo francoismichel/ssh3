@@ -327,7 +327,7 @@ func main() {
 	var err error = nil
 	var oidcConfig *auth.OIDCConfig = nil
 	var oidcConfigFile *os.File = nil
-	if *privKeyFile == "" && !*passwordAuthentication && *oidcConfigFileName == "" {
+	if *privKeyFile == "" && *useAgent == "" && !*passwordAuthentication && *oidcConfigFileName == "" {
 		defaultFileName := "/etc/ssh3/oidc_config.json"
 		oidcConfigFile, err = os.Open(defaultFileName)
 		if err != nil {
