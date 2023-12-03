@@ -2,14 +2,19 @@ package util
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	ptylib "github.com/creack/pty"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 // copied and adapted from github.com/creack/pty
@@ -194,3 +199,35 @@ func (q *DatagramsQueue) WaitNext(ctx context.Context) ([]byte, error) {
 	}
 }
 
+type AgentSigningMethod struct {
+	Agent agent.ExtendedAgent
+	Key *agent.Key
+}
+
+func (m *AgentSigningMethod) Verify(signingString string, sig []byte, key interface{}) error {
+	panic("not implemented")
+}
+
+func (m *AgentSigningMethod) Sign(signingString string, key interface{}) ([]byte, error) {
+	pk, ok := key.(ssh.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("bad key type: %T instead of ssh.PublicKey", pk)
+	}
+	before := time.Now()
+	signature, err := m.Agent.SignWithFlags(pk, []byte(signingString), agent.SignatureFlagRsaSha256)
+	if err != nil {
+		return nil, err
+	}
+	log.Error().Msgf("elapsed: %+v", time.Since(before))
+	return signature.Blob, nil
+}
+
+func (m *AgentSigningMethod) Alg() string {
+	switch m.Key.Type() {
+	case "ssh-rsa":
+		return "RS256"
+	case "ssh-ed25519":
+		return "EdDSA"
+	}
+	return ""
+}
