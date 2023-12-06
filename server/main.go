@@ -358,7 +358,7 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 					}
 				}
 
-			case err, ok := <- execResultChan:
+			case err, ok := <-execResultChan:
 				if !ok {
 					// disable the channel: a select on a nil is always blocking
 					execResultChan = nil
@@ -468,7 +468,6 @@ func newCommand(user *util.User, channel ssh3.Channel, command string, args ...s
 		}
 		cmd, stdoutR, stderrR, stdinW, err = user.CreateCommandPipeOutput(env, command, args...)
 	}
-
 
 	runningCommand := &runningCommand{
 		Cmd:     *cmd,
@@ -715,9 +714,9 @@ func main() {
 			var err error
 
 			server := http3.Server{
-				Handler:    nil,
-				Addr:       bCap,
-				QuicConfig: quicConf,
+				Handler:         nil,
+				Addr:            bCap,
+				QuicConfig:      quicConf,
 				EnableDatagrams: true,
 			}
 			certFile, keyFile := testdata.GetCertificatePaths()

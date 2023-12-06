@@ -4,6 +4,7 @@ import (
 	// "bufio"
 	// "bytes"
 	// "context"
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rsa"
@@ -25,6 +26,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
 	testdata "ssh3"
@@ -244,6 +246,7 @@ func main() {
 	// quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "key log file")
 	privKeyFile := flag.String("privkey", "", "private key file")
+	useAgent := flag.String("use-agent", "", "if set, uses the running SSH agent to perform pubkey auth and use key whose public key matches the one in the specified path")
 	passwordAuthentication := flag.Bool("use-password", false, "do classical password authentication")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
 	addRootCA := flag.String("add-root-ca", "", "add root CA from specified path")
@@ -325,7 +328,7 @@ func main() {
 	var err error = nil
 	var oidcConfig *auth.OIDCConfig = nil
 	var oidcConfigFile *os.File = nil
-	if *privKeyFile == "" && !*passwordAuthentication && *oidcConfigFileName == "" {
+	if *privKeyFile == "" && *useAgent == "" && !*passwordAuthentication && *oidcConfigFileName == "" {
 		defaultFileName := "/etc/ssh3/oidc_config.json"
 		oidcConfigFile, err = os.Open(defaultFileName)
 		if err != nil {
@@ -454,7 +457,7 @@ func main() {
 		username = parsedUrl.Query().Get("user")
 	}
 	parsedUrl.Query().Get("user")
-	if *passwordAuthentication || (oidcConfig == nil && *privKeyFile == "") {
+	if *passwordAuthentication || (oidcConfig == nil && *privKeyFile == "" && *useAgent == "") {
 		fmt.Printf("password for %s:", parsedUrl.String())
 		password, err := term.ReadPassword(int(syscall.Stdin))
 	
@@ -470,25 +473,74 @@ func main() {
 			return
 		}
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	} else if *privKeyFile != "" {
-		file, err := os.Open(*privKeyFile)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "could not open private key file:", err)
-			return
-		}
-		keyBytes, err := io.ReadAll(file)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "could not load private key file:", err)
-			return
-		}
-		key, err := ssh.ParseRawPrivateKey(keyBytes)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
-			return
-		}
+	} else if *privKeyFile != "" || *useAgent != "" {
+		var signedString string
+		var signingMethod jwt.SigningMethod
+		var key interface{}
+		if *useAgent != "" {
+			pubKeyBytes, err := os.ReadFile(*useAgent)
+			if err != nil {
+				log.Error().Msgf("could not load public key file: %s", err)
+				return
+			}
+			log.Debug().Msgf("read: %s", pubKeyBytes)
+			pubKey, _, _, _, err := ssh.ParseAuthorizedKey(pubKeyBytes)
+			if err != nil {
+				log.Error().Msgf("could not parse public key: %s", err)
+				return
+			}
+			socket := os.Getenv("SSH_AUTH_SOCK")
+			conn, err := net.Dial("unix", socket)
+			if err != nil {
+				log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %v", err)
+				return
+			}
 
-		rsaKey := key.(crypto.PrivateKey).(*rsa.PrivateKey)
-		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+			agentClient := agent.NewClient(conn)
+			keys, err := agentClient.List()
+			for _, candidateKey := range keys {
+				if bytes.Equal(candidateKey.Marshal(), pubKey.Marshal()) {
+					log.Debug().Msgf("found key in agent: %s", candidateKey)
+					key = candidateKey
+					break
+				}
+			}
+			if key == nil {
+				log.Error().Msgf("did not find specified agent key")
+				return
+			}
+
+			signingMethod = &util.AgentSigningMethod{
+				Agent: agentClient,
+				Key: key.(*agent.Key),
+			}
+
+			if err != nil {
+				log.Error().Msgf("error when listing agent keys: %s", err)
+				return
+			}
+		} else {
+			signingMethod = jwt.SigningMethodRS256
+			file, err := os.Open(*privKeyFile)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "could not open private key file:", err)
+				return
+			}
+			keyBytes, err := io.ReadAll(file)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "could not load private key file:", err)
+				return
+			}
+			parsedKey, err := ssh.ParseRawPrivateKey(keyBytes)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
+				return
+			}
+	
+			rsaKey := parsedKey.(crypto.PrivateKey).(*rsa.PrivateKey)
+			key = rsaKey
+		}
+		token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
 			"iss": username,
 			"iat": jwt.NewNumericDate(time.Now()),
 			"exp": jwt.NewNumericDate(time.Now().Add(10*time.Second)),
@@ -497,9 +549,9 @@ func main() {
 			"client_id": fmt.Sprintf("ssh3-%s", username),
 			"jti": b64ConvID,
 		})
-		signedString, err := token.SignedString(rsaKey)
+		signedString, err = token.SignedString(key)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
+			fmt.Fprintln(os.Stderr, "could not sign token:", err)
 			return
 		}
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
