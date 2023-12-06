@@ -6,11 +6,8 @@ import (
 	// "context"
 	"bytes"
 	"context"
-	"crypto"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -35,7 +32,6 @@ import (
 	ssh3Messages "ssh3/src/message"
 	"ssh3/src/util"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog"
@@ -202,7 +198,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				switch quicErr := errWrite.(type) {
 				case *quic.StreamError:
 					if quicErr.Remote && quicErr.ErrorCode == 42 {
-						log.Info().Msgf("writing was canceled by the remote, closing the socket", errWrite)
+						log.Info().Msgf("writing was canceled by the remote, closing the socket: %s", errWrite)
 					} else {
 						log.Error().Msgf("unhandled quic stream error: %+v", quicErr)
 					}
@@ -241,12 +237,27 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 	return localPort, remoteIP, remotePort, err
 }
 
+
+type passwordMethod struct{}
+type oidcMethod struct {
+	issuerUrl string
+	doPKCE 	  bool
+	config    auth.OIDCConfig
+}
+type privkeyFileMethod struct {
+	filename  string
+}
+type agentMethod struct {
+	pubkey *agent.Key
+}
+
 func main() {
 	// verbose := flag.Bool("v", false, "verbose")
 	// quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "key log file")
 	privKeyFile := flag.String("privkey", "", "private key file")
-	useAgent := flag.String("use-agent", "", "if set, uses the running SSH agent to perform pubkey auth and use key whose public key matches the one in the specified path")
+	useAgent := flag.Bool("use-agent", false, "if set, uses the running SSH agent to perform pubkey")
+	pubkeyForAgent := flag.String("pubkey-for-agent", "", "(implies -use-agent) if set, use an agent key whose public key matches the one in the specified path")
 	passwordAuthentication := flag.Bool("use-password", false, "do classical password authentication")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
 	addRootCA := flag.String("add-root-ca", "", "add root CA from specified path")
@@ -261,7 +272,7 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 
-	addr := args[0]
+	host := args[0]
 	command := args[1:]
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -328,7 +339,7 @@ func main() {
 	var err error = nil
 	var oidcConfig *auth.OIDCConfig = nil
 	var oidcConfigFile *os.File = nil
-	if *privKeyFile == "" && *useAgent == "" && !*passwordAuthentication && *oidcConfigFileName == "" {
+	if *privKeyFile == "" && *useAgent == false && !*passwordAuthentication && *oidcConfigFileName == "" {
 		defaultFileName := "/etc/ssh3/oidc_config.json"
 		oidcConfigFile, err = os.Open(defaultFileName)
 		if err != nil {
@@ -401,20 +412,20 @@ func main() {
 
 	defer roundTripper.Close()
 
-	log.Printf("GET %s", addr)
-	parsedUrl, err := url.Parse(addr)
+	log.Printf("GET %s", host)
+	parsedUrl, err := url.Parse(host)
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
 
-	host, port := parsedUrl.Hostname(), parsedUrl.Port()
+	hostname, port := parsedUrl.Hostname(), parsedUrl.Port()
 	if port == "" {
 		port = "443"
 	}
-	log.Debug().Msgf("dialing host at %s", fmt.Sprintf("%s:%s", host, port))
+	log.Debug().Msgf("dialing host at %s", fmt.Sprintf("%s:%s", hostname, port))
 	
 	qClient, err := quic.DialAddrEarly(ctx,
-		fmt.Sprintf("%s:%s", host, port),
+		fmt.Sprintf("%s:%s", hostname, port),
 		tlsConf,
 		&qconf)
 	if err != nil {
@@ -441,12 +452,9 @@ func main() {
 		return
 	}
 
-	convID := conv.ConversationID()
-	b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
-
 	// the connection struct is created, not build the request used to establish the connection
 
-	req, err := http.NewRequest("CONNECT", addr, nil)
+	req, err := http.NewRequest("CONNECT", host, nil)
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
@@ -456,106 +464,105 @@ func main() {
 	if username == "" {
 		username = parsedUrl.Query().Get("user")
 	}
-	parsedUrl.Query().Get("user")
-	if *passwordAuthentication || (oidcConfig == nil && *privKeyFile == "" && *useAgent == "") {
-		fmt.Printf("password for %s:", parsedUrl.String())
-		password, err := term.ReadPassword(int(syscall.Stdin))
-	
-		if err != nil {
-			fmt.Fprintf(os.Stdin, "could not get password\n")
-			return
-		}
-		req.SetBasicAuth(username, string(password))
-	} else if oidcConfig != nil {
-		token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
-		if err != nil {
-			log.Error().Msgf("could not get token: %s", err)
-			return
-		}
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	} else if *privKeyFile != "" || *useAgent != "" {
-		var signedString string
-		var signingMethod jwt.SigningMethod
-		var key interface{}
-		if *useAgent != "" {
-			pubKeyBytes, err := os.ReadFile(*useAgent)
+
+	var identityMethods []interface{}
+	if *privKeyFile != "" {
+		identityMethods = append(identityMethods, privkeyFileMethod {
+			filename: *privKeyFile,
+		})
+	}
+	if *useAgent || *pubkeyForAgent != "" {
+		var pubkey ssh.PublicKey = nil
+		if *pubkeyForAgent != "" {
+			pubKeyBytes, err := os.ReadFile(*pubkeyForAgent)
 			if err != nil {
 				log.Error().Msgf("could not load public key file: %s", err)
 				return
 			}
-			log.Debug().Msgf("read: %s", pubKeyBytes)
-			pubKey, _, _, _, err := ssh.ParseAuthorizedKey(pubKeyBytes)
+			pubkey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
 			if err != nil {
 				log.Error().Msgf("could not parse public key: %s", err)
 				return
 			}
-			socket := os.Getenv("SSH_AUTH_SOCK")
-			conn, err := net.Dial("unix", socket)
-			if err != nil {
-				log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %v", err)
-				return
-			}
-
-			agentClient := agent.NewClient(conn)
-			keys, err := agentClient.List()
-			for _, candidateKey := range keys {
-				if bytes.Equal(candidateKey.Marshal(), pubKey.Marshal()) {
-					log.Debug().Msgf("found key in agent: %s", candidateKey)
-					key = candidateKey
-					break
-				}
-			}
-			if key == nil {
-				log.Error().Msgf("did not find specified agent key")
-				return
-			}
-
-			signingMethod = &util.AgentSigningMethod{
-				Agent: agentClient,
-				Key: key.(*agent.Key),
-			}
-
-			if err != nil {
-				log.Error().Msgf("error when listing agent keys: %s", err)
-				return
-			}
-		} else {
-			signingMethod = jwt.SigningMethodRS256
-			file, err := os.Open(*privKeyFile)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "could not open private key file:", err)
-				return
-			}
-			keyBytes, err := io.ReadAll(file)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "could not load private key file:", err)
-				return
-			}
-			parsedKey, err := ssh.ParseRawPrivateKey(keyBytes)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "could not parse private key file:", err)
-				return
-			}
-	
-			rsaKey := parsedKey.(crypto.PrivateKey).(*rsa.PrivateKey)
-			key = rsaKey
 		}
-		token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
-			"iss": username,
-			"iat": jwt.NewNumericDate(time.Now()),
-			"exp": jwt.NewNumericDate(time.Now().Add(10*time.Second)),
-			"sub": "ssh3",
-			"aud": "unused",
-			"client_id": fmt.Sprintf("ssh3-%s", username),
-			"jti": b64ConvID,
-		})
-		signedString, err = token.SignedString(key)
+
+		socket := os.Getenv("SSH_AUTH_SOCK")
+		conn, err := net.Dial("unix", socket)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "could not sign token:", err)
+			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %v", err)
 			return
 		}
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", signedString))
+
+		agentClient := agent.NewClient(conn)
+		keys, err := agentClient.List()
+		for _, candidateKey := range keys {
+			if pubkey == nil || bytes.Equal(candidateKey.Marshal(), pubkey.Marshal()) {
+				log.Debug().Msgf("found key in agent: %s", candidateKey)
+				identityMethods = append(identityMethods, agentMethod{
+					pubkey: candidateKey,
+				}) 
+			}
+		}
 	}
+	if *passwordAuthentication {
+		identityMethods = append(identityMethods, passwordMethod{})
+	}
+	if oidcConfig != nil {
+		identityMethods = append(identityMethods, oidcMethod {
+				issuerUrl: *issuerUrl,
+				doPKCE: *doPKCE,
+				config: *oidcConfig,
+			})
+	}
+
+	var identity ssh3.Identity
+	for _, method := range identityMethods {
+		switch m := method.(type) {
+		case passwordMethod:
+			fmt.Printf("password for %s:", parsedUrl.String())
+			password, err := term.ReadPassword(int(syscall.Stdin))
+			fmt.Println()
+			if err != nil {
+				log.Error().Msgf("could not get password: %s", err)
+				return
+			}
+			identity = ssh3.PasswordIdentity(password)
+		case privkeyFileMethod:
+			identity, err = ssh3.NewPrivKeyFileIdentity(m.filename, nil)
+			if _, ok := err.(*ssh.PassphraseMissingError); ok {
+				fmt.Printf("passphrase for private key stored in %s:", m.filename)
+				var passphraseBytes []byte
+				passphraseBytes, err = term.ReadPassword(int(syscall.Stdin))
+				fmt.Println()
+				if err != nil {
+					log.Error().Msgf("could not get passphrase: %s", err)
+					return
+				}
+				passphrase := string(passphraseBytes)
+				identity, err = ssh3.NewPrivKeyFileIdentity(m.filename, &passphrase)
+			}
+			if err != nil {
+				log.Error().Msgf("could not load private key: %s", err)
+				return
+			}
+		case oidcMethod:
+			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
+			if err != nil {
+				log.Error().Msgf("could not get token: %s", err)
+				return
+			}
+			identity = ssh3.RawBearerTokenIdentity(token)
+		}
+		// currently only tries a single identity (the first one), but the goal is to
+		// try all identities, similarly to OpenSSH
+		break
+	}
+
+	err = identity.SetAuthorizationHeader(req, username, conv)
+	if err != nil {
+		log.Error().Msgf("could not set authorization header in HTTP request: %s", err)
+	}
+
 
 	log.Debug().Msgf("send CONNECT request to the server")
 	err = conv.EstablishClientConversation(req, roundTripper)
