@@ -4,6 +4,7 @@ import (
 	// "bufio"
 	// "bytes"
 	// "context"
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rsa"
@@ -245,6 +246,7 @@ func main() {
 	// quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "key log file")
 	privKeyFile := flag.String("privkey", "", "private key file")
+	useAgent := flag.String("use-agent", "", "if set, uses the running SSH agent to perform pubkey auth and use key whose public key matches the one in the specified path")
 	passwordAuthentication := flag.Bool("use-password", false, "do classical password authentication")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
 	addRootCA := flag.String("add-root-ca", "", "add root CA from specified path")
@@ -255,7 +257,6 @@ func main() {
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	forwardUDP := flag.String("forward-udp", "", "if set, takes a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, takes a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
-	useAgent := flag.String("use-agent", "", "if set, uses the running SSH agent to perform pubkey auth and use key whose comment matches the provided string")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	args := flag.Args()
@@ -477,6 +478,17 @@ func main() {
 		var signingMethod jwt.SigningMethod
 		var key interface{}
 		if *useAgent != "" {
+			pubKeyBytes, err := os.ReadFile(*useAgent)
+			if err != nil {
+				log.Error().Msgf("could not load public key file: %s", err)
+				return
+			}
+			log.Debug().Msgf("read: %s", pubKeyBytes)
+			pubKey, _, _, _, err := ssh.ParseAuthorizedKey(pubKeyBytes)
+			if err != nil {
+				log.Error().Msgf("could not parse public key: %s", err)
+				return
+			}
 			socket := os.Getenv("SSH_AUTH_SOCK")
 			conn, err := net.Dial("unix", socket)
 			if err != nil {
@@ -487,8 +499,8 @@ func main() {
 			agentClient := agent.NewClient(conn)
 			keys, err := agentClient.List()
 			for _, candidateKey := range keys {
-				if candidateKey.Comment == *useAgent {
-					log.Debug().Msgf("found key %s", candidateKey)
+				if bytes.Equal(candidateKey.Marshal(), pubKey.Marshal()) {
+					log.Debug().Msgf("found key in agent: %s", candidateKey)
 					key = candidateKey
 					break
 				}
