@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"ssh3/src/auth"
 	"ssh3/src/util"
 	"time"
 
@@ -15,23 +16,66 @@ import (
 )
 
 
-// a generic way to generate SSH3 identities to populate the HTTP Authorization header
-type Identity interface {
-	SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error
+type PasswordAuthMethod struct{}
+type OidcAuthMethod struct {
+	issuerUrl string
+	doPKCE    bool
+	config    *auth.OIDCConfig
+}
+type PrivkeyFileAuthMethod struct {
+	filename string
+}
+type AgentAuthMethod struct {
+	pubkey ssh.PublicKey
 }
 
+func NewPasswordAuthMethod() *PasswordAuthMethod {
+	return &PasswordAuthMethod{}
+}
 
-// represents private keys stored in a classical file
-type PrivkeyFileIdentity struct {
-	privkey	crypto.Signer
-	signingMethod jwt.SigningMethod
+func (m *PasswordAuthMethod) IntoIdentity(password string) Identity {
+	return passwordIdentity(password)
+}
+
+func NewOidcAuthMethod(issuerUrl string, doPKCE bool, config *auth.OIDCConfig) *OidcAuthMethod {
+	return &OidcAuthMethod{
+		issuerUrl: issuerUrl,
+		doPKCE:    doPKCE,
+		config:    config,
+	}
+}
+
+func (m *OidcAuthMethod) IntoIdentity(bearerToken string) Identity {
+	return rawBearerTokenIdentity(bearerToken)
+}
+
+func NewPrivkeyFileAuthMethod(filename string) *PrivkeyFileAuthMethod {
+	return &PrivkeyFileAuthMethod{
+		filename: filename,
+	}
+}
+
+func (m *PrivkeyFileAuthMethod) Filename() string {
+	return m.filename
+}
+
+// ToIdentityWithoutPassphrase returns an SSH3 identity stored on the provided path.
+// It supports the same keys as ssh.ParsePrivateKey
+// If the private key is encrypted, it returns an ssh.PassphraseMissingError.
+func (m *PrivkeyFileAuthMethod) IntoIdentityWithoutPassphrase() (Identity, error) {
+	return m.intoIdentity(nil)
 }
 
 // NewPrivKeyFileIdentity returns an SSH3 identity stored on the provided path.
 // It supports the same keys as ssh.ParsePrivateKey
-// If the private key is encrypted, it will return an ssh.PassphraseMissingError.
-func NewPrivKeyFileIdentity(path string, passphrase *string) (*PrivkeyFileIdentity, error) {
-	pemBytes, err := os.ReadFile(path)
+// If the passphrase is wrong, it returns an x509.IncorrectPasswordError.
+func (m *PrivkeyFileAuthMethod) IntoIdentityPassphrase(passphrase string) (Identity, error) {
+	return m.intoIdentity(&passphrase)
+}
+
+func (m *PrivkeyFileAuthMethod) intoIdentity(passphrase *string) (Identity, error) {
+	
+	pemBytes, err := os.ReadFile(m.filename)
 	if err != nil {
 		return nil, err
 	}
@@ -54,13 +98,39 @@ func NewPrivKeyFileIdentity(path string, passphrase *string) (*PrivkeyFileIdenti
 	if err != nil {
 		return nil, err
 	}
-	return &PrivkeyFileIdentity{
-		privkey: cryptoSigner,
+	return &privkeyFileIdentity{
+		privkey:       cryptoSigner,
 		signingMethod: signingMethod,
 	}, nil
 }
 
-func (i *PrivkeyFileIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
+func NewAgentAuthMethod(pubkey ssh.PublicKey) *AgentAuthMethod {
+	return &AgentAuthMethod{
+		pubkey: pubkey,
+	}
+}
+
+// A prerequisite of calling this methiod is that the provided pubkey is explicitly listed by the agent
+// This can be verified beforehand by calling agent.List()
+func (m *AgentAuthMethod) IntoIdentity(agent agent.ExtendedAgent) Identity {
+	return &agentBasedIdentity{
+		pubkey: m.pubkey,
+		agent:  agent,
+	}
+}
+
+// a generic way to generate SSH3 identities to populate the HTTP Authorization header
+type Identity interface {
+	SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error
+}
+
+// represents private keys stored in a classical file
+type privkeyFileIdentity struct {
+	privkey       crypto.Signer
+	signingMethod jwt.SigningMethod
+}
+
+func (i *privkeyFileIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
 	bearerToken, err := buildJWTBearerToken(i.signingMethod, i.privkey, username, conversation)
 	if err != nil {
 		return err
@@ -69,11 +139,9 @@ func (i *PrivkeyFileIdentity) SetAuthorizationHeader(req *http.Request, username
 	return nil
 }
 
-
-
 type agentSigningMethod struct {
 	Agent agent.ExtendedAgent
-	Key *agent.Key
+	Key   ssh.PublicKey
 }
 
 func (m *agentSigningMethod) Verify(signingString string, sig []byte, key interface{}) error {
@@ -102,24 +170,16 @@ func (m *agentSigningMethod) Alg() string {
 	return ""
 }
 
-
 // represents an identity using a running SSH agent
-type AgentBasedIdentity struct {
-	pubkey *agent.Key
-	agent agent.ExtendedAgent
+type agentBasedIdentity struct {
+	pubkey ssh.PublicKey
+	agent  agent.ExtendedAgent
 }
 
-func NewAgentBasedIdentity(agent agent.ExtendedAgent, pubkey *agent.Key) *AgentBasedIdentity {
-	return &AgentBasedIdentity{
-		pubkey: pubkey,
-		agent: agent,
-	}
-}
-
-func (i *AgentBasedIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
+func (i *agentBasedIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
 	signingMethod := &agentSigningMethod{
 		Agent: i.agent,
-		Key: i.pubkey,
+		Key:   i.pubkey,
 	}
 
 	bearerToken, err := buildJWTBearerToken(signingMethod, i.pubkey, username, conversation)
@@ -130,15 +190,16 @@ func (i *AgentBasedIdentity) SetAuthorizationHeader(req *http.Request, username 
 	return nil
 }
 
-type PasswordIdentity string
+type passwordIdentity string
 
-func (i PasswordIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
+func (i passwordIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
 	req.SetBasicAuth(username, string(i))
 	return nil
 }
 
-type RawBearerTokenIdentity string
-func (i RawBearerTokenIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
+type rawBearerTokenIdentity string
+
+func (i rawBearerTokenIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", string(i)))
 	return nil
 }
@@ -147,13 +208,13 @@ func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, usern
 	convID := conversation.ConversationID()
 	b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
 	token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
-		"iss": username,
-		"iat": jwt.NewNumericDate(time.Now()),
-		"exp": jwt.NewNumericDate(time.Now().Add(10*time.Second)),
-		"sub": "ssh3",
-		"aud": "unused",
+		"iss":       username,
+		"iat":       jwt.NewNumericDate(time.Now()),
+		"exp":       jwt.NewNumericDate(time.Now().Add(10 * time.Second)),
+		"sub":       "ssh3",
+		"aud":       "unused",
 		"client_id": fmt.Sprintf("ssh3-%s", username),
-		"jti": b64ConvID,
+		"jti":       b64ConvID,
 	})
 
 	// the jwt lib handles "any kind" of crypto signer

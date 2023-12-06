@@ -38,12 +38,11 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-
 type windowSize struct {
-    NRows    uint16
-    NCols    uint16
-    PixelWidth uint16
-    PixelHeight uint16
+	NRows       uint16
+	NCols       uint16
+	PixelWidth  uint16
+	PixelHeight uint16
 }
 
 func getWinsize() (windowSize, error) {
@@ -135,8 +134,6 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	}
 }
 
-
-
 func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
 	go func() {
 		defer conn.CloseWrite()
@@ -214,7 +211,6 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 }
 
-
 func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort int, err error) {
 	array := strings.Split(addrPort, "/")
 	localPort, err = strconv.Atoi(array[0])
@@ -235,20 +231,6 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 		return 0, nil, 0, fmt.Errorf("UDP port too large %d", remotePort)
 	}
 	return localPort, remoteIP, remotePort, err
-}
-
-
-type passwordMethod struct{}
-type oidcMethod struct {
-	issuerUrl string
-	doPKCE 	  bool
-	config    auth.OIDCConfig
-}
-type privkeyFileMethod struct {
-	filename  string
-}
-type agentMethod struct {
-	pubkey *agent.Key
 }
 
 func main() {
@@ -292,17 +274,17 @@ func main() {
 			log.Error().Msgf("UDP forwarding parsing error %s", err)
 		}
 		remoteUDPAddr = &net.UDPAddr{
-			IP: remoteIP,
+			IP:   remoteIP,
 			Port: remotePort,
 		}
 		if remoteIP.To4() != nil {
 			localUDPAddr = &net.UDPAddr{
-				IP: net.IPv4(127, 0, 0, 1),
+				IP:   net.IPv4(127, 0, 0, 1),
 				Port: localPort,
 			}
 		} else if remoteIP.To16() != nil {
 			localUDPAddr = &net.UDPAddr{
-				IP: net.IPv6loopback,
+				IP:   net.IPv6loopback,
 				Port: localPort,
 			}
 		} else {
@@ -316,17 +298,17 @@ func main() {
 			log.Error().Msgf("UDP forwarding parsing error %s", err)
 		}
 		remoteTCPAddr = &net.TCPAddr{
-			IP: remoteIP,
+			IP:   remoteIP,
 			Port: remotePort,
 		}
 		if remoteIP.To4() != nil {
 			localTCPAddr = &net.TCPAddr{
-				IP: net.IPv4(127, 0, 0, 1),
+				IP:   net.IPv4(127, 0, 0, 1),
 				Port: localPort,
 			}
 		} else if remoteIP.To16() != nil {
 			localTCPAddr = &net.TCPAddr{
-				IP: net.IPv6loopback,
+				IP:   net.IPv6loopback,
 				Port: localPort,
 			}
 		} else {
@@ -397,18 +379,17 @@ func main() {
 		RootCAs:            pool,
 		InsecureSkipVerify: *insecure,
 		KeyLogWriter:       keyLog,
-		NextProtos: []string{http3.NextProtoH3},
+		NextProtos:         []string{http3.NextProtoH3},
 	}
 
-	qconf.KeepAlivePeriod = 1*time.Second
+	qconf.KeepAlivePeriod = 1 * time.Second
 	roundTripper := &http3.RoundTripper{
 		TLSClientConfig: tlsConf,
-		QuicConfig: &qconf,
+		QuicConfig:      &qconf,
 		EnableDatagrams: true,
 	}
 
 	ctx, _ := context.WithCancelCause(context.Background())
-
 
 	defer roundTripper.Close()
 
@@ -423,7 +404,7 @@ func main() {
 		port = "443"
 	}
 	log.Debug().Msgf("dialing host at %s", fmt.Sprintf("%s:%s", hostname, port))
-	
+
 	qClient, err := quic.DialAddrEarly(ctx,
 		fmt.Sprintf("%s:%s", hostname, port),
 		tlsConf,
@@ -432,7 +413,6 @@ func main() {
 		log.Error().Msgf("could not create client QUIC connection: %s", err)
 		return
 	}
-
 
 	// dirty hack: ensure only one QUIC connection is used
 	roundTripper.Dial = func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
@@ -467,10 +447,30 @@ func main() {
 
 	var identityMethods []interface{}
 	if *privKeyFile != "" {
-		identityMethods = append(identityMethods, privkeyFileMethod {
-			filename: *privKeyFile,
-		})
+		identityMethods = append(identityMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
 	}
+
+	var agentClient agent.ExtendedAgent
+	var agentKeys []ssh.PublicKey
+
+	socketPath := os.Getenv("SSH_AUTH_SOCK")
+	if socketPath != "" {
+		conn, err := net.Dial("unix", socketPath)
+		if err != nil {
+			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
+			return
+		}
+		agentClient = agent.NewClient(conn)
+		keys, err := agentClient.List()
+		if err != nil {
+			log.Error().Msgf("Failed to list agent keys: %s", err)
+			return
+		}
+		for _, key := range keys {
+			agentKeys = append(agentKeys, key)
+		}
+	}
+
 	if *useAgent || *pubkeyForAgent != "" {
 		var pubkey ssh.PublicKey = nil
 		if *pubkeyForAgent != "" {
@@ -486,39 +486,25 @@ func main() {
 			}
 		}
 
-		socket := os.Getenv("SSH_AUTH_SOCK")
-		conn, err := net.Dial("unix", socket)
-		if err != nil {
-			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %v", err)
-			return
-		}
-
-		agentClient := agent.NewClient(conn)
-		keys, err := agentClient.List()
-		for _, candidateKey := range keys {
+		for _, candidateKey := range agentKeys {
 			if pubkey == nil || bytes.Equal(candidateKey.Marshal(), pubkey.Marshal()) {
 				log.Debug().Msgf("found key in agent: %s", candidateKey)
-				identityMethods = append(identityMethods, agentMethod{
-					pubkey: candidateKey,
-				}) 
+				identityMethods = append(identityMethods, ssh3.NewAgentAuthMethod(candidateKey))
 			}
 		}
 	}
 	if *passwordAuthentication {
-		identityMethods = append(identityMethods, passwordMethod{})
+		identityMethods = append(identityMethods, ssh3.NewPasswordAuthMethod())
 	}
+
 	if oidcConfig != nil {
-		identityMethods = append(identityMethods, oidcMethod {
-				issuerUrl: *issuerUrl,
-				doPKCE: *doPKCE,
-				config: *oidcConfig,
-			})
+		identityMethods = append(identityMethods, ssh3.NewOidcAuthMethod(*issuerUrl, *doPKCE, oidcConfig))
 	}
 
 	var identity ssh3.Identity
 	for _, method := range identityMethods {
 		switch m := method.(type) {
-		case passwordMethod:
+		case *ssh3.PasswordAuthMethod:
 			fmt.Printf("password for %s:", parsedUrl.String())
 			password, err := term.ReadPassword(int(syscall.Stdin))
 			fmt.Println()
@@ -526,43 +512,77 @@ func main() {
 				log.Error().Msgf("could not get password: %s", err)
 				return
 			}
-			identity = ssh3.PasswordIdentity(password)
-		case privkeyFileMethod:
-			identity, err = ssh3.NewPrivKeyFileIdentity(m.filename, nil)
-			if _, ok := err.(*ssh.PassphraseMissingError); ok {
-				fmt.Printf("passphrase for private key stored in %s:", m.filename)
-				var passphraseBytes []byte
-				passphraseBytes, err = term.ReadPassword(int(syscall.Stdin))
-				fmt.Println()
-				if err != nil {
-					log.Error().Msgf("could not get passphrase: %s", err)
-					return
+			identity = m.IntoIdentity(string(password))
+		case *ssh3.PrivkeyFileAuthMethod:
+			identity, err = m.IntoIdentityWithoutPassphrase()
+			// could not identify without passphrase, try agent authentication by using the key's public key
+			if passphraseErr, ok := err.(*ssh.PassphraseMissingError); ok {
+				// the pubkey may be contained in the privkey file
+				pubkey := passphraseErr.PublicKey
+				if pubkey == nil {
+					// if it is not the case, try to find a .pub equivalent, like OpenSSH does
+					pubkeyBytes, err := os.ReadFile(fmt.Sprintf("%s.pub", m.Filename()))
+					if err == nil {
+						filePubkey, _, _, _, err := ssh.ParseAuthorizedKey(pubkeyBytes)
+						if err == nil {
+							pubkey = filePubkey
+						}
+					}
 				}
-				passphrase := string(passphraseBytes)
-				identity, err = ssh3.NewPrivKeyFileIdentity(m.filename, &passphrase)
+
+				// now, try to see of the agent manages this key
+				foundAgentKey := false
+				if pubkey != nil {
+					for _, agentKey := range agentKeys {
+						if bytes.Equal(agentKey.Marshal(), pubkey.Marshal()) {
+							log.Debug().Msgf("found key in agent: %s", agentKey)
+							identity = ssh3.NewAgentAuthMethod(pubkey).IntoIdentity(agentClient)
+							foundAgentKey = true
+							break
+						}
+					}
+				}
+
+				// key not handled by agent, let's try to decrypt it ourselves
+				if !foundAgentKey {
+					fmt.Printf("passphrase for private key stored in %s:", m.Filename())
+					var passphraseBytes []byte
+					passphraseBytes, err = term.ReadPassword(int(syscall.Stdin))
+					fmt.Println()
+					if err != nil {
+						log.Error().Msgf("could not get passphrase: %s", err)
+						return
+					}
+					passphrase := string(passphraseBytes)
+					identity, err = m.IntoIdentityPassphrase(passphrase)
+					if err != nil {
+						log.Error().Msgf("could not load private key: %s", err)
+						return
+					}
+				}
 			}
-			if err != nil {
-				log.Error().Msgf("could not load private key: %s", err)
-				return
-			}
-		case oidcMethod:
+		case *ssh3.OidcAuthMethod:
 			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
 			if err != nil {
 				log.Error().Msgf("could not get token: %s", err)
 				return
 			}
-			identity = ssh3.RawBearerTokenIdentity(token)
+			identity = m.IntoIdentity(token)
 		}
 		// currently only tries a single identity (the first one), but the goal is to
 		// try all identities, similarly to OpenSSH
 		break
 	}
 
+	if identity == nil {
+		log.Error().Msg("no suitable identity found")
+		return
+	}
+
 	err = identity.SetAuthorizationHeader(req, username, conv)
 	if err != nil {
 		log.Error().Msgf("could not set authorization header in HTTP request: %s", err)
 	}
-
 
 	log.Debug().Msgf("send CONNECT request to the server")
 	err = conv.EstablishClientConversation(req, roundTripper)
@@ -578,7 +598,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Could not open channel: %+v", err)
 		os.Exit(-1)
 	}
-	
+
 	log.Debug().Msgf("opened new session channel")
 
 	if *forwardSSHAgent {
@@ -625,25 +645,25 @@ func main() {
 				&ssh3Messages.ChannelRequestMessage{
 					WantReply: true,
 					ChannelRequest: &ssh3Messages.PtyRequest{
-						Term: os.Getenv("TERM"),
-						CharWidth: uint64(windowSize.NCols),
-						CharHeight: uint64(windowSize.NRows),
-						PixelWidth: uint64(windowSize.PixelWidth),
+						Term:        os.Getenv("TERM"),
+						CharWidth:   uint64(windowSize.NCols),
+						CharHeight:  uint64(windowSize.NRows),
+						PixelWidth:  uint64(windowSize.PixelWidth),
 						PixelHeight: uint64(windowSize.PixelHeight),
 					},
 				},
 			)
-		
+
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
 				return
 			}
 			log.Debug().Msgf("sent pty request for session")
 		}
-	
+
 		err = channel.SendRequest(
 			&ssh3Messages.ChannelRequestMessage{
-				WantReply: true,
+				WantReply:      true,
 				ChannelRequest: &ssh3Messages.ShellRequest{},
 			},
 		)
@@ -692,7 +712,7 @@ func main() {
 			}
 		}
 	}()
-	
+
 	if localUDPAddr != nil && remoteUDPAddr != nil {
 		log.Debug().Msgf("start forwarding from %s to %s", localUDPAddr, remoteUDPAddr)
 		conn, err := net.ListenUDP("udp", localUDPAddr)
@@ -741,7 +761,7 @@ func main() {
 			}
 		}()
 	}
-	
+
 	if localTCPAddr != nil && remoteTCPAddr != nil {
 		log.Debug().Msgf("start forwarding from %s to %s", localTCPAddr, remoteTCPAddr)
 		conn, err := net.ListenTCP("tcp", localTCPAddr)
@@ -768,7 +788,6 @@ func main() {
 
 	defer conv.Close()
 	defer fmt.Printf("\r")
-	
 
 	for {
 		genericMessage, err := channel.NextMessage()
@@ -779,26 +798,26 @@ func main() {
 		switch message := genericMessage.(type) {
 		case *ssh3Messages.ChannelRequestMessage:
 			switch requestMessage := message.ChannelRequest.(type) {
-				case *ssh3Messages.PtyRequest:
-					fmt.Fprintf(os.Stderr, "pty request not implemented\n")
-				case *ssh3Messages.X11Request:
-					fmt.Fprintf(os.Stderr, "x11 request not implemented\n")
-				case *ssh3Messages.ShellRequest:
-					fmt.Fprintf(os.Stderr, "shell request not implemented\n")
-				case *ssh3Messages.ExecRequest:
-					fmt.Fprintf(os.Stderr, "exec request not implemented\n")
-				case *ssh3Messages.SubsystemRequest:
-					fmt.Fprintf(os.Stderr, "subsystem request not implemented\n")
-				case *ssh3Messages.WindowChangeRequest:
-					fmt.Fprintf(os.Stderr, "windowchange request not implemented\n")
-				case *ssh3Messages.SignalRequest:
-					fmt.Fprintf(os.Stderr, "signal request not implemented\n")
-				case *ssh3Messages.ExitStatusRequest:
-					log.Info().Msgf("ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
-					return
-				case *ssh3Messages.ExitSignalRequest:
-					log.Info().Msgf("ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
-					return
+			case *ssh3Messages.PtyRequest:
+				fmt.Fprintf(os.Stderr, "pty request not implemented\n")
+			case *ssh3Messages.X11Request:
+				fmt.Fprintf(os.Stderr, "x11 request not implemented\n")
+			case *ssh3Messages.ShellRequest:
+				fmt.Fprintf(os.Stderr, "shell request not implemented\n")
+			case *ssh3Messages.ExecRequest:
+				fmt.Fprintf(os.Stderr, "exec request not implemented\n")
+			case *ssh3Messages.SubsystemRequest:
+				fmt.Fprintf(os.Stderr, "subsystem request not implemented\n")
+			case *ssh3Messages.WindowChangeRequest:
+				fmt.Fprintf(os.Stderr, "windowchange request not implemented\n")
+			case *ssh3Messages.SignalRequest:
+				fmt.Fprintf(os.Stderr, "signal request not implemented\n")
+			case *ssh3Messages.ExitStatusRequest:
+				log.Info().Msgf("ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
+				return
+			case *ssh3Messages.ExitSignalRequest:
+				log.Info().Msgf("ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
+				return
 			}
 		case *ssh3Messages.DataOrExtendedDataMessage:
 			switch message.DataType {
@@ -821,4 +840,3 @@ func main() {
 	}
 
 }
-
