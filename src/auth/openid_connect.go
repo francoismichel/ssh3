@@ -15,7 +15,9 @@ import (
 	"golang.org/x/oauth2"
 )
 
+type OIDCIssuerConfig = []*OIDCConfig
 type OIDCConfig struct {
+	IssuerUrl string `json:"issuer_url"`
 	ClientID string  `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 }

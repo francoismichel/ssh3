@@ -21,10 +21,14 @@ import (
 
 type PasswordAuthMethod struct{}
 type OidcAuthMethod struct {
-	issuerUrl string
 	doPKCE    bool
 	config    *auth.OIDCConfig
 }
+
+func (m *OidcAuthMethod) OIDCConfig() *auth.OIDCConfig {
+	return m.config
+}
+
 type PrivkeyFileAuthMethod struct {
 	filename string
 }
@@ -40,9 +44,8 @@ func (m *PasswordAuthMethod) IntoIdentity(password string) Identity {
 	return passwordIdentity(password)
 }
 
-func NewOidcAuthMethod(issuerUrl string, doPKCE bool, config *auth.OIDCConfig) *OidcAuthMethod {
+func NewOidcAuthMethod(doPKCE bool, config *auth.OIDCConfig) *OidcAuthMethod {
 	return &OidcAuthMethod{
-		issuerUrl: issuerUrl,
 		doPKCE:    doPKCE,
 		config:    config,
 	}
@@ -125,6 +128,8 @@ func (m *AgentAuthMethod) IntoIdentity(agent agent.ExtendedAgent) Identity {
 // a generic way to generate SSH3 identities to populate the HTTP Authorization header
 type Identity interface {
 	SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error
+	// provides an authentication name that can be used as a hint for the server in the url query params
+	AuthHint() string
 }
 
 // represents private keys stored in a classical file
@@ -141,6 +146,11 @@ func (i *privkeyFileIdentity) SetAuthorizationHeader(req *http.Request, username
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
 	return nil
 }
+
+func (i *privkeyFileIdentity) AuthHint() string {
+	return "pubkey"
+}
+
 
 type agentSigningMethod struct {
 	Agent agent.ExtendedAgent
@@ -193,6 +203,10 @@ func (i *agentBasedIdentity) SetAuthorizationHeader(req *http.Request, username 
 	return nil
 }
 
+func (i *agentBasedIdentity) AuthHint() string {
+	return "pubkey"
+}
+
 type passwordIdentity string
 
 func (i passwordIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
@@ -200,11 +214,20 @@ func (i passwordIdentity) SetAuthorizationHeader(req *http.Request, username str
 	return nil
 }
 
+func (i passwordIdentity) AuthHint() string {
+	return "password"
+}
+
+
 type rawBearerTokenIdentity string
 
 func (i rawBearerTokenIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", string(i)))
 	return nil
+}
+
+func (i rawBearerTokenIdentity) AuthHint() string {
+	return "jwt"
 }
 
 
