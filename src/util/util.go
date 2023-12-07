@@ -2,6 +2,9 @@ package util
 
 import (
 	"context"
+	"crypto"
+	"crypto/ed25519"
+	"crypto/rsa"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,10 +13,17 @@ import (
 	"syscall"
 
 	ptylib "github.com/creack/pty"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 )
+
+type UnknownSSHPubkeyType struct {
+	pubkey crypto.PublicKey
+}
+
+func (m UnknownSSHPubkeyType) Error() string {
+	return fmt.Sprintf("unknown signing method: %T", m.pubkey)
+}
 
 // copied and adapted from github.com/creack/pty
 // StartWithAttrs assigns a pseudo-terminal tty os.File to c.Stdin, c.Stdout,
@@ -197,33 +207,12 @@ func (q *DatagramsQueue) WaitNext(ctx context.Context) ([]byte, error) {
 	}
 }
 
-type AgentSigningMethod struct {
-	Agent agent.ExtendedAgent
-	Key *agent.Key
-}
-
-func (m *AgentSigningMethod) Verify(signingString string, sig []byte, key interface{}) error {
-	panic("not implemented")
-}
-
-func (m *AgentSigningMethod) Sign(signingString string, key interface{}) ([]byte, error) {
-	pk, ok := key.(ssh.PublicKey)
-	if !ok {
-		return nil, fmt.Errorf("bad key type: %T instead of ssh.PublicKey", pk)
+func JWTSigningMethodFromCryptoPubkey(pubkey crypto.PublicKey) (jwt.SigningMethod, error) {
+	switch pubkey.(type) {
+	case *rsa.PublicKey:
+		return jwt.SigningMethodRS256, nil
+	case *ed25519.PublicKey:
+		return jwt.SigningMethodEdDSA, nil
 	}
-	signature, err := m.Agent.SignWithFlags(pk, []byte(signingString), agent.SignatureFlagRsaSha256)
-	if err != nil {
-		return nil, err
-	}
-	return signature.Blob, nil
-}
-
-func (m *AgentSigningMethod) Alg() string {
-	switch m.Key.Type() {
-	case "ssh-rsa":
-		return "RS256"
-	case "ssh-ed25519":
-		return "EdDSA"
-	}
-	return ""
+	return nil, UnknownSSHPubkeyType{pubkey: pubkey}
 }
