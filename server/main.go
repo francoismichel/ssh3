@@ -29,7 +29,6 @@ import (
 	// "github.com/quic-go/quic-go/logging"
 	// "github.com/quic-go/quic-go/qlog"
 
-	testdata "ssh3"
 	ssh3 "ssh3/src"
 	"ssh3/src/linux_server"
 	ssh3Messages "ssh3/src/message"
@@ -675,6 +674,11 @@ func openAgentSocketAndForwardAgent(parent context.Context, conv *ssh3.Conversat
 	return sockPath, nil
 }
 
+// GetCertificatePaths returns the paths to certificate and key
+func GetCertificatePaths() (string, string) {
+	return "cert.pem", "priv.key"
+}
+
 func main() {
 	bs := binds{}
 	flag.Var(&bs, "bind", "bind to")
@@ -721,7 +725,7 @@ func main() {
 				QuicConfig:      quicConf,
 				EnableDatagrams: true,
 			}
-			certFile, keyFile := testdata.GetCertificatePaths()
+			certFile, keyFile := GetCertificatePaths()
 
 			mux := http.NewServeMux()
 			ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
