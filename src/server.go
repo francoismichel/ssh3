@@ -3,9 +3,9 @@ package ssh3
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
 
 	"github.com/quic-go/quic-go"
@@ -41,7 +41,7 @@ func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *
 			return false, err
 		}
 		if frameType != SSH_FRAME_TYPE {
-			fmt.Println("bad frame type:", frameType)
+			log.Error().Msgf("bad HTTP frame type: %d", frameType)
 			return false, nil
 		}
 
@@ -130,7 +130,7 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
 			hijacker, ok := w.(http3.Hijacker)
 			if !ok { // should never happen, unless quic-go change their API
-				fmt.Fprintf(os.Stderr, "failed to hijack")
+				log.Error().Msg("failed to hijack HTTP conversation: is it an HTTP/3 conversation ?")
 				return
 			}
 			streamCreator := hijacker.StreamCreator()
@@ -178,7 +178,11 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 				defer conversationsManager.removeConversation(newConv)
 				defer s.removeConnection(streamCreator)
 				if err := s.conversationHandler(authenticatedUsername, newConv); err != nil {
-					fmt.Fprintf(os.Stderr, "error while handing new conversation: %+v", err)
+					if errors.Is(err, context.Canceled) {
+						log.Info().Msgf("conversation canceled for conversation id %s, user %s", newConv.ConversationID(), authenticatedUsername)
+					} else {
+						log.Error().Msgf("error while handing new conversation: %s for user %s: %s", newConv.ConversationID(), authenticatedUsername, err)
+					}
 					return
 				}
 			}()

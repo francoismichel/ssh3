@@ -87,6 +87,5 @@ func HandleJWTAuth(username string, newConv *Conversation, handlerFunc Authentic
 
 		// TODO: logging
 		w.WriteHeader(http.StatusUnauthorized)
-		return
 	}
 }
