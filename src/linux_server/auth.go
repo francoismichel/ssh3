@@ -15,6 +15,7 @@ import (
 
 func HandleAuths(ctx context.Context, defaultMaxPacketSize uint64, handlerFunc ssh3.AuthenticatedHandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		defer w.(http.Flusher).Flush()
 		hijacker, ok := w.(http3.Hijacker)
 		if !ok { // should never happen, unless quic-go change their API
 			log.Error().Msgf("failed to hijack")
