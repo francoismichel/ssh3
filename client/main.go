@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -245,7 +246,7 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 	return localPort, remoteIP, remotePort, err
 }
 
-func main() {
+func mainWithStatusCode() int {
 	// verbose := flag.Bool("v", false, "verbose")
 	// quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "key log file")
@@ -304,7 +305,7 @@ func main() {
 			}
 		} else {
 			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
-			return
+			return -1
 		}
 	}
 	if *forwardTCP != "" {
@@ -328,7 +329,7 @@ func main() {
 			}
 		} else {
 			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
-			return
+			return -1
 		}
 	}
 
@@ -360,7 +361,7 @@ func main() {
 		oidcConfigFile, err = os.Open(*oidcConfigFileName)
 		if err != nil {
 			log.Warn().Msgf("could not open %s: %s", *oidcConfigFileName, err.Error())
-			return
+			return -1
 		}
 	}
 
@@ -369,11 +370,11 @@ func main() {
 		data, err := io.ReadAll(oidcConfigFile)
 		if err != nil {
 			log.Error().Msgf("could not read oidc config file: %s", err.Error())
-			return
+			return -1
 		}
 		if err = json.Unmarshal(data, oidcConfig); err != nil {
 			log.Error().Msgf("could not parse oidc config file: %s", err.Error())
-			return
+			return -1
 		}
 	}
 
@@ -432,13 +433,13 @@ func main() {
 		conn, err := net.Dial("unix", socketPath)
 		if err != nil {
 			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
-			return
+			return -1
 		}
 		agentClient = agent.NewClient(conn)
 		keys, err := agentClient.List()
 		if err != nil {
 			log.Error().Msgf("Failed to list agent keys: %s", err)
-			return
+			return -1
 		}
 		for _, key := range keys {
 			agentKeys = append(agentKeys, key)
@@ -459,7 +460,7 @@ func main() {
 	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
 	if err != nil {
 		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
-		return
+		return -1
 	}
 
 	hostname := configHostname
@@ -472,7 +473,7 @@ func main() {
 		port, err = strconv.Atoi(urlPort)
 		if err != nil {
 			log.Error().Msgf("invalid port number: %s: %s", urlPort, err)
-			return
+			return -1
 		}
 	}
 
@@ -493,7 +494,7 @@ func main() {
 	}
 	if username == "" {
 		log.Error().Msgf("no username could be found")
-		return
+		return -1
 	}
 
 	urlQuery := parsedUrl.Query()
@@ -509,7 +510,7 @@ func main() {
 		&qconf)
 	if err != nil {
 		log.Error().Msgf("could not create client QUIC connection: %s", err)
-		return
+		return -1
 	}
 
 	// dirty hack: ensure only one QUIC connection is used
@@ -528,7 +529,7 @@ func main() {
 	conv, err := ssh3.NewClientConversation(30000, 10, &tls)
 	if err != nil {
 		log.Error().Msgf("could not create new client conversation: %s", err)
-		return
+		return -1
 	}
 
 	// the connection struct is created, now build the request used to establish the connection
@@ -553,12 +554,12 @@ func main() {
 				pubKeyBytes, err := os.ReadFile(*pubkeyForAgent)
 				if err != nil {
 					log.Error().Msgf("could not load public key file: %s", err)
-					return
+					return -1
 				}
 				pubkey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
 				if err != nil {
 					log.Error().Msgf("could not parse public key: %s", err)
-					return
+					return -1
 				}
 			}
 
@@ -590,7 +591,7 @@ func main() {
 			fmt.Println()
 			if err != nil {
 				log.Error().Msgf("could not get password: %s", err)
-				return
+				return -1
 			}
 			identity = m.IntoIdentity(string(password))
 		case *ssh3.PrivkeyFileAuthMethod:
@@ -631,13 +632,13 @@ func main() {
 					fmt.Println()
 					if err != nil {
 						log.Error().Msgf("could not get passphrase: %s", err)
-						return
+						return -1
 					}
 					passphrase := string(passphraseBytes)
 					identity, err = m.IntoIdentityPassphrase(passphrase)
 					if err != nil {
 						log.Error().Msgf("could not load private key: %s", err)
-						return
+						return -1
 					}
 				}
 			}
@@ -645,7 +646,7 @@ func main() {
 			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
 			if err != nil {
 				log.Error().Msgf("could not get token: %s", err)
-				return
+				return -1
 			}
 			identity = m.IntoIdentity(token)
 		}
@@ -656,7 +657,7 @@ func main() {
 
 	if identity == nil {
 		log.Error().Msg("no suitable identity found")
-		return
+		return -1
 	}
 
 	err = identity.SetAuthorizationHeader(req, username, conv)
@@ -666,9 +667,12 @@ func main() {
 
 	log.Debug().Msgf("send CONNECT request to the server")
 	err = conv.EstablishClientConversation(req, roundTripper)
-	if err != nil {
+	if errors.Is(err, util.Unauthorized{}) {
+		log.Error().Msgf("Access denied from the server: unauthorized")
+		return -1
+	} else if err != nil {
 		log.Error().Msgf("Could not open channel: %+v", err)
-		os.Exit(-1)
+		return -1
 	}
 
 	ctx = conv.Context()
@@ -685,7 +689,7 @@ func main() {
 		_, err := channel.WriteData([]byte("forward-agent"), ssh3Messages.SSH_EXTENDED_DATA_NONE)
 		if err != nil {
 			log.Error().Msgf("could not forward agent: %s", err.Error())
-			return
+			return -1
 		}
 		go func() {
 			for {
@@ -736,7 +740,7 @@ func main() {
 
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Could send pty request: %+v", err)
-				return
+				return -1
 			}
 			log.Debug().Msgf("sent pty request for session")
 		}
@@ -772,7 +776,7 @@ func main() {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could send shell request: %+v", err)
-		return
+		return -1
 	}
 
 	go func() {
@@ -798,7 +802,7 @@ func main() {
 		conn, err := net.ListenUDP("udp", localUDPAddr)
 		if err != nil {
 			log.Error().Msgf("could listen on UDP socket: %s", err)
-			return
+			return -1
 		}
 		forwardings := make(map[string]ssh3.Channel)
 		go func() {
@@ -847,7 +851,7 @@ func main() {
 		conn, err := net.ListenTCP("tcp", localTCPAddr)
 		if err != nil {
 			log.Error().Msgf("could listen on TCP socket: %s", err)
-			return
+			return -1
 		}
 		go func() {
 			for {
@@ -894,10 +898,11 @@ func main() {
 				fmt.Fprintf(os.Stderr, "signal request not implemented\n")
 			case *ssh3Messages.ExitStatusRequest:
 				log.Info().Msgf("ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
-				return
+				// forward the process' status code to the user
+				return int(requestMessage.ExitStatus)
 			case *ssh3Messages.ExitSignalRequest:
 				log.Info().Msgf("ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
-				return
+				return -1
 			}
 		case *ssh3Messages.DataOrExtendedDataMessage:
 			switch message.DataType {
@@ -918,5 +923,8 @@ func main() {
 			}
 		}
 	}
+}
 
+func main() {
+	os.Exit(mainWithStatusCode())
 }

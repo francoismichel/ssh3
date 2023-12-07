@@ -142,8 +142,10 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 			}
 		}()
 		return nil
+	} else if rsp.StatusCode == http.StatusUnauthorized {
+		return util.Unauthorized{}
 	} else {
-		return fmt.Errorf("returned non-200 status code: %d", rsp.StatusCode)
+		return fmt.Errorf("returned non-200 and non-401 status code: %d", rsp.StatusCode)
 	}
 }
 

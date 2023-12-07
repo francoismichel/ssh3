@@ -46,7 +46,13 @@ type InvalidSSHString struct {
 }
 
 func (e InvalidSSHString) Error() string {
-	return fmt.Sprintf("invalid SSH string: %s", e.Reason)
+	return fmt.Sprintf("Invalid SSH string: %s", e.Reason)
+}
+
+type Unauthorized struct {}
+
+func (e Unauthorized) Error() string {
+	return "Unauthorized"
 }
 
 type BytesReadCloser struct {
