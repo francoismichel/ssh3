@@ -470,6 +470,10 @@ func newCommand(user *util.User, channel ssh3.Channel, command string, args ...s
 		cmd, stdoutR, stderrR, stdinW, err = user.CreateCommandPipeOutput(env, command, args...)
 	}
 
+	if err != nil {
+		return err
+	}
+
 	runningCommand := &runningCommand{
 		Cmd:     *cmd,
 		stdoutR: stdoutR,
@@ -683,8 +687,13 @@ func main() {
 	bs := binds{}
 	flag.Var(&bs, "bind", "bind to")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
+	enablePasswordLogin := flag.Bool("enable-password-login", false, "if set, enable password authentication (disabled by default)")
 	urlPath := flag.String("url-path", "/ssh3-term", "the path on which the ssh3 server listens")
 	flag.Parse()
+
+	if !*enablePasswordLogin {
+		fmt.Fprintln(os.Stderr, "password login is currently disabled")
+	}
 
 	if len(bs) == 0 {
 		bs = binds{"localhost:6121"}
@@ -812,7 +821,7 @@ func main() {
 				}
 			})
 			ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
-			mux.HandleFunc(*urlPath, linux_server.HandleAuths(context.Background(), 30000, ssh3Handler))
+			mux.HandleFunc(*urlPath, linux_server.HandleAuths(context.Background(), *enablePasswordLogin, 30000, ssh3Handler))
 			server.Handler = mux
 			err = server.ListenAndServeTLS(certFile, keyFile)
 
