@@ -4,6 +4,7 @@ import (
 	// "bufio"
 	// "context"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -193,7 +194,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 			default:
 			}
 			genericMessage, err := channel.NextMessage()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				log.Info().Msgf("eof on tcp-forwarding channel %d", channel.ChannelID())
 			} else if err != nil {
 				log.Error().Msgf("could get message from tcp forwarding channel: %s", err)
@@ -235,7 +236,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 			default:
 			}
 			n, err := conn.Read(buf)
-			if err != nil && err != io.EOF {
+			if err != nil && !errors.Is(err, io.EOF) {
 				log.Error().Msgf("could read data on TCP socket: %s", err)
 				return
 			}
@@ -253,7 +254,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				}
 				return
 			}
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return
 			}
 		}
@@ -332,13 +333,14 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 					stdoutChan = nil
 				} else {
 					buf, err := stdoutResult.data, stdoutResult.err
+					// an error could be returned but still with relevant data, so first send the data
 					_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_NONE)
 					if err2 != nil {
-						fmt.Fprintf(os.Stderr, "could not write the pty's output in an SSH message: %+v\n", err)
+						log.Error().Msgf("could not write the pty's output in an SSH message: %+v\n", err)
 						return
 					}
-					if err != nil && err != io.EOF {
-						fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
+					if err != nil && !errors.Is(err, io.EOF) {
+						log.Info().Msgf("could not read the pty's output, it might have been closed by the running process: %s", err)
 					}
 				}
 
@@ -350,11 +352,11 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User
 					buf, err := stderrResult.data, stderrResult.err
 					_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_STDERR)
 					if err2 != nil {
-						fmt.Fprintf(os.Stderr, "could not write the pty's output in an SSH message: %+v\n", err)
+						log.Error().Msgf("could not write the pty's output in an SSH message: %+v\n", err)
 						return
 					}
-					if err != nil && err != io.EOF {
-						fmt.Fprintf(os.Stderr, "could not read the pty's output: %+v\n", err)
+					if err != nil && !errors.Is(err, io.EOF) {
+						log.Info().Msgf("could not read the pty's error output, it might have been closed by the running process: %s", err)
 					}
 				}
 
@@ -750,8 +752,11 @@ func main() {
 							defer conv.Close()
 							for {
 								genericMessage, err := channel.NextMessage()
-								if err != nil && err != io.EOF {
-									fmt.Printf("error when getting message: %+v", err)
+								if errors.Is(err, net.ErrClosed) {
+									log.Debug().Msgf("the connection was closed by the application: %s", err)
+									return
+								} else if err != nil && !errors.Is(err, io.EOF) {
+									log.Error().Msgf("error when getting message: %s", err)
 									return
 								}
 								if genericMessage == nil {
@@ -793,7 +798,7 @@ func main() {
 									}
 								}
 								if err != nil {
-									fmt.Fprintf(os.Stderr, "error while processing message: %+v: %+v\n", genericMessage, err)
+									log.Error().Msgf("error while processing message: %+v: %+v\n", genericMessage, err)
 									return
 								}
 							}
@@ -808,7 +813,7 @@ func main() {
 			err = server.ListenAndServeTLS(certFile, keyFile)
 
 			if err != nil {
-				fmt.Println(err)
+				log.Error().Msgf("error while serving HTTP connection: %s", err)
 			}
 			wg.Done()
 		}()

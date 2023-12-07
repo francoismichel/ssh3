@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,7 +17,10 @@ import (
 
 const SSH_FRAME_TYPE = 0xaf3627e6
 
-type ConversationID = [32]byte
+type ConversationID [32]byte
+func (cid ConversationID) String() string {
+	return base64.StdEncoding.EncodeToString(cid[:])
+}
 
 type Conversation struct {
 	controlStream   http3.Stream
