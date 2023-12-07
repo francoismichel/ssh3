@@ -4,6 +4,7 @@ import (
 	// "bufio"
 	// "bytes"
 	// "context"
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -29,7 +30,6 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
-	testdata "ssh3"
 	ssh3 "ssh3/src"
 	"ssh3/src/auth"
 	ssh3Messages "ssh3/src/message"
@@ -255,7 +255,6 @@ func mainWithStatusCode() int {
 	pubkeyForAgent := flag.String("pubkey-for-agent", "", "(implies -use-agent) if set, use an agent key whose public key matches the one in the specified path")
 	passwordAuthentication := flag.Bool("use-password", false, "do classical password authentication")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
-	addRootCA := flag.String("add-root-ca", "", "add root CA from specified path")
 	issuerUrl := flag.String("issuer-url", "https://accounts.google.com", "openid issuer url")
 	oidcConfigFileName := flag.String("oidc-config", "", "oidc json config file containing the \"client_id\" and \"client_secret\" fields")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
@@ -267,11 +266,8 @@ func mainWithStatusCode() int {
 	flag.Parse()
 	args := flag.Args()
 
-	urlFromParam := args[0]
-	if !strings.HasPrefix(urlFromParam, "https://") {
-		urlFromParam = fmt.Sprintf("https://%s", urlFromParam)
-	}
-	command := args[1:]
+	ssh3Dir := path.Join(homedir(), ".ssh3")
+	os.MkdirAll(ssh3Dir, 0700)
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	if *verbose {
@@ -279,6 +275,30 @@ func mainWithStatusCode() int {
 	} else {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
 	}
+
+	knownHostsPath := path.Join(ssh3Dir, "known_hosts")
+	knownHosts, skippedLines, err := ssh3.ParseKnownHosts(knownHostsPath)
+	if len(skippedLines) != 0 {
+		stringSkippedLines := []string{}
+		for _, lineNumber := range skippedLines {
+			stringSkippedLines = append(stringSkippedLines, fmt.Sprintf("%d", lineNumber))
+		}
+		log.Warn().Msgf("the following lines in %s are invalid: %s", knownHostsPath, strings.Join(stringSkippedLines, ", "))
+	}
+	if err != nil {
+		log.Error().Msgf("there was an error when parsing known hosts: %s", err)
+	}
+
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		tty = nil
+	}
+
+	urlFromParam := args[0]
+	if !strings.HasPrefix(urlFromParam, "https://") {
+		urlFromParam = fmt.Sprintf("https://%s", urlFromParam)
+	}
+	command := args[1:]
 
 	var localUDPAddr *net.UDPAddr = nil
 	var remoteUDPAddr *net.UDPAddr = nil
@@ -336,7 +356,7 @@ func mainWithStatusCode() int {
 	var sshConfig *ssh_config.Config
 	var configBytes []byte
 	configPath := path.Join(homedir(), ".ssh", "config")
-	configBytes, err := os.ReadFile(configPath)
+	configBytes, err = os.ReadFile(configPath)
 	if err == nil {
 		sshConfig, err = ssh_config.DecodeBytes(configBytes)
 		if err != nil {
@@ -388,62 +408,6 @@ func mainWithStatusCode() int {
 		}
 		defer f.Close()
 		keyLog = f
-	}
-
-	pool, err := x509.SystemCertPool()
-	if err != nil {
-		log.Fatal().Msgf("%s", err)
-	}
-
-	if *addRootCA != "" {
-		testdata.AddRootCA(pool, *addRootCA)
-	}
-
-	var qconf quic.Config
-
-	qconf.MaxIncomingStreams = 10
-	qconf.Allow0RTT = true
-	qconf.EnableDatagrams = true
-
-	tlsConf := &tls.Config{
-		RootCAs:            pool,
-		InsecureSkipVerify: *insecure,
-		KeyLogWriter:       keyLog,
-		NextProtos:         []string{http3.NextProtoH3},
-	}
-
-	qconf.KeepAlivePeriod = 1 * time.Second
-	roundTripper := &http3.RoundTripper{
-		TLSClientConfig: tlsConf,
-		QuicConfig:      &qconf,
-		EnableDatagrams: true,
-	}
-
-	ctx, _ := context.WithCancelCause(context.Background())
-
-	defer roundTripper.Close()
-
-
-	// connect to SSH agent if it exists
-	var agentClient agent.ExtendedAgent
-	var agentKeys []ssh.PublicKey
-
-	socketPath := os.Getenv("SSH_AUTH_SOCK")
-	if socketPath != "" {
-		conn, err := net.Dial("unix", socketPath)
-		if err != nil {
-			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
-			return -1
-		}
-		agentClient = agent.NewClient(conn)
-		keys, err := agentClient.List()
-		if err != nil {
-			log.Error().Msgf("Failed to list agent keys: %s", err)
-			return -1
-		}
-		for _, key := range keys {
-			agentKeys = append(agentKeys, key)
-		}
 	}
 
 
@@ -502,6 +466,66 @@ func mainWithStatusCode() int {
 	parsedUrl.RawQuery = urlQuery.Encode()
 	requestUrl := parsedUrl.String()
 
+
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		log.Fatal().Msgf("%s", err)
+	}
+
+	if certs, ok := knownHosts[hostname]; ok {
+		for _, cert := range certs {
+			pool.AddCert(cert)
+		}
+	}
+
+	var qconf quic.Config
+
+	qconf.MaxIncomingStreams = 10
+	qconf.Allow0RTT = true
+	qconf.EnableDatagrams = true
+
+	tlsConf := &tls.Config{
+		RootCAs:            pool,
+		InsecureSkipVerify: *insecure,
+		KeyLogWriter:       keyLog,
+		NextProtos:         []string{http3.NextProtoH3},
+	}
+
+	qconf.KeepAlivePeriod = 1 * time.Second
+	roundTripper := &http3.RoundTripper{
+		TLSClientConfig: tlsConf,
+		QuicConfig:      &qconf,
+		EnableDatagrams: true,
+	}
+
+	ctx, _ := context.WithCancelCause(context.Background())
+
+	defer roundTripper.Close()
+
+
+	// connect to SSH agent if it exists
+	var agentClient agent.ExtendedAgent
+	var agentKeys []ssh.PublicKey
+
+	socketPath := os.Getenv("SSH_AUTH_SOCK")
+	if socketPath != "" {
+		conn, err := net.Dial("unix", socketPath)
+		if err != nil {
+			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
+			return -1
+		}
+		agentClient = agent.NewClient(conn)
+		keys, err := agentClient.List()
+		if err != nil {
+			log.Error().Msgf("Failed to list agent keys: %s", err)
+			return -1
+		}
+		for _, key := range keys {
+			agentKeys = append(agentKeys, key)
+		}
+	}
+
+
 	log.Debug().Msgf("dialing QUIC host at %s", fmt.Sprintf("%s:%d", hostname, port))
 
 	qClient, err := quic.DialAddrEarly(ctx,
@@ -509,7 +533,74 @@ func mainWithStatusCode() int {
 		tlsConf,
 		&qconf)
 	if err != nil {
-		log.Error().Msgf("could not create client QUIC connection: %s", err)
+		if transportErr, ok :=  err.(*quic.TransportError); ok {
+			if transportErr.ErrorCode.IsCryptoError() {
+				if tty == nil {
+					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
+					return -1
+				}
+				if _, ok = knownHosts[hostname]; ok {
+					log.Error().Msgf("could not establish QUIC connection with a server already listed in %s: %s", knownHostsPath, err)
+					return -1
+				}
+				// bad certificates, let's mimic the OpenSSH's behaviour similar to host keys
+				tlsConf.InsecureSkipVerify = true
+				var peerCertificate *x509.Certificate
+				certError := fmt.Errorf("we don't want to start a totally insecure connection")
+				tlsConf.VerifyConnection = func(ctx tls.ConnectionState) error {
+					peerCertificate = ctx.PeerCertificates[0]
+					return certError
+				}
+
+				_, err := quic.DialAddrEarly(ctx,
+											 fmt.Sprintf("%s:%d", hostname, port),
+											 tlsConf,
+											 &qconf)
+				if !errors.Is(err, certError) {
+					log.Error().Msgf("could not create client QUIC connection: %s", err)
+					return -1
+				}
+				// let's first check that the certificate is self-signed
+				if err := peerCertificate.CheckSignatureFrom(peerCertificate); err != nil {
+					log.Error().Msgf("the peer provided an unknown, insecure certificate, that is not self-signed: %s", err)
+					return -1
+				}
+				// first, carriage return
+				_, _ = tty.WriteString("\r")
+				_, err = tty.WriteString("Received an unknown self-signed certificate from the server.\n\r" +
+										 "We strongly recommand using real certificates instead of self-signed certificates." +
+										 "This could be a machine-in-the-middle attack. Here is the certificate's fingerprint:\n\r" +
+										 "SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
+				 						 "Do you want to add this certificate to ~/.ssh3/known hosts and continue (yes/no)? ")
+				if err != nil {
+					log.Error().Msgf("cound not write on /dev/tty: %s", err)
+					return -1
+				}
+				
+				answer := ""
+				reader := bufio.NewReader(tty)
+				for {
+					answer, _ = reader.ReadString('\n')
+					answer = strings.TrimSpace(answer)
+					_, _ = tty.WriteString("\r")	// always ensure a carriage return
+					if answer == "yes" || answer == "no" {
+						break
+					}
+					tty.WriteString("Invalid answer, answer \"yes\" or \"no\" ")
+				}
+				if answer == "no" {
+					log.Info().Msg("Connection aborted")
+					return 0
+				}
+				if err := ssh3.AppendKnownHost(knownHostsPath, hostname, peerCertificate); err != nil {
+					log.Error().Msgf("could not append known host to %s: %s", knownHostsPath, err)
+					return -1
+				}
+				tty.WriteString(fmt.Sprintf("Successfully added the certificate to %s, please rerun the command\n\r", knownHostsPath))
+				return 0
+			}
+		}
+		log.Error().Msgf("could not establish client QUIC connection: %s", err)
 		return -1
 	}
 
