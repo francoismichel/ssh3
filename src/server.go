@@ -139,7 +139,6 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 			conversationsManager.addConversation(newConv)
 
 			w.WriteHeader(200)
-			w.(http.Flusher).Flush()
 
 			go func() {
 				// TODO: this hijacks the datagrams for the whole quic connection, so the server
