@@ -37,7 +37,7 @@ type Conversation struct {
 }
 
 func GenerateConversationID(tls *tls.ConnectionState) (convID ConversationID, err error) {
-	ret, err := tls.ExportKeyingMaterial("EXPORTER-Channel-Binding", nil, 32)
+	ret, err := tls.ExportKeyingMaterial("EXPORTER-SSH3", nil, 32)
 	if err != nil {
 		return convID, err
 	}
@@ -120,7 +120,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 		log.Warn().Msgf("The server runs a higher SSH version (%d.%d.%d), you may want to consider to update the client (currently %d.%d.%d)",
 						major, minor, patch, MAJOR, MINOR, PATCH)
 	}
-	
+
 	if rsp.StatusCode == 200 {
 		c.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
 		c.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
