@@ -110,6 +110,17 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 		return err
 	}
 
+	serverVersion := rsp.Header.Get("Server")
+	major, minor, patch, err := ParseVersion(serverVersion)
+	if err != nil {
+		log.Error().Msgf("Could not parse server version: %s", serverVersion)
+		return InvalidSSHVersion{ versionString: serverVersion }
+	}
+	if major > MAJOR || minor > MINOR {
+		log.Warn().Msgf("The server runs a higher SSH version (%d.%d.%d), you may want to consider to update the client (currently %d.%d.%d)",
+						major, minor, patch, MAJOR, MINOR, PATCH)
+	}
+	
 	if rsp.StatusCode == 200 {
 		c.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
 		c.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
