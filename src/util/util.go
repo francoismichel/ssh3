@@ -5,6 +5,8 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
@@ -215,4 +217,9 @@ func JWTSigningMethodFromCryptoPubkey(pubkey crypto.PublicKey) (jwt.SigningMetho
 		return jwt.SigningMethodEdDSA, nil
 	}
 	return nil, UnknownSSHPubkeyType{pubkey: pubkey}
+}
+
+func Sha256Fingerprint(in []byte) string {
+	hash := sha256.Sum256(in)
+	return base64.StdEncoding.EncodeToString(hash[:])
 }

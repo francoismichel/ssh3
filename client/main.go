@@ -539,6 +539,10 @@ func mainWithStatusCode() int {
 					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
 					return -1
 				}
+				if _, ok = knownHosts[hostname]; ok {
+					log.Error().Msgf("could not establish QUIC connection with a server already listed in %s: %s", knownHostsPath, err)
+					return -1
+				}
 				// bad certificates, let's mimic the OpenSSH's behaviour similar to host keys
 				tlsConf.InsecureSkipVerify = true
 				var peerCertificate *x509.Certificate
@@ -565,8 +569,8 @@ func mainWithStatusCode() int {
 				_, _ = tty.WriteString("\r")
 				_, err = tty.WriteString("Received an unknown self-signed certificate from the server.\n\r" +
 										 "We strongly recommand using real certificates instead of self-signed certificates." +
-										 "This could be a machine-in-the-middle attack. Here is the certificate's key ID:\n\r" +
-										 fmt.Sprintf("%X", peerCertificate.SubjectKeyId) + "\n\r" +
+										 "This could be a machine-in-the-middle attack. Here is the certificate's fingerprint:\n\r" +
+										 "SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
 				 						 "Do you want to add this certificate to ~/.ssh3/known hosts and continue (yes/no)? ")
 				if err != nil {
 					log.Error().Msgf("cound not write on /dev/tty: %s", err)
@@ -596,7 +600,7 @@ func mainWithStatusCode() int {
 				return 0
 			}
 		}
-		log.Error().Msgf("could not create client QUIC connection: %s", err)
+		log.Error().Msgf("could not establish client QUIC connection: %s", err)
 		return -1
 	}
 
