@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 
@@ -146,7 +147,7 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 				for {
 					dgram, err := qconn.ReceiveMessage(ctx)
 					if err != nil {
-						if err != context.Canceled {
+						if !errors.Is(err, context.Canceled) && !errors.Is(err, net.ErrClosed) {
 							log.Error().Msgf("could not receive message from conn: %s", err)
 						}
 						return
