@@ -16,6 +16,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	osuser "os/user"
+	"path"
 	"strconv"
 	"strings"
 	"syscall"
@@ -32,11 +34,21 @@ import (
 	ssh3Messages "ssh3/src/message"
 	"ssh3/src/util"
 
+	"github.com/kevinburke/ssh_config"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+func homedir() string {
+	user, err := osuser.Current()
+	if err == nil {
+		return user.HomeDir
+	} else {
+		return os.Getenv("HOME")
+	}
+}
 
 type windowSize struct {
 	NRows       uint16
@@ -254,7 +266,10 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 
-	host := args[0]
+	hostUrl := args[0]
+	if !strings.HasPrefix(hostUrl, "https://") {
+		hostUrl = fmt.Sprintf("https://%s", hostUrl)
+	}
 	command := args[1:]
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -317,11 +332,25 @@ func main() {
 		}
 	}
 
+	var sshConfig *ssh_config.Config
+	var configBytes []byte
+	configPath := path.Join(homedir(), ".ssh", "config")
+	configBytes, err := os.ReadFile(configPath)
+	if err == nil {
+		sshConfig, err = ssh_config.DecodeBytes(configBytes)
+		if err != nil {
+			log.Warn().Msgf("could not parse %s: %s, ignoring config", configPath, err)
+			sshConfig = nil
+		}
+	} else if !os.IsNotExist(err) {
+		log.Warn().Msgf("could not open %s: %s, ignoring config", configPath, err)
+		sshConfig = nil
+	}
+
 	// default to oidc if no password or privkey
-	var err error = nil
 	var oidcConfig *auth.OIDCConfig = nil
 	var oidcConfigFile *os.File = nil
-	if *privKeyFile == "" && *useAgent == false && !*passwordAuthentication && *oidcConfigFileName == "" {
+	if *privKeyFile == "" && *useAgent && !*passwordAuthentication && *oidcConfigFileName == "" {
 		defaultFileName := "/etc/ssh3/oidc_config.json"
 		oidcConfigFile, err = os.Open(defaultFileName)
 		if err != nil {
@@ -393,20 +422,63 @@ func main() {
 
 	defer roundTripper.Close()
 
-	log.Printf("GET %s", host)
-	parsedUrl, err := url.Parse(host)
+
+	// connect to SSH agent if it exists
+	var agentClient agent.ExtendedAgent
+	var agentKeys []ssh.PublicKey
+
+	socketPath := os.Getenv("SSH_AUTH_SOCK")
+	if socketPath != "" {
+		conn, err := net.Dial("unix", socketPath)
+		if err != nil {
+			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
+			return
+		}
+		agentClient = agent.NewClient(conn)
+		keys, err := agentClient.List()
+		if err != nil {
+			log.Error().Msgf("Failed to list agent keys: %s", err)
+			return
+		}
+		for _, key := range keys {
+			agentKeys = append(agentKeys, key)
+		}
+	}
+
+
+
+	log.Printf("GET %s", hostUrl)
+	parsedUrl, err := url.Parse(hostUrl)
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
 
-	hostname, port := parsedUrl.Hostname(), parsedUrl.Port()
-	if port == "" {
-		port = "443"
+	urlHostname, urlPort := parsedUrl.Hostname(), parsedUrl.Port()
+	if urlPort == "" {
+		urlPort = "443"
 	}
-	log.Debug().Msgf("dialing host at %s", fmt.Sprintf("%s:%s", hostname, port))
+
+	hostname, port, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	if err != nil {
+		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
+		return
+	}
+
+	if hostname == "" {
+		hostname = urlHostname
+	}
+	if port == -1 && urlPort != "" {
+		port, err = strconv.Atoi(urlPort)
+		if err != nil {
+			log.Error().Msgf("invalid port number: %s: %s", urlPort, err)
+			return
+		}
+	}
+
+	log.Debug().Msgf("dialing host at %s", fmt.Sprintf("%s:%d", hostname, port))
 
 	qClient, err := quic.DialAddrEarly(ctx,
-		fmt.Sprintf("%s:%s", hostname, port),
+		fmt.Sprintf("%s:%d", hostname, port),
 		tlsConf,
 		&qconf)
 	if err != nil {
@@ -434,75 +506,62 @@ func main() {
 
 	// the connection struct is created, not build the request used to establish the connection
 
-	req, err := http.NewRequest("CONNECT", host, nil)
+	req, err := http.NewRequest("CONNECT", hostUrl, nil)
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
 	req.Proto = "ssh3"
+	req.Header.Set("User-Agent", ssh3.GetCurrentVersion())
 
 	username := parsedUrl.User.Username()
 	if username == "" {
 		username = parsedUrl.Query().Get("user")
 	}
 
-	var identityMethods []interface{}
+	var authMethods []interface{}
 	if *privKeyFile != "" {
-		identityMethods = append(identityMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
+		authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
 	}
 
-	var agentClient agent.ExtendedAgent
-	var agentKeys []ssh.PublicKey
-
-	socketPath := os.Getenv("SSH_AUTH_SOCK")
-	if socketPath != "" {
-		conn, err := net.Dial("unix", socketPath)
-		if err != nil {
-			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
-			return
-		}
-		agentClient = agent.NewClient(conn)
-		keys, err := agentClient.List()
-		if err != nil {
-			log.Error().Msgf("Failed to list agent keys: %s", err)
-			return
-		}
-		for _, key := range keys {
-			agentKeys = append(agentKeys, key)
-		}
-	}
-
-	if *useAgent || *pubkeyForAgent != "" {
-		var pubkey ssh.PublicKey = nil
-		if *pubkeyForAgent != "" {
-			pubKeyBytes, err := os.ReadFile(*pubkeyForAgent)
-			if err != nil {
-				log.Error().Msgf("could not load public key file: %s", err)
-				return
+	if *pubkeyForAgent != "" {
+		if agentClient == nil {
+			log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
+		} else {
+			var pubkey ssh.PublicKey = nil
+			if *pubkeyForAgent != "" {
+				pubKeyBytes, err := os.ReadFile(*pubkeyForAgent)
+				if err != nil {
+					log.Error().Msgf("could not load public key file: %s", err)
+					return
+				}
+				pubkey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
+				if err != nil {
+					log.Error().Msgf("could not parse public key: %s", err)
+					return
+				}
 			}
-			pubkey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
-			if err != nil {
-				log.Error().Msgf("could not parse public key: %s", err)
-				return
-			}
-		}
 
-		for _, candidateKey := range agentKeys {
-			if pubkey == nil || bytes.Equal(candidateKey.Marshal(), pubkey.Marshal()) {
-				log.Debug().Msgf("found key in agent: %s", candidateKey)
-				identityMethods = append(identityMethods, ssh3.NewAgentAuthMethod(candidateKey))
+			for _, candidateKey := range agentKeys {
+				if pubkey == nil || bytes.Equal(candidateKey.Marshal(), pubkey.Marshal()) {
+					log.Debug().Msgf("found key in agent: %s", candidateKey)
+					authMethods = append(authMethods, ssh3.NewAgentAuthMethod(candidateKey))
+				}
 			}
 		}
 	}
+
 	if *passwordAuthentication {
-		identityMethods = append(identityMethods, ssh3.NewPasswordAuthMethod())
+		authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
 	}
+
+	authMethods = append(authMethods, configAuthMethods...)
 
 	if oidcConfig != nil {
-		identityMethods = append(identityMethods, ssh3.NewOidcAuthMethod(*issuerUrl, *doPKCE, oidcConfig))
+		authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*issuerUrl, *doPKCE, oidcConfig))
 	}
 
 	var identity ssh3.Identity
-	for _, method := range identityMethods {
+	for _, method := range authMethods {
 		switch m := method.(type) {
 		case *ssh3.PasswordAuthMethod:
 			fmt.Printf("password for %s:", parsedUrl.String())

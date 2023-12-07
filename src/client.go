@@ -8,9 +8,12 @@ import (
 	"os"
 	"ssh3/src/auth"
 	"ssh3/src/util"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/kevinburke/ssh_config"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -202,6 +205,37 @@ type rawBearerTokenIdentity string
 func (i rawBearerTokenIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", string(i)))
 	return nil
+}
+
+
+func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, port int, authMethodsToTry []interface{}, err error) {
+	port = -1
+	if config == nil {
+		return
+	}
+	hostname, err = config.Get(host, "HostName")
+	if err != nil {
+		log.Error().Msgf("Could not get HostName from config: %s", err)
+		return
+	}
+	portStr, err := config.Get(host, "Port")
+	if err != nil {
+		log.Error().Msgf("Could not get Port from config: %s", err)
+		return
+	}
+	p, err := strconv.Atoi(portStr)
+	if err == nil {
+		port = p
+	}
+	identityFiles, err := config.GetAll(host, "IdentityFile")
+	if err != nil {
+		log.Error().Msgf("Could not get IdentityFiles from config: %s", err)
+		return
+	}
+	for _, identityFile := range identityFiles {
+		authMethodsToTry = append(authMethodsToTry, NewPrivkeyFileAuthMethod(identityFile))
+	}
+	return hostname, port, authMethodsToTry, nil
 }
 
 func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation) (string, error) {
