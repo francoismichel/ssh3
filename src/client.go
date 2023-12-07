@@ -208,7 +208,7 @@ func (i rawBearerTokenIdentity) SetAuthorizationHeader(req *http.Request, userna
 }
 
 
-func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, port int, authMethodsToTry []interface{}, err error) {
+func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, port int, user string, authMethodsToTry []interface{}, err error) {
 	port = -1
 	if config == nil {
 		return
@@ -223,6 +223,11 @@ func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, 
 		log.Error().Msgf("Could not get Port from config: %s", err)
 		return
 	}
+	user, err = config.Get(host, "User")
+	if err != nil {
+		log.Error().Msgf("Could not get User from config: %s", err)
+		return
+	}
 	p, err := strconv.Atoi(portStr)
 	if err == nil {
 		port = p
@@ -235,7 +240,7 @@ func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, 
 	for _, identityFile := range identityFiles {
 		authMethodsToTry = append(authMethodsToTry, NewPrivkeyFileAuthMethod(identityFile))
 	}
-	return hostname, port, authMethodsToTry, nil
+	return hostname, port, user, authMethodsToTry, nil
 }
 
 func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation) (string, error) {

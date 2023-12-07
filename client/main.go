@@ -266,9 +266,9 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 
-	hostUrl := args[0]
-	if !strings.HasPrefix(hostUrl, "https://") {
-		hostUrl = fmt.Sprintf("https://%s", hostUrl)
+	urlFromParam := args[0]
+	if !strings.HasPrefix(urlFromParam, "https://") {
+		urlFromParam = fmt.Sprintf("https://%s", urlFromParam)
 	}
 	command := args[1:]
 
@@ -446,9 +446,7 @@ func main() {
 	}
 
 
-
-	log.Printf("GET %s", hostUrl)
-	parsedUrl, err := url.Parse(hostUrl)
+	parsedUrl, err := url.Parse(urlFromParam)
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
@@ -458,15 +456,18 @@ func main() {
 		urlPort = "443"
 	}
 
-	hostname, port, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
 	if err != nil {
 		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
 		return
 	}
 
+	hostname := configHostname
 	if hostname == "" {
 		hostname = urlHostname
 	}
+
+	port := configPort
 	if port == -1 && urlPort != "" {
 		port, err = strconv.Atoi(urlPort)
 		if err != nil {
@@ -475,7 +476,32 @@ func main() {
 		}
 	}
 
-	log.Debug().Msgf("dialing host at %s", fmt.Sprintf("%s:%d", hostname, port))
+	username := parsedUrl.User.Username()
+	if username == "" {
+		username = parsedUrl.Query().Get("user")
+	}
+	if username == "" {
+		username = configUser
+	}
+	if username == "" {
+		u, err := osuser.Current()
+		if err == nil {
+			username = u.Username
+		} else {
+			log.Error().Msgf("could not get current username: %s", err)
+		}
+	}
+	if username == "" {
+		log.Error().Msgf("no username could be found")
+		return
+	}
+
+	urlQuery := parsedUrl.Query()
+	urlQuery.Set("user", username)
+	parsedUrl.RawQuery = urlQuery.Encode()
+	requestUrl := parsedUrl.String()
+
+	log.Debug().Msgf("dialing QUIC host at %s", fmt.Sprintf("%s:%d", hostname, port))
 
 	qClient, err := quic.DialAddrEarly(ctx,
 		fmt.Sprintf("%s:%d", hostname, port),
@@ -493,7 +519,8 @@ func main() {
 
 	// Do 0RTT GET requests here if needed
 	// Currently, we don't need it but we could use it to retrieve
-	// convig or version info from the server
+	// config or version info from the server
+	// We could also allow user-defined safe/idempotent commands to run with 0-RTT
 	qClient.HandshakeComplete()
 	log.Debug().Msgf("QUIC handshake complete")
 	// Now, we're 1-RTT, we can get the TLS exporter and create the conversation
@@ -504,19 +531,13 @@ func main() {
 		return
 	}
 
-	// the connection struct is created, not build the request used to establish the connection
-
-	req, err := http.NewRequest("CONNECT", hostUrl, nil)
+	// the connection struct is created, now build the request used to establish the connection
+	req, err := http.NewRequest("CONNECT", requestUrl, nil)
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
 	req.Proto = "ssh3"
 	req.Header.Set("User-Agent", ssh3.GetCurrentVersion())
-
-	username := parsedUrl.User.Username()
-	if username == "" {
-		username = parsedUrl.Query().Get("user")
-	}
 
 	var authMethods []interface{}
 	if *privKeyFile != "" {
