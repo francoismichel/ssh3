@@ -251,11 +251,10 @@ func mainWithStatusCode() int {
 	// quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "key log file")
 	privKeyFile := flag.String("privkey", "", "private key file")
-	useAgent := flag.Bool("use-agent", false, "if set, uses the running SSH agent to perform pubkey")
 	pubkeyForAgent := flag.String("pubkey-for-agent", "", "(implies -use-agent) if set, use an agent key whose public key matches the one in the specified path")
 	passwordAuthentication := flag.Bool("use-password", false, "do classical password authentication")
 	insecure := flag.Bool("insecure", false, "skip certificate verification")
-	issuerUrl := flag.String("issuer-url", "https://accounts.google.com", "openid issuer url")
+	issuerUrl := flag.String("use-oidc", "", "if set, forces the use of OIDC with the specified issuer url as parameter")
 	oidcConfigFileName := flag.String("oidc-config", "", "oidc json config file containing the \"client_id\" and \"client_secret\" fields")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc (currently not working)")
@@ -369,30 +368,29 @@ func mainWithStatusCode() int {
 	}
 
 	// default to oidc if no password or privkey
-	var oidcConfig *auth.OIDCConfig = nil
+	var oidcConfig auth.OIDCIssuerConfig = nil
 	var oidcConfigFile *os.File = nil
-	if *privKeyFile == "" && *useAgent && !*passwordAuthentication && *oidcConfigFileName == "" {
+	if *oidcConfigFileName == "" {
 		defaultFileName := "/etc/ssh3/oidc_config.json"
 		oidcConfigFile, err = os.Open(defaultFileName)
-		if err != nil {
+		if err != nil && !os.IsNotExist(err) {
 			log.Warn().Msgf("could not open %s: %s", defaultFileName, err.Error())
 		}
-	} else if *oidcConfigFileName != "" {
+	} else {
 		oidcConfigFile, err = os.Open(*oidcConfigFileName)
 		if err != nil {
-			log.Warn().Msgf("could not open %s: %s", *oidcConfigFileName, err.Error())
+			log.Error().Msgf("could not open %s: %s", *oidcConfigFileName, err.Error())
 			return -1
 		}
 	}
 
 	if oidcConfigFile != nil {
-		oidcConfig = new(auth.OIDCConfig)
 		data, err := io.ReadAll(oidcConfigFile)
 		if err != nil {
 			log.Error().Msgf("could not read oidc config file: %s", err.Error())
 			return -1
 		}
-		if err = json.Unmarshal(data, oidcConfig); err != nil {
+		if err = json.Unmarshal(data, &oidcConfig); err != nil {
 			log.Error().Msgf("could not parse oidc config file: %s", err.Error())
 			return -1
 		}
@@ -669,8 +667,10 @@ func mainWithStatusCode() int {
 
 	authMethods = append(authMethods, configAuthMethods...)
 
-	if oidcConfig != nil {
-		authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*issuerUrl, *doPKCE, oidcConfig))
+	for _, issuerConfig := range oidcConfig {
+		if *issuerUrl == "" || *issuerUrl == issuerConfig.IssuerUrl {
+			authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+		}
 	}
 
 	var identity ssh3.Identity
@@ -734,7 +734,7 @@ func mainWithStatusCode() int {
 				}
 			}
 		case *ssh3.OidcAuthMethod:
-			token, err := auth.Connect(context.Background(), oidcConfig, *issuerUrl, *doPKCE)
+			token, err := auth.Connect(context.Background(), m.OIDCConfig(), m.OIDCConfig().IssuerUrl, *doPKCE)
 			if err != nil {
 				log.Error().Msgf("could not get token: %s", err)
 				return -1
