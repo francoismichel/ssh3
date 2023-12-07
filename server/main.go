@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -109,16 +108,6 @@ func setWinsize(f *os.File, charWidth, charHeight, pixWidth, pixHeight uint64) {
 		uintptr(unsafe.Pointer(&struct{ h, w, x, y uint16 }{uint16(charHeight), uint16(charWidth), uint16(pixWidth), uint16(pixHeight)})))
 }
 
-type binds []string
-
-func (b binds) String() string {
-	return strings.Join(b, ",")
-}
-
-func (b *binds) Set(v string) error {
-	*b = strings.Split(v, ",")
-	return nil
-}
 
 // Size is needed by the /demo/upload handler to determine the size of the uploaded file
 type Size interface {
@@ -684,8 +673,7 @@ func GetCertificatePaths() (string, string) {
 }
 
 func main() {
-	bs := binds{}
-	flag.Var(&bs, "bind", "bind to")
+	bindAddr := flag.String("bind", "[::]:443", "bind to")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	enablePasswordLogin := flag.Bool("enable-password-login", false, "if set, enable password authentication (disabled by default)")
 	urlPath := flag.String("url-path", "/ssh3-term", "the path on which the ssh3 server listens")
@@ -695,9 +683,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, "password login is currently disabled")
 	}
 
-	if len(bs) == 0 {
-		bs = binds{"localhost:6121"}
-	}
 
 	if *verbose {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -722,114 +707,111 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(len(bs))
-	for _, b := range bs {
-		bCap := b
-		go func() {
-			var err error
+	wg.Add(1)
+	go func() {
+		var err error
 
-			server := http3.Server{
-				Handler:         nil,
-				Addr:            bCap,
-				QuicConfig:      quicConf,
-				EnableDatagrams: true,
+		server := http3.Server{
+			Handler:         nil,
+			Addr:            *bindAddr,
+			QuicConfig:      quicConf,
+			EnableDatagrams: true,
+		}
+		certFile, keyFile := GetCertificatePaths()
+
+		mux := http.NewServeMux()
+		ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
+			authenticatedUser, err := util.GetUser(authenticatedUsername)
+			if err != nil {
+				return err
 			}
-			certFile, keyFile := GetCertificatePaths()
-
-			mux := http.NewServeMux()
-			ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
-				authenticatedUser, err := util.GetUser(authenticatedUsername)
+			for {
+				channel, err := conv.AcceptChannel(conv.Context())
 				if err != nil {
 					return err
 				}
-				for {
-					channel, err := conv.AcceptChannel(conv.Context())
-					if err != nil {
-						return err
-					}
 
-					switch c := channel.(type) {
-					case *ssh3.UDPForwardingChannelImpl:
-						handleUDPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
-					case *ssh3.TCPForwardingChannelImpl:
-						handleTCPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
-					default:
-						runningSessions[channel] = &runningSession{
-							channelState: LARVAL,
-							pty:          nil,
-							runningCmd:   nil,
-						}
-						go func() {
-							// handle the main sessionChannel, once it ends, the whole conversation ends
-							defer channel.Close()
-							defer conv.Close()
-							for {
-								genericMessage, err := channel.NextMessage()
-								if errors.Is(err, net.ErrClosed) {
-									log.Debug().Msgf("the connection was closed by the application: %s", err)
-									return
-								} else if err != nil && !errors.Is(err, io.EOF) {
-									log.Error().Msgf("error when getting message: %s", err)
-									return
+				switch c := channel.(type) {
+				case *ssh3.UDPForwardingChannelImpl:
+					handleUDPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
+				case *ssh3.TCPForwardingChannelImpl:
+					handleTCPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
+				default:
+					runningSessions[channel] = &runningSession{
+						channelState: LARVAL,
+						pty:          nil,
+						runningCmd:   nil,
+					}
+					go func() {
+						// handle the main sessionChannel, once it ends, the whole conversation ends
+						defer channel.Close()
+						defer conv.Close()
+						for {
+							genericMessage, err := channel.NextMessage()
+							if errors.Is(err, net.ErrClosed) {
+								log.Debug().Msgf("the connection was closed by the application: %s", err)
+								return
+							} else if err != nil && !errors.Is(err, io.EOF) {
+								log.Error().Msgf("error when getting message: %s", err)
+								return
+							}
+							if genericMessage == nil {
+								return
+							}
+							switch message := genericMessage.(type) {
+							case *ssh3Messages.ChannelRequestMessage:
+								switch requestMessage := message.ChannelRequest.(type) {
+								case *ssh3Messages.PtyRequest:
+									err = newPtyReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.X11Request:
+									err = newX11Req(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.ShellRequest:
+									err = newShellReq(authenticatedUser, channel, message.WantReply)
+								case *ssh3Messages.ExecRequest:
+									err = newCommandInShellReq(authenticatedUser, channel, message.WantReply, requestMessage.Command)
+								case *ssh3Messages.SubsystemRequest:
+									err = newSubsystemReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.WindowChangeRequest:
+									err = newWindowChangeReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.SignalRequest:
+									err = newSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.ExitStatusRequest:
+									err = newExitStatusReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+								case *ssh3Messages.ExitSignalRequest:
+									err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 								}
-								if genericMessage == nil {
-									return
-								}
-								switch message := genericMessage.(type) {
-								case *ssh3Messages.ChannelRequestMessage:
-									switch requestMessage := message.ChannelRequest.(type) {
-									case *ssh3Messages.PtyRequest:
-										err = newPtyReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-									case *ssh3Messages.X11Request:
-										err = newX11Req(authenticatedUser, channel, *requestMessage, message.WantReply)
-									case *ssh3Messages.ShellRequest:
-										err = newShellReq(authenticatedUser, channel, message.WantReply)
-									case *ssh3Messages.ExecRequest:
-										err = newCommandInShellReq(authenticatedUser, channel, message.WantReply, requestMessage.Command)
-									case *ssh3Messages.SubsystemRequest:
-										err = newSubsystemReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-									case *ssh3Messages.WindowChangeRequest:
-										err = newWindowChangeReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-									case *ssh3Messages.SignalRequest:
-										err = newSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-									case *ssh3Messages.ExitStatusRequest:
-										err = newExitStatusReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-									case *ssh3Messages.ExitSignalRequest:
-										err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-									}
-								case *ssh3Messages.DataOrExtendedDataMessage:
-									runningSession, ok := runningSessions[channel]
-									if ok && runningSession.channelState == LARVAL {
-										if message.Data == string("forward-agent") {
-											runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(conv.Context(), conv, authenticatedUser)
-										} else {
-											// invalid data on larval state
-											err = fmt.Errorf("invalid data on ssh channel with LARVAL state")
-										}
+							case *ssh3Messages.DataOrExtendedDataMessage:
+								runningSession, ok := runningSessions[channel]
+								if ok && runningSession.channelState == LARVAL {
+									if message.Data == string("forward-agent") {
+										runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(conv.Context(), conv, authenticatedUser)
 									} else {
-										err = newDataReq(authenticatedUser, channel, *message)
+										// invalid data on larval state
+										err = fmt.Errorf("invalid data on ssh channel with LARVAL state")
 									}
-								}
-								if err != nil {
-									log.Error().Msgf("error while processing message: %+v: %+v\n", genericMessage, err)
-									return
+								} else {
+									err = newDataReq(authenticatedUser, channel, *message)
 								}
 							}
-						}()
-					}
-
+							if err != nil {
+								log.Error().Msgf("error while processing message: %+v: %+v\n", genericMessage, err)
+								return
+							}
+						}
+					}()
 				}
-			})
-			ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
-			mux.HandleFunc(*urlPath, linux_server.HandleAuths(context.Background(), *enablePasswordLogin, 30000, ssh3Handler))
-			server.Handler = mux
-			err = server.ListenAndServeTLS(certFile, keyFile)
 
-			if err != nil {
-				log.Error().Msgf("error while serving HTTP connection: %s", err)
 			}
-			wg.Done()
-		}()
-	}
+		})
+		ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
+		mux.HandleFunc(*urlPath, linux_server.HandleAuths(context.Background(), *enablePasswordLogin, 30000, ssh3Handler))
+		server.Handler = mux
+		err = server.ListenAndServeTLS(certFile, keyFile)
+
+		if err != nil {
+			log.Error().Msgf("error while serving HTTP connection: %s", err)
+		}
+		wg.Done()
+	}()
 	wg.Wait()
 }
