@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func HandleAuths(ctx context.Context, defaultMaxPacketSize uint64, handlerFunc ssh3.AuthenticatedHandlerFunc) http.HandlerFunc {
+func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacketSize uint64, handlerFunc ssh3.AuthenticatedHandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer w.(http.Flusher).Flush()
 		hijacker, ok := w.(http3.Hijacker)
@@ -41,7 +41,7 @@ func HandleAuths(ctx context.Context, defaultMaxPacketSize uint64, handlerFunc s
 		convID := conv.ConversationID()
 		base64ConvID := base64.StdEncoding.EncodeToString(convID[:])
 		authorization := r.Header.Get("Authorization")
-		if strings.HasPrefix(authorization, "Basic ") {
+		if enablePasswordLogin && strings.HasPrefix(authorization, "Basic ") {
 			HandleBasicAuth(handlerFunc, conv)(w, r)
 		} else if strings.HasPrefix(authorization, "Bearer ") {
 			username := r.URL.User.Username()
@@ -49,6 +49,8 @@ func HandleAuths(ctx context.Context, defaultMaxPacketSize uint64, handlerFunc s
 				username = r.URL.Query().Get("user")
 			}
 			ssh3.HandleBearerAuth(username, base64ConvID, ssh3.HandleJWTAuth(username, conv, handlerFunc))(w, r)
+		} else {
+			w.WriteHeader(http.StatusUnauthorized)
 		}
 	}
 }
