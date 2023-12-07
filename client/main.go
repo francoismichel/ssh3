@@ -371,7 +371,7 @@ func mainWithStatusCode() int {
 	var oidcConfig auth.OIDCIssuerConfig = nil
 	var oidcConfigFile *os.File = nil
 	if *oidcConfigFileName == "" {
-		defaultFileName := "/etc/ssh3/oidc_config.json"
+		defaultFileName := path.Join(ssh3Dir, "oidc_config.json")
 		oidcConfigFile, err = os.Open(defaultFileName)
 		if err != nil && !os.IsNotExist(err) {
 			log.Warn().Msgf("could not open %s: %s", defaultFileName, err.Error())
