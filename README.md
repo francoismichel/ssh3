@@ -1,7 +1,10 @@
+
+<<div align="center">
+<img src="resources/figures/ssh3.png" width=60%>
+</div>
+
+
 # SSH3: faster and rich secure shell using HTTP/3
-
-![](resources/figures/ssh3.png)
-
 SSH3 is a complete revisit of the SSH
 protocol, mapping its semantics on top of the HTTP mechanisms.
 In a nutshell, SSH3 uses QUIC+TLS1.3 for
