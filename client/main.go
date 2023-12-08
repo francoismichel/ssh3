@@ -756,6 +756,8 @@ func mainWithStatusCode() int {
 						return -1
 					}
 				}
+			} else if err != nil {
+				log.Warn().Msgf("Could not load private key: %s", err)
 			}
 		case *ssh3.OidcAuthMethod:
 			token, err := auth.Connect(context.Background(), m.OIDCConfig(), m.OIDCConfig().IssuerUrl, *doPKCE)
