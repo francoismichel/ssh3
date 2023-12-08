@@ -566,7 +566,7 @@ func mainWithStatusCode() int {
 				// first, carriage return
 				_, _ = tty.WriteString("\r")
 				_, err = tty.WriteString("Received an unknown self-signed certificate from the server.\n\r" +
-										 "We strongly recommand not using self-signed certificates.\n\r" +
+										 "We recommend not using self-signed certificates.\n\r" +
 										 "This session is vulnerable a machine-in-the-middle attack.\n\r" + 
 										 "Certificate fingerprint: " +
 										 "SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
