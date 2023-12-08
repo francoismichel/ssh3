@@ -558,7 +558,10 @@ func mainWithStatusCode() int {
 					return -1
 				}
 				if _, ok = knownHosts[hostname]; ok {
-					log.Error().Msgf("could not establish QUIC connection with a server already listed in %s: %s", knownHostsPath, err)
+					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s " + 
+									 "It you did not change the server certificate, it could be a machine-in-the-middle attack."+
+									 "TLS error: %s", knownHostsPath, err)
+					log.Error().Msgf("Aborting.")
 					return -1
 				}
 				// bad certificates, let's mimic the OpenSSH's behaviour similar to host keys
