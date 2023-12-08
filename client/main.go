@@ -566,10 +566,11 @@ func mainWithStatusCode() int {
 				// first, carriage return
 				_, _ = tty.WriteString("\r")
 				_, err = tty.WriteString("Received an unknown self-signed certificate from the server.\n\r" +
-										 "We strongly recommand using real certificates instead of self-signed certificates." +
-										 "This could be a machine-in-the-middle attack. Here is the certificate's fingerprint:\n\r" +
+										 "We strongly recommand using real certificates instead of self-signed certificates. " +
+										 "This could be a machine-in-the-middle attack.\n\r" + 
+										 "Here is the certificate fingerprint:\n\r" +
 										 "SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
-				 						 "Do you want to add this certificate to ~/.ssh3/known hosts and continue (yes/no)? ")
+				 						 "Do you want to add this certificate to ~/.ssh3/known_hosts and continue (yes/no)? ")
 				if err != nil {
 					log.Error().Msgf("cound not write on /dev/tty: %s", err)
 					return -1
