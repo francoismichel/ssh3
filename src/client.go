@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"ssh3/src/auth"
 	"ssh3/src/util"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -81,7 +83,12 @@ func (m *PrivkeyFileAuthMethod) IntoIdentityPassphrase(passphrase string) (Ident
 
 func (m *PrivkeyFileAuthMethod) intoIdentity(passphrase *string) (Identity, error) {
 	
-	pemBytes, err := os.ReadFile(m.filename)
+	filename := m.filename
+	if strings.HasPrefix(filename, "~/") {
+		dirname, _ := os.UserHomeDir()
+		filename = path.Join(dirname, filename[2:])	
+	}
+	pemBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
