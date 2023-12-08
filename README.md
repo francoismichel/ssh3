@@ -118,4 +118,4 @@ sessions requests querying the `/ssh3` URL path:
 
     ssh3-server -cert /path/to/cert/or/fullchain -key /path/to/cert/private/key -url-path /ssh3
 
-**Note that, like for OpenSSH, the server must be run with root priviledges as it need to log as other users.**
+**Note that, similarly to OpenSSH, the server must be run with root priviledges to log in as other users.**
