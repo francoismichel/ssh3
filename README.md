@@ -91,15 +91,32 @@ Before connecting to your host, you need to deploy an SSH3 server on it. There i
 no SSH3 daemon, so right now, you will have to run the `ssh3-server` executable in background
 using `screen` or a similar utility.
 
+
+> [!NOTE]  
+> As SSH3 runs on top of HTTP/3, a server needs a valid X.509 certificate and its corresponding
+> private key to work. If you do not want to generate a certificate signed by a real public
+> certificate authority, you can generate a self-signed certificate using the
+> `generate_openssl_selfsigned_certificate.sh` script available in this repository.
+> This should provide you with similar security guarantees to SSHv2's classical
+> host keys mechanism, with the same security issue: you may be vulnerable to
+> machine-in-the-middle attacks during your first connection to your server.
+> Using real certificates signed by public certificate authorities such as Let's Encrypt
+> avoids this security issue.
+
+
 Here is the usage of the `ssh3-server` executable:
 
 ```
-Usage of ssh3-server:
+Usage of ./ssh3-server:
   -bind string
-        bind to (default "[::]:443")
+        the address:port pair to listen to, e.g. 0.0.0.0:443 (default "[::]:443")
+  -cert string
+        the filename of the server certificate (or fullchain) (default "./cert.pem")
   -enable-password-login
         if set, enable password authentication (disabled by default)
+  -key string
+        the filename of the certificate private key (default "./priv.key")
   -url-path string
-        the path on which the ssh3 server listens (default "/ssh3-term")
+        the secret URL path on which the ssh3 server listens (default "/ssh3-term")
   -v    verbose mode, if set
 ```
