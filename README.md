@@ -19,10 +19,10 @@ Among others, SSH3 allows the following improvements:
 *SSH3* stands for the concatenation of *SSH* and *H3*. 
 
 ## ⚡ SSH3 is faster
-SSH3 offers a significantly faster session establishment than SSHv2. Running a single command with SSHv2 can take between 8 and 6 network round-trips, which can easily be noticed by the user. SSH3 only needs 3 round-trips. The keystroke latency during a running session is unchanged.
+Faster for session establishment, not throughput ! SSH3 offers a significantly faster session establishment than SSHv2. Establishing a new session with SSHv2 can take 5 to 7 network round-trips, which can easily be noticed by the user. SSH3 only needs 3 round-trips. The keystroke latency in a running session is unchanged.
 
 ![](resources/figures/ssh3_100ms_rtt.gif)
-*SSH3 (top) VS SSHv2 (bottom) connection establishement with a 100ms ping towards the server.*
+*SSH3 (top) VS SSHv2 (bottom) session establishement with a 100ms ping towards the server.*
 
 ## 🔒 SSH3 is secure
 While SSHv2 defines its own protocols for user authentication and secure channel establishment, SSH3 relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP. These protocols are already extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
@@ -58,3 +58,48 @@ This SSH3 implementation already provides many of the popular features of OpenSS
 - SSH agent forwarding to use your local keys on your remote server
 - Direct TCP port forwarding (reverse port forwarding will be implemented in the future)
 
+## Installing SSH3
+You can either download one of the release binaries or compile the code from source.
+
+### Compiling SSH3 from source
+You need a recent Golang version to do this.
+Downloading the source code and compiling the binaries can be done with the following steps:
+
+```bash
+git clone https://github.com/francoismichel/ssh3    # clone the repo
+cd ssh3
+go build -o ssh3 client/main.go                     # build the client
+go build -o ssh3-server server/main.go              # build the server
+```
+
+If you have root/sudo priviledges and you want to make ssh3 accessible to all you users,
+you can then directly copy the binaries to `/usr/bin`:
+
+```bash
+cp ssh3 /usr/bin/ && cp ssh3-server /usr/bin
+``` 
+
+Otherwise, you can simply add the executables to your `PATH` environment variable by adding
+the following line at the end of your `.bashrc` or equivalent:
+
+```bash
+export PATH=$PATH:/path/to/the/ssh3/directory
+```
+
+### Deploying an SSH3 server
+Before connecting to your host, you need to deploy an SSH3 server on it. There is currently
+no SSH3 daemon, so right now, you will have to run the `ssh3-server` executable in background
+using `screen` or a similar utility.
+
+Here is the usage of the `ssh3-server` executable:
+
+```
+Usage of ssh3-server:
+  -bind string
+        bind to (default "[::]:443")
+  -enable-password-login
+        if set, enable password authentication (disabled by default)
+  -url-path string
+        the path on which the ssh3 server listens (default "/ssh3-term")
+  -v    verbose mode, if set
+```
