@@ -1,6 +1,6 @@
 
 <div align=center>
-<img src="resources/figures/ssh3.png" style="display: block; width: 60vw">
+<img src="resources/figures/ssh3.png" style="display: block; width: 60%">
 </div>
 
 
