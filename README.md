@@ -17,9 +17,10 @@ SSH3 offers a significantly faster session establishment than SSHv2. Running a s
 
 
 ## 🔒 SSH3 is secure
-While SSHv2 defines its own protocols for user authentication and secure channel establishment. SSH3 relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
+While SSHv2 defines its own protocols for user authentication and secure channel establishment, SSH3 relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP. These protocols are already extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
 
-While some lesser-used authentication methods might currently be missing compared to the OpenSSH SSHv2 implementation, **SSH3 already implements the common password-based and public-key (RSA and EdDSA/ed25519) authentication methods.** SSH3 also allows new authentication method that were not natively supported by SSHv2 such as OAuth 2.0 and allows logging in to your servers using your Google/Microsoft/Github accounts.
+**SSH3 already implements the common password-based and public-key (RSA and EdDSA/ed25519) authentication methods.** It also allows new authentication method 
+such as OAuth 2.0 and allows logging in to your servers using your Google/Microsoft/Github accounts.
 
 ## 🥷 Your SSH3 public server can be hidden
 Using SSH3, you can avoid the usual stress of scanning and dictionnary attacks against your SSH server. Similarly to your secret Google Drive documents, your SSH3 server can be hidden behind a secret link and only answer to authentication attempts that made an HTTP request to this specific link, like the following:
@@ -29,7 +30,7 @@ Using SSH3, you can avoid the usual stress of scanning and dictionnary attacks a
 By replacing `<my-long-secret>` by, let's say, the value `M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU`, your SSH3 server will only answer to SSH3 connection attempts made to the URL `https://192.0.2.0:443/M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU` and it will respond a `404 Not Found` to other requests. Attackers and crawlers on the Internet can therefore not detect the presence of your SSH3 server. It will only see a simple web server answering 404 status codes to every request.
 
 ## 💐 SSH3 is already features-rich
-SSH3 provides new feature that could not be provided by the classical SSH protocol for technical reasons.
+SSH3 provides new feature that could not be provided by the SSHv2 protocol.
 
 ### Brand new features
 - **UDP port forwarding**: you can now access your QUIC, DNS, RTP or any UDP-based server that are only reachable from your SSH3 host.
@@ -38,7 +39,7 @@ UDP packets are forwarded using QUIC datagrams.
 - **Hiding** your server behind a secret link.
 - **Keyless** secure user authentication using **OpenID Connect**. You can connect to your SSH3 server using the SSO of your company or your Google/Github account, and you don't need to copy the public keys of your users anymore.
 
-### Famous OpenSSH features
+### Famous OpenSSH features implemented
 This SSH3 implementation already provides many of the popular features of OpenSSH, so if you are used to OpenSSH, so the process of adopting SSH3 will be smooth. Here is a list of OpenSSH features that SSH3 also implements:
 - Parses `~/.ssh/authorized_keys` on the server
 - Parses `~/.ssh/config` on the client and handles the `Hostname`, `User`, `Port` and `IdentityFile` config options (the other are currently ignored)
