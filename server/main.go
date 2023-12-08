@@ -667,22 +667,19 @@ func openAgentSocketAndForwardAgent(parent context.Context, conv *ssh3.Conversat
 	return sockPath, nil
 }
 
-// GetCertificatePaths returns the paths to certificate and key
-func GetCertificatePaths() (string, string) {
-	return "cert.pem", "priv.key"
-}
 
 func main() {
-	bindAddr := flag.String("bind", "[::]:443", "bind to")
+	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	enablePasswordLogin := flag.Bool("enable-password-login", false, "if set, enable password authentication (disabled by default)")
-	urlPath := flag.String("url-path", "/ssh3-term", "the path on which the ssh3 server listens")
+	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
+	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
+	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
 	flag.Parse()
 
 	if !*enablePasswordLogin {
 		fmt.Fprintln(os.Stderr, "password login is currently disabled")
 	}
-
 
 	if *verbose {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -717,7 +714,6 @@ func main() {
 			QuicConfig:      quicConf,
 			EnableDatagrams: true,
 		}
-		certFile, keyFile := GetCertificatePaths()
 
 		mux := http.NewServeMux()
 		ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
@@ -806,7 +802,7 @@ func main() {
 		ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
 		mux.HandleFunc(*urlPath, linux_server.HandleAuths(context.Background(), *enablePasswordLogin, 30000, ssh3Handler))
 		server.Handler = mux
-		err = server.ListenAndServeTLS(certFile, keyFile)
+		err = server.ListenAndServeTLS(*certPath, *keyPath)
 
 		if err != nil {
 			log.Error().Msgf("error while serving HTTP connection: %s", err)
