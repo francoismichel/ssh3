@@ -1,5 +1,5 @@
 
-<<div align="center">
+<div align="center">
 <img src="resources/figures/ssh3.png" width=60%>
 </div>
 
