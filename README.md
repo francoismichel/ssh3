@@ -15,6 +15,8 @@ Among others, SSH3 allows the following improvements:
 ## ⚡ SSH3 is faster
 SSH3 offers a significantly faster session establishment than SSHv2. Running a single command with SSHv2 can take between 8 and 6 network round-trips, which can easily be noticed by the user. SSH3 only needs 3 round-trips. On a connection with 50 milliseconds of ping, this reduces the session establishment time from 400 with SSHv2 to 150ms with SSH3. The keystroke latency during a running session is unchanged.
 
+![](resources/figures/ssh3_100ms_rtt.gif)
+*SSH3 (top) VS SSHv2 (bottom) connection establishement with a 100ms ping towards the server.*
 
 ## 🔒 SSH3 is secure
 While SSHv2 defines its own protocols for user authentication and secure channel establishment, SSH3 relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP. These protocols are already extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
