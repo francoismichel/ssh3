@@ -499,7 +499,7 @@ func mainWithStatusCode() int {
 			// Put "ssh3" as ServerName so that the TLS verification can succeed
 			// Otherwise, TLS refuses to validate a certificate without IP SANs
 			// if the hostname is an IP address.
-			tlsConf.ServerName = "selfigned.ssh3"
+			tlsConf.ServerName = "selfsigned.ssh3"
 		}
 	}
 
