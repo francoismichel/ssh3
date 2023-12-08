@@ -6,8 +6,11 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -17,6 +20,8 @@ import (
 	ptylib "github.com/creack/pty"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
 type UnknownSSHPubkeyType struct {
@@ -222,4 +227,62 @@ func JWTSigningMethodFromCryptoPubkey(pubkey crypto.PublicKey) (jwt.SigningMetho
 func Sha256Fingerprint(in []byte) string {
 	hash := sha256.Sum256(in)
 	return base64.StdEncoding.EncodeToString(hash[:])
+}
+
+
+func getSANExtension(cert *x509.Certificate) []byte {
+	oidExtensionSubjectAltName := []int{2, 5, 29, 17}
+	for _, e := range cert.Extensions {
+		if e.Id.Equal(oidExtensionSubjectAltName) {
+			return e.Value
+		}
+	}
+	return nil
+}
+
+
+func forEachSAN(der cryptobyte.String, callback func(tag int, data []byte) error) error {
+	if !der.ReadASN1(&der, cryptobyte_asn1.SEQUENCE) {
+		return errors.New("x509: invalid subject alternative names")
+	}
+	for !der.Empty() {
+		var san cryptobyte.String
+		var tag cryptobyte_asn1.Tag
+		if !der.ReadAnyASN1(&san, &tag) {
+			return errors.New("x509: invalid subject alternative name")
+		}
+		if err := callback(int(tag^0x80), san); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+
+// returns true whether the certificat contains a SubjectAltName extension
+// with at least one IP address record
+func CertHasIPSANs(cert *x509.Certificate) (bool, error) {
+	SANExtension := getSANExtension(cert)
+	if SANExtension == nil {
+		return false, nil
+	}
+	nameTypeIP := 7
+	var ipAddresses []net.IP
+
+	err := forEachSAN(SANExtension, func(tag int, data []byte) error {
+		switch tag {
+		case nameTypeIP:
+			switch len(data) {
+			case net.IPv4len, net.IPv6len:
+				ipAddresses = append(ipAddresses, data)
+			default:
+				return fmt.Errorf("x509: cannot parse IP address of length %d",len(data))
+			}
+		default:
+		}
+
+		return nil
+	})
+	return len(ipAddresses) > 0, err
 }

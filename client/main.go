@@ -430,6 +430,8 @@ func mainWithStatusCode() int {
 		hostname = urlHostname
 	}
 
+	hostnameIsAnIP := net.ParseIP(hostname) != nil
+
 	port := configPort
 	if port == -1 && urlPort != "" {
 		port, err = strconv.Atoi(urlPort)
@@ -470,17 +472,6 @@ func mainWithStatusCode() int {
 		log.Fatal().Msgf("%s", err)
 	}
 
-	if certs, ok := knownHosts[hostname]; ok {
-		for _, cert := range certs {
-			pool.AddCert(cert)
-		}
-	}
-
-	var qconf quic.Config
-
-	qconf.MaxIncomingStreams = 10
-	qconf.Allow0RTT = true
-	qconf.EnableDatagrams = true
 
 	tlsConf := &tls.Config{
 		RootCAs:            pool,
@@ -489,7 +480,36 @@ func mainWithStatusCode() int {
 		NextProtos:         []string{http3.NextProtoH3},
 	}
 
+	if certs, ok := knownHosts[hostname]; ok {
+		foundAnIPSAN := false
+		for _, cert := range certs {
+			hasIPSAN, err := util.CertHasIPSANs(cert)
+			if err != nil {
+				log.Warn().Msgf("could not parse known_hosts certificate for hostname %s", hostname)
+				continue
+			}
+			pool.AddCert(cert)
+			if hasIPSAN {
+				foundAnIPSAN = true
+			}
+		}
+
+		// If no IP SAN was in the cert, then assume the self-signed cert at least matches the .ssh3 TLD
+		if hostnameIsAnIP && !foundAnIPSAN {
+			// Put "ssh3" as ServerName so that the TLS verification can succeed
+			// Otherwise, TLS refuses to validate a certificate without IP SANs
+			// if the hostname is an IP address.
+			tlsConf.ServerName = "selfsigned.ssh3"
+		}
+	}
+
+	var qconf quic.Config
+
+	qconf.MaxIncomingStreams = 10
+	qconf.Allow0RTT = true
+	qconf.EnableDatagrams = true
 	qconf.KeepAlivePeriod = 1 * time.Second
+
 	roundTripper := &http3.RoundTripper{
 		TLSClientConfig: tlsConf,
 		QuicConfig:      &qconf,
@@ -538,7 +558,10 @@ func mainWithStatusCode() int {
 					return -1
 				}
 				if _, ok = knownHosts[hostname]; ok {
-					log.Error().Msgf("could not establish QUIC connection with a server already listed in %s: %s", knownHostsPath, err)
+					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. " + 
+									 "If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
+									 "TLS error: %s", knownHostsPath, err)
+					log.Error().Msgf("Aborting.")
 					return -1
 				}
 				// bad certificates, let's mimic the OpenSSH's behaviour similar to host keys
