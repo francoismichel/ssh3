@@ -93,15 +93,7 @@ using `screen` or a similar utility.
 
 
 > [!NOTE]  
-> As SSH3 runs on top of HTTP/3, a server needs a valid X.509 certificate and its corresponding
-> private key to work. If you do not want to generate a certificate signed by a real public
-> certificate authority, you can generate a self-signed certificate using the
-> `generate_openssl_selfsigned_certificate.sh` script available in this repository.
-> This should provide you with similar security guarantees to SSHv2's classical
-> host keys mechanism, with the same security issue: you may be vulnerable to
-> machine-in-the-middle attacks during your first connection to your server.
-> Using real certificates signed by public certificate authorities such as Let's Encrypt
-> avoids this security issue.
+> As SSH3 runs on top of HTTP/3, a server needs a valid X.509 certificate and its corresponding private key. If you do not want to generate a certificate signed by a real certificate authority, you can generate a self-signed certificate using the `generate_openssl_selfsigned_certificate.sh` script available in this repository. This provides you with similar security guarantees to SSHv2's host keys mechanism, with the same security issue: you may be vulnerable to machine-in-the-middle attacks during your first connection to your server. Using real certificates signed by public certificate authorities such as Let's Encrypt avoids this security issue.
 
 
 Here is the usage of the `ssh3-server` executable:
