@@ -18,7 +18,7 @@ Among others, SSH3 allows the following improvements:
 
 > [!TIP]
 > SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
-> [secret path](#🥷-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret path. 
+> [secret path](#🥷-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL. 
 
 *SSH3* stands for the concatenation of *SSH* and *H3*. 
 
