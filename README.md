@@ -195,5 +195,8 @@ This feature is still experimental but allows you to connect using an external i
 of your company or any other provider that implements the OpenID Connect standard, such as Google Identity,
 Github or Microsoft Entra.
 
-![](resources/figures/ssh3_oidc.gif)
-*Secure connection without private key using a Google account*
+<div align="center">
+<img src="resources/figures/ssh3_oidc.gif" width=75%>
+
+*Secure connection without private key using a Google account.*
+</div>
