@@ -14,18 +14,27 @@ permissions:
     packages: write
 
 jobs:
-  releases-matrix:
-    name: Release Go Binary
-    runs-on: ubuntu-latest
+  gorelease:
     strategy:
-      matrix:
-        goos: [linux]
-        goarch: [amd64]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: wangyoucao577/go-release-action@v1
-        with:
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          project_path: client
+        matrix:
+          osvariant: [ { imgname: ubuntu-latest, goarch: linux }, { imgname: macos-latest, goarch: darwin } ]
+  runs-on: ${{ matrix.osvariant.imgname }}
+      steps:
+        -
+          name: Checkout
+          uses: actions/checkout@v4
+          with:
+            fetch-depth: 0
+        -
+          name: Set up Go
+          uses: actions/setup-go@v4
+        -
+          name: Run GoReleaser
+          uses: goreleaser/goreleaser-action@v5
+          with:
+            # either 'goreleaser' (default) or 'goreleaser-pro'
+            distribution: goreleaser
+            version: latest
+            args: release --clean --config .goreleaser-${{ matrix.osvariant.goarch }}.yml
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
