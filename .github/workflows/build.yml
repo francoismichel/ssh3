@@ -1,6 +1,8 @@
 name: Go
-on: [push, pull_request]
-
+on:
+  pull_request:
+    paths-ignore:
+      - '**/README.md'
 jobs:
   build-linux:
     strategy:
@@ -39,9 +41,8 @@ jobs:
           go-version: '${{matrix.go-version}}'
       - name: Install dependencies
         run: go get ./...
+      # No Build Server on MacOS right now as the server currently does no build on MacOS
       - name: Build Client
         run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v client/main.go
-      - name: Build Server
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v server/main.go
       - name: Test with the Go CLI
         run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
