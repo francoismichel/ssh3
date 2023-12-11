@@ -16,6 +16,9 @@ Among others, SSH3 allows the following improvements:
 - UDP port forwarding in addition to classical TCP port forwarding
 - All the features allowed by the modern QUIC protocol: including connection migration (soon) and multipath connections
 
+SSH3 is still experimental. If you are afraid of deploying publicly a new SSH3 server, you can use the
+[secret path](#🥷-your-ssh3-public-server-can-be-hidden) feature of SSH3 to make it available only to Internet users who know the secret path. 
+
 *SSH3* stands for the concatenation of *SSH* and *H3*. 
 
 ## ⚡ SSH3 is faster
@@ -118,8 +121,13 @@ sessions requests querying the `/ssh3` URL path:
 
     ssh3-server -cert /path/to/cert/or/fullchain -key /path/to/cert/private/key -url-path /ssh3
 
-**Note that, similarly to OpenSSH, the server must be run with root priviledges to log in as other users.**
+> [!NOTE]
+> Similarly to OpenSSH, the server must be run with root priviledges to log in as other users.
 
+#### Authorized keys and authorized identities
+By default, the SSH3 server will look for identities in the `~/.ssh/authorized_keys` and `~/.ssh3/authorized_identities` files for each user. It currently handles `rsa`, `ed25519` and
+keys in the OpenSSH format, as well as the `oidc` identity used for OpenID Connect authentication
+discussed below.
 
 ### Using the SSH3 client
 Once you have an SSH3 server running, you can connect to it using the SSH3 client similarly to what
@@ -190,13 +198,33 @@ with the following command:
 
       ssh3 -use-password username@my-server.example.org
 
-#### OpenID Connect based authentication.
-This feature is still experimental but allows you to connect using an external identity provider such as the one
+#### OpenID Connect authentication (still experimental).
+This feature allows you to connect using an external identity provider such as the one
 of your company or any other provider that implements the OpenID Connect standard, such as Google Identity,
-Github or Microsoft Entra.
+Github or Microsoft Entra. The authentication flow is illustrated in the GIF below.
 
 <div align="center">
 <img src="resources/figures/ssh3_oidc.gif" width=75%>
 
 *Secure connection without private key using a Google account.*
 </div>
+
+The way it connects to your identity provider is configured in a file named `~/.ssh3/oidc_config.json`.
+Below is an example `config.json` file for use with a Google account.
+```json
+[
+    {
+        "issuer_url": "https://accounts.google.com",
+        "client_id": "<your_client_id>", 
+        "client_secret": "<your_client_secret>"
+    },
+    // other identity providers config
+]
+```
+This might change in the future, but currently, to make this feature work with your Google account, you will need to setup a new experimental application in your Google Cloud console and add your email as authorized users.
+This will provide you with a `client_id` and a `client_secret` that you can then set in your `~/.ssh3/oidc_config.json`. On the server side, you just have to add the following line in your `~/.ssh3/authorized_identities`:
+
+```
+oidc <client_id> https://accounts.google.com <email>
+```
+We currently consider removing the need of setting the client_id in the `authorized_identities` file in the future.
