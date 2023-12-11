@@ -210,15 +210,15 @@ Github or Microsoft Entra. The authentication flow is illustrated in the GIF bel
 </div>
 
 The way it connects to your identity provider is configured in a file named `~/.ssh3/oidc_config.json`.
-Below is an example `config.json` file for use with a Google account.
+Below is an example `config.json` file for use with a Google account. This configuration file is an array
+and can contain several identity providers configurations.
 ```json
 [
     {
         "issuer_url": "https://accounts.google.com",
         "client_id": "<your_client_id>", 
         "client_secret": "<your_client_secret>"
-    },
-    // other identity providers config
+    }
 ]
 ```
 This might change in the future, but currently, to make this feature work with your Google account, you will need to setup a new experimental application in your Google Cloud console and add your email as authorized users.
