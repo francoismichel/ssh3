@@ -44,3 +44,6 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
+
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_Darwin_checksums.txt'
