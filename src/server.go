@@ -127,19 +127,6 @@ type SSH3Handler = AuthenticatedHandlerFunc
 func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
 
 	return func(authenticatedUsername string, newConv *Conversation, w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Server", GetCurrentVersion())
-		major, minor, patch, err := ParseVersion(r.UserAgent())
-		log.Debug().Msgf("received request from User-Agent %s (major %d, minor %d, patch %d)", r.UserAgent(), major, minor, patch)
-		// currently apply strict version rules
-		if err != nil || major != MAJOR || minor != MINOR {
-			w.WriteHeader(http.StatusForbidden)
-			if err == nil {
-				w.Write([]byte(fmt.Sprintf("Unsupported version: %d.%d.%d not supported by server in version %s", major, minor, patch, GetCurrentVersion())))
-			} else {
-				w.Write([]byte("Unsupported user-agent"))
-			}
-			return
-		}
 		log.Info().Msgf("got request: method: %s, URL: %s", r.Method, r.URL.String())
 		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
 			hijacker, ok := w.(http3.Hijacker)
