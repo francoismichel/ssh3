@@ -119,3 +119,78 @@ sessions requests querying the `/ssh3` URL path:
     ssh3-server -cert /path/to/cert/or/fullchain -key /path/to/cert/private/key -url-path /ssh3
 
 **Note that, similarly to OpenSSH, the server must be run with root priviledges to log in as other users.**
+
+
+### Using the SSH3 client
+Once you have an SSH3 server running, you can connect to it using the SSH3 client similarly to what
+you did with your classical SSHv2 tool.
+
+Here is the usage of the `ssh3` executable:
+
+```
+Usage of ssh3:
+  -pubkey-for-agent string
+        if set, use an agent key whose public key matches the one in the specified path
+  -privkey string
+        private key file
+  -use-password
+        if set, do classical password authentication
+  -forward-agent
+        if set, forwards ssh agent to be used with sshv2 connections on the remote host
+  -forward-tcp string
+        if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport
+  -forward-udp string
+        if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport
+  -insecure
+        if set, skip server certificate verification
+  -keylog string
+        Write QUIC TLS keys and master secret in the specified keylog file: only for debugging purpose
+  -use-oidc string
+        if set, force the use of OpenID Connect with the specified issuer url as parameter
+  -oidc-config string
+        OpenID Connect json config file containing the "client_id" and "client_secret" fields needed for most identity providers
+  -do-pkce
+        if set, perform PKCE challenge-response with oidc
+  -v    if set, enable verbose mode
+```
+
+#### Config-based session establishment
+`ssh3` parses your OpenSSH config. Currently, it only handles the `Hostname`; `User`, `Port` and `IdentityFile` options.
+Let's say you have the following lines in your OpenSSH config located in `~/.ssh/config` :
+```
+Host my-server
+  HostName 192.0.2.0
+  User username
+  IdentityFile ~/.ssh/id_rsa
+```
+
+Similarly to what OpenSSH does, the following `ssh3` command will connect you to the SSH3 server running on 192.0.2.0 on UDP port 443 using public key authentication with the private key located in `.ssh/id_rsa` :
+
+      ssh3 my-server
+
+If you do not want a config-based utilization of SSH3, yo ucan read the sections below to see how to use the CLI parameters of `ssh3`.
+
+#### Private-key authentication
+You can connect to your SSH3 server at my-server.example.org using the private key located in `~/.ssh/id_rsa` with the following command:
+
+      ssh3 -privkey ~/.ssh/id_rsa username@my-server.example.org
+
+#### Agent-based private key authentication
+The SSH3 client works with the OpenSSH agent and uses the classical `SSH_AUTH_SOCK` environment variable to
+communicate with this agent. Similarly to OpenSSH, SSH3 will list the keys provided by the SSH agent
+and connect using the first key listen by the agent by default.
+If you want to specify a specific key to use with the agent, you can either specify the private key
+directly with the `-privkey` argument like above, or specify the corresponding public key using the
+`-pubkey-for-agent` argument. This allows you to authenticate in situations where only the agent has
+a direct access to the private key but you only have access to the public key.
+
+#### Password-based authentication
+While discouraged, you can connect to your server using passwords (if explicitly enabled on the `ssh3-server`)
+with the following command:
+
+      ssh3 -use-password username@my-server.example.org
+
+#### OpenID Connect based authentication.
+This feature is still experimental but allows you to connect using an external identity provider such as the one
+of your company or any other provider that implements the OpenID Connect standard, such as Google Identity,
+Github or Microsoft Entra.
