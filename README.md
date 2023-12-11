@@ -16,7 +16,7 @@ Among others, SSH3 allows the following improvements:
 - UDP port forwarding in addition to classical TCP port forwarding
 - All the features allowed by the modern QUIC protocol: including connection migration (soon) and multipath connections
 
-SSH3 is still experimental. If you are afraid of deploying publicly a new SSH3 server, you can use the
+SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
 [secret path](#🥷-your-ssh3-public-server-can-be-hidden) feature of SSH3 to make it available only to Internet users who know the secret path. 
 
 *SSH3* stands for the concatenation of *SSH* and *H3*. 
@@ -24,8 +24,10 @@ SSH3 is still experimental. If you are afraid of deploying publicly a new SSH3 s
 ## ⚡ SSH3 is faster
 Faster for session establishment, not throughput ! SSH3 offers a significantly faster session establishment than SSHv2. Establishing a new session with SSHv2 can take 5 to 7 network round-trips, which can easily be noticed by the user. SSH3 only needs 3 round-trips. The keystroke latency in a running session is unchanged.
 
-![](resources/figures/ssh3_100ms_rtt.gif)
-*SSH3 (top) VS SSHv2 (bottom) session establishement with a 100ms ping towards the server.*
+<div align="center">
+<img src="resources/figures/ssh3_100ms_rtt.gif"/>
+<i>SSH3 (top) VS SSHv2 (bottom) session establishement with a 100ms ping towards the server.</i>
+</div>
 
 ## 🔒 SSH3 is secure
 While SSHv2 defines its own protocols for user authentication and secure channel establishment, SSH3 relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP. These protocols are already extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
