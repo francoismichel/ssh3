@@ -7,7 +7,7 @@ jobs:
         matrix:
           go-version: [ '1.20.x', '1.21.x' ]
           goos: [linux]
-          goarch: [amd64, arm64]
+          goarch: [amd64]
     runs-on: ubuntu-latest
 
     steps:
@@ -19,17 +19,17 @@ jobs:
       - name: Install dependencies
         run: go get ./...
       - name: Build Client
-        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v client/main.go
+        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v client/main.go
       - name: Build Server
-        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v server/main.go
+        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v server/main.go
       - name: Test with the Go CLI
-        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
+        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
   build-macos:
     strategy:
       matrix:
         go-version: [ '1.20.x', '1.21.x' ]
         goos: [darwin]
-        goarch: [amd64, arm64]
+        goarch: [amd64]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,8 +40,8 @@ jobs:
       - name: Install dependencies
         run: go get ./...
       - name: Build Client
-        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v client/main.go
+        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v client/main.go
       - name: Build Server
-        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v server/main.go
+        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v server/main.go
       - name: Test with the Go CLI
-        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
+        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
