@@ -249,18 +249,18 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 func mainWithStatusCode() int {
 	// verbose := flag.Bool("v", false, "verbose")
 	// quiet := flag.Bool("q", false, "don't print the data")
-	keyLogFile := flag.String("keylog", "", "key log file")
+	keyLogFile := flag.String("keylog", "", "Write QUIC TLS keys and master secret in the specified keylog file: only for debugging purpose")
 	privKeyFile := flag.String("privkey", "", "private key file")
-	pubkeyForAgent := flag.String("pubkey-for-agent", "", "(implies -use-agent) if set, use an agent key whose public key matches the one in the specified path")
-	passwordAuthentication := flag.Bool("use-password", false, "do classical password authentication")
-	insecure := flag.Bool("insecure", false, "skip certificate verification")
-	issuerUrl := flag.String("use-oidc", "", "if set, forces the use of OIDC with the specified issuer url as parameter")
-	oidcConfigFileName := flag.String("oidc-config", "", "oidc json config file containing the \"client_id\" and \"client_secret\" fields")
-	verbose := flag.Bool("v", false, "verbose mode, if set")
-	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc (currently not working)")
+	pubkeyForAgent := flag.String("pubkey-for-agent", "", "if set, use an agent key whose public key matches the one in the specified path")
+	passwordAuthentication := flag.Bool("use-password", false, "if set, do classical password authentication")
+	insecure := flag.Bool("insecure", false, "if set, skip server certificate verification")
+	issuerUrl := flag.String("use-oidc", "", "if set, force the use of OpenID Connect with the specified issuer url as parameter")
+	oidcConfigFileName := flag.String("oidc-config", "", "OpenID Connect json config file containing the \"client_id\" and \"client_secret\" fields needed for most identity providers")
+	verbose := flag.Bool("v", false, "if set, enable verbose mode")
+	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc")
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
-	forwardUDP := flag.String("forward-udp", "", "if set, takes a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
-	forwardTCP := flag.String("forward-tcp", "", "if set, takes a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
+	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
+	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	args := flag.Args()
@@ -482,6 +482,7 @@ func mainWithStatusCode() int {
 
 	if certs, ok := knownHosts[hostname]; ok {
 		foundAnIPSAN := false
+
 		for _, cert := range certs {
 			hasIPSAN, err := util.CertHasIPSANs(cert)
 			if err != nil {
@@ -689,10 +690,18 @@ func mainWithStatusCode() int {
 		authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
 	}
 
+	if *issuerUrl != "" {
+		for _, issuerConfig := range oidcConfig {
+			if *issuerUrl == issuerConfig.IssuerUrl {
+				authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+			}
+		}
+	}
+
 	authMethods = append(authMethods, configAuthMethods...)
 
-	for _, issuerConfig := range oidcConfig {
-		if *issuerUrl == "" || *issuerUrl == issuerConfig.IssuerUrl {
+	if *issuerUrl == "" {
+		for _, issuerConfig := range oidcConfig {
 			authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
 		}
 	}
