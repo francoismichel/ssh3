@@ -107,7 +107,6 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPK
 	if err != nil {
 		return "", err
 	}
-	command.Wait()
 
 	
 	rawIDToken := <-tokenChannel
@@ -123,6 +122,7 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		defer w.(http.Flusher).Flush()
 		// Verify state and errors.
 
 		options := []oauth2.AuthCodeOption{}
@@ -158,6 +158,7 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 			log.Error().Msgf("error when parsing the oauth token claims: %s", err.Error())
 			return
 		}
+
 		w.Write([]byte("you can now close this tab"))	// status 200 is implicit
 		tokenChannel <- rawIDToken
 	}
