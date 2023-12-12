@@ -48,19 +48,19 @@ jobs:
       - name: Put test public key in testuser's authorized_identities
         env:
           TESTUSER_PUBKEY_BASE64: ${{ secrets.TESTUSER_PUBKEY_BASE64 }}
-        run: echo $TESTUSER_PUBKEY_BASE64 | base64 --decode > ${{matrix.testuserhome}}/.ssh/authorized_identities
+        run: echo $TESTUSER_PUBKEY_BASE64 | base64 --decode | sudo tee ${{matrix.testuserhome}}/.ssh/authorized_identities
       - name: Put test private key in  the current directory
         env:
           TESTUSER_PRIVKEY_BASE64: ${{ secrets.TESTUSER_PRIVKEY_BASE64 }}
-        run: echo $TESTUSER_PRIVKEY_BASE64 | base64 --decode > /privkey
+        run: echo $TESTUSER_PRIVKEY_BASE64 | base64 --decode | sudo tee /privkey
       - name: Generate server's cert private key
         env:
           TESTSERVER_CERT_PRIVKEY_BASE64: ${{ secrets.TESTSERVER_CERT_PRIVKEY_BASE64 }}
-        run: echo $TESTSERVER_CERT_PRIVKEY_BASE64 | base64 --decode > /cert_priv.key
+        run: echo $TESTSERVER_CERT_PRIVKEY_BASE64 | base64 --decode | sudo tee /cert_priv.key
       - name: Generate server's cert
         env:
           TESTSERVER_CERT_BASE64: ${{ secrets.TESTSERVER_CERT_BASE64 }}
-        run: echo $TESTSERVER_CERT_BASE64 | base64 --decode > /cert.pem
+        run: echo $TESTSERVER_CERT_BASE64 | base64 --decode | sudo tee /cert.pem
       - name: Test with the Go CLI
         env:
           CERT_PEM: /cert.pem
