@@ -68,7 +68,7 @@ jobs:
       - name: Classical unit tests
         run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
       - name: Integration tests
-        run: sudo env CERT_PEM=/cert.pem CERT_PRIV_KEY=/cert_priv.key TESTUSER_PRIVKEY=/privkey TESTUSER_USERNAME=${{matrix.testuser}} CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED=1 go run github.com/onsi/ginkgo/v2/ginkgo -r
+        run: sudo env CERT_PEM=/cert.pem CERT_PRIV_KEY=/cert_priv.key ATTACKER_PRIVKEY=/attacker-privkey TESTUSER_PRIVKEY=/privkey TESTUSER_USERNAME=${{matrix.testuser}} CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED=1 go run github.com/onsi/ginkgo/v2/ginkgo -r
   build-macos:
     strategy:
       matrix:
