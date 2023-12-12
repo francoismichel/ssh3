@@ -11,16 +11,13 @@ In a nutshell, SSH3 uses [QUIC](https://datatracker.ietf.org/doc/html/rfc9000)+[
 secure channel establishment and the [HTTP Authorization](https://www.rfc-editor.org/rfc/rfc9110.html#name-authorization) mechanisms for user authentication.
 Among others, SSH3 allows the following improvements:
 - Significantly faster session establishment
-- New HTTP authentication methods such as [OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749) and [OpenID Connect](https://openid.net/specs/openid-connect-core-1_0.html) in addition to classical passwords and pubkey authentication
+- New HTTP authentication methods such as [OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749) and [OpenID Connect](https://openid.net/specs/openid-connect-core-1_0.html) in addition to classical SSH authentication
 - Robustness to port scanning attacks: your SSH3 server can be made **invisible** to other Internet users
 - UDP port forwarding in addition to classical TCP port forwarding
 - All the features allowed by the modern QUIC protocol: including connection migration (soon) and multipath connections
 
-You quickly want to get started ? Checkout the sections explaining how to [setup an SSH3 server](#deploying-an-ssh3-server) and how to [use the SSH3 client](#using-the-ssh3-client).
-
 > [!TIP]
-> SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
-> [secret path](#-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL. 
+> Quickly want to get started ? Checkout how to [install SSH3](#installing-ssh3). You will learn to [setup an SSH3 server](#deploying-an-ssh3-server) and [use the SSH3 client](#using-the-ssh3-client).
 
 *SSH3* stands for the concatenation of *SSH* and *H3*. 
 
@@ -69,6 +66,11 @@ This SSH3 implementation already provides many of the popular features of OpenSS
 ## Installing SSH3
 You can either download the last [release binaries](https://github.com/francoismichel/ssh3/releases) 
 or generate these binaries yourself by compiling the code from source.
+
+> [!TIP]
+> SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
+> [secret path](#-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL. 
+
 
 ### Compiling SSH3 from source
 You need a recent [Golang](https://go.dev/dl/) version to do this.
