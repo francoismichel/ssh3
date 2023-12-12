@@ -31,6 +31,12 @@ jobs:
         with:
           go-version: '1.21.x'
       -
+        name: Install toolchain for compiling ARM
+        run: sudo apt-get -y install gcc-aarch64-linux-gnu
+      -
+        name: Install lcrypt for arm64
+        run:  sudo dpkg --add-architecture arm64 && sudo apt update && sudo apt-get -y install libcrypt-dev:arm64
+      -
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:

@@ -9,29 +9,33 @@ jobs:
         matrix:
           go-version: [ '1.20.x', '1.21.x' ]
           goos: [linux]
-          goarch: [amd64]
+          archparams: [{goarch: amd64, cc: gcc},{goarch: arm64, cc: aarch64-linux-gnu-gcc}]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+      - name: Install toolchain for compiling ARM
+        run: sudo apt-get -y install gcc-aarch64-linux-gnu
+      - name: Install lcrypt for arm64
+        run:  sudo dpkg --add-architecture arm64 && sudo apt update && sudo apt-get -y install libcrypt-dev:arm64
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
           go-version: '${{matrix.go-version}}'
-      - name: Install dependencies
+      - name: Install Go dependencies
         run: go get ./...
       - name: Build Client
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v client/main.go
+        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v client/main.go
       - name: Build Server
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v server/main.go
+        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v server/main.go
       - name: Test with the Go CLI
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
+        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
   build-macos:
     strategy:
       matrix:
         go-version: [ '1.20.x', '1.21.x' ]
         goos: [darwin]
-        goarch: [amd64]
+        goarch: [amd64,arm64]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4

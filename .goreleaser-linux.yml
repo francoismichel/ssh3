@@ -26,6 +26,12 @@ builds:
       - linux
     goarch:
       - amd64
+      - arm64
+    overrides:
+      - goos: linux
+        goarch: arm64
+        env:
+          - CC=aarch64-linux-gnu-gcc
   - 
     id: "ssh3-server"
     main: ./server/main.go
@@ -36,7 +42,13 @@ builds:
       - linux
     goarch:
       - amd64
-
+      - arm64
+    overrides:
+      - goos: linux
+        goarch: arm64
+        env:
+          - CC=aarch64-linux-gnu-gcc
+      
 archives:
   - format: tar.gz
     # this name template makes the OS and Arch compatible with the results of `uname`.
