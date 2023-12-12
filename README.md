@@ -43,7 +43,7 @@ Using SSH3, you can avoid the usual stress of scanning and dictionnary attacks a
 
 By replacing `<my-long-secret>` by, let's say, the random value `M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU`, your SSH3 server will only answer to SSH3 connection attempts made to the URL `https://192.0.2.0:443/M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU` and it will respond a `404 Not Found` to other requests. Attackers and crawlers on the Internet can therefore not detect the presence of your SSH3 server. They will only see a simple web server answering 404 status codes to every request.
 
-## 💐 SSH3 is already features-rich
+## 💐 SSH3 is already feature-rich
 SSH3 provides new feature that could not be provided by the SSHv2 protocol.
 
 ### Brand new features
