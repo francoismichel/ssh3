@@ -130,9 +130,8 @@ sessions requests querying the `/ssh3` URL path:
 
 #### Authorized keys and authorized identities
 By default, the SSH3 server will look for identities in the `~/.ssh/authorized_keys` and `~/.ssh3/authorized_identities` files for each user.
-`~/.ssh3/authorized_identities` allows new identities such as OpenID Connect (`oidc`) discussed [below](#openid-connect-authentication-still-experimental). It currently handles `rsa`, `ed25519` and
-keys in the OpenSSH format, as well as the `oidc` identity used for OpenID Connect authentication
-discussed below.
+`~/.ssh3/authorized_identities` allows new identities such as OpenID Connect (`oidc`) discussed [below](#openid-connect-authentication-still-experimental).
+Popular key types such as `rsa`, `ed25519` and keys in the OpenSSH format can be used.
 
 ### Using the SSH3 client
 Once you have an SSH3 server running, you can connect to it using the SSH3 client similarly to what
