@@ -59,10 +59,12 @@ var _ = Describe("Testing the ssh3 cli", func() {
 	Context("With running server", func() {
 		var privKeyPath = os.Getenv("TESTUSER_PRIVKEY")
 		var username = os.Getenv("TESTUSER_USERNAME")
-		if os.Getenv("SSH3_INTEGRATION_TESTS_ENABLED") != "1" {
-			Skip("skipping integration tests")
-		}
-		
+		BeforeEach(func() {
+			if os.Getenv("SSH3_INTEGRATION_TESTS_ENABLED") != "1" {
+				Skip("skipping integration tests")
+			}
+		})
+
 		Context("Insecure", func() {
 			It("Should connect using privkey", func() {
 				command := exec.Command(ssh3Path,
