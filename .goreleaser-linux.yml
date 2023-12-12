@@ -26,7 +26,7 @@ builds:
       - linux
     goarch:
       - amd64
-      - arm64
+      # - arm64
     overrides:
       - goos: linux
         goarch: arm64
@@ -42,7 +42,7 @@ builds:
       - linux
     goarch:
       - amd64
-      - arm64
+      # - arm64
     overrides:
       - goos: linux
         goarch: arm64
