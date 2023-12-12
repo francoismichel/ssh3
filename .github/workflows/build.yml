@@ -17,7 +17,7 @@ jobs:
       - name: Install toolchain for compiling ARM
         run: sudo apt-get -y install gcc-aarch64-linux-gnu
       - name: Install lcrypt for arm64
-        run:  sudo dpkg --add-architecture arm64 && sudo apt update && sudo apt-get -y install libcrypt-dev:arm64
+        run:  sudo dpkg --add-architecture arm64 && sudo apt-get -y update && sudo apt-get -y install libcrypt-dev:arm64
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
