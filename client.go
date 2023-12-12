@@ -67,14 +67,14 @@ func (m *PrivkeyFileAuthMethod) Filename() string {
 	return m.filename
 }
 
-// ToIdentityWithoutPassphrase returns an SSH3 identity stored on the provided path.
+// IntoIdentityWithoutPassphrase returns an SSH3 identity stored on the provided path.
 // It supports the same keys as ssh.ParsePrivateKey
 // If the private key is encrypted, it returns an ssh.PassphraseMissingError.
 func (m *PrivkeyFileAuthMethod) IntoIdentityWithoutPassphrase() (Identity, error) {
 	return m.intoIdentity(nil)
 }
 
-// NewPrivKeyFileIdentity returns an SSH3 identity stored on the provided path.
+// IntoIdentityPassphrase returns a passphrase-protected private key stored on the provided path.
 // It supports the same keys as ssh.ParsePrivateKey
 // If the passphrase is wrong, it returns an x509.IncorrectPasswordError.
 func (m *PrivkeyFileAuthMethod) IntoIdentityPassphrase(passphrase string) (Identity, error) {

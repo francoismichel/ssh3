@@ -271,7 +271,7 @@ func mainWithStatusCode() int {
 	pubkeyForAgent := flag.String("pubkey-for-agent", "", "if set, use an agent key whose public key matches the one in the specified path")
 	passwordAuthentication := flag.Bool("use-password", false, "if set, do classical password authentication")
 	insecure := flag.Bool("insecure", false, "if set, skip server certificate verification")
-	issuerUrl := flag.String("use-oidc", "", "if set, force the use of OpenID Connect with the specified issuer url as parameter")
+	issuerUrl := flag.String("use-oidc", "", "if set, force the use of OpenID Connect with the specified issuer url as parameter (it opens a browser window)")
 	oidcConfigFileName := flag.String("oidc-config", "", "OpenID Connect json config file containing the \"client_id\" and \"client_secret\" fields needed for most identity providers")
 	verbose := flag.Bool("v", false, "if set, enable verbose mode")
 	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc")
@@ -281,6 +281,8 @@ func mainWithStatusCode() int {
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	args := flag.Args()
+
+	useOIDC := *issuerUrl != ""
 
 	ssh3Dir := path.Join(homedir(), ".ssh3")
 	os.MkdirAll(ssh3Dir, 0700)
@@ -672,46 +674,55 @@ func mainWithStatusCode() int {
 	req.Header.Set("User-Agent", ssh3.GetCurrentVersion())
 
 	var authMethods []interface{}
-	if *privKeyFile != "" {
-		authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
-	}
 
-	if *pubkeyForAgent != "" {
-		if agentClient == nil {
-			log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
-		} else {
-			var pubkey ssh.PublicKey = nil
-			if *pubkeyForAgent != "" {
-				pubKeyBytes, err := os.ReadFile(*pubkeyForAgent)
-				if err != nil {
-					log.Error().Msgf("could not load public key file: %s", err)
-					return -1
+	// Only do privkey and agent auth if OIDC is not asked explicitly
+	if !useOIDC {
+		if *privKeyFile != "" {
+			authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
+		}
+	
+		if *pubkeyForAgent != "" {
+			if agentClient == nil {
+				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
+			} else {
+				var pubkey ssh.PublicKey = nil
+				if *pubkeyForAgent != "" {
+					pubKeyBytes, err := os.ReadFile(*pubkeyForAgent)
+					if err != nil {
+						log.Error().Msgf("could not load public key file: %s", err)
+						return -1
+					}
+					pubkey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
+					if err != nil {
+						log.Error().Msgf("could not parse public key: %s", err)
+						return -1
+					}
 				}
-				pubkey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
-				if err != nil {
-					log.Error().Msgf("could not parse public key: %s", err)
-					return -1
-				}
-			}
-
-			for _, candidateKey := range agentKeys {
-				if pubkey == nil || bytes.Equal(candidateKey.Marshal(), pubkey.Marshal()) {
-					log.Debug().Msgf("found key in agent: %s", candidateKey)
-					authMethods = append(authMethods, ssh3.NewAgentAuthMethod(candidateKey))
+	
+				for _, candidateKey := range agentKeys {
+					if pubkey == nil || bytes.Equal(candidateKey.Marshal(), pubkey.Marshal()) {
+						log.Debug().Msgf("found key in agent: %s", candidateKey)
+						authMethods = append(authMethods, ssh3.NewAgentAuthMethod(candidateKey))
+					}
 				}
 			}
 		}
-	}
-
-	if *passwordAuthentication {
-		authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
-	}
-
-	if *issuerUrl != "" {
-		for _, issuerConfig := range oidcConfig {
-			if *issuerUrl == issuerConfig.IssuerUrl {
-				authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+	
+		if *passwordAuthentication {
+			authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
+		}
+	
+	} else {
+		// for now, only perform OIDC if it was explicitly asked by the user
+		if *issuerUrl != "" {
+			for _, issuerConfig := range oidcConfig {
+				if *issuerUrl == issuerConfig.IssuerUrl {
+					authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+				}
 			}
+		} else {
+			log.Error().Msgf("OIDC was asked explicitly bit did not find suitable issuer URL")
+			return -1
 		}
 	}
 
@@ -794,7 +805,7 @@ func mainWithStatusCode() int {
 			identity = m.IntoIdentity(token)
 		}
 		// currently only tries a single identity (the first one), but the goal is to
-		// try all identities, similarly to OpenSSH
+		// try several identities, similarly to OpenSSH
 		break
 	}
 
@@ -1026,19 +1037,19 @@ func mainWithStatusCode() int {
 		case *ssh3Messages.ChannelRequestMessage:
 			switch requestMessage := message.ChannelRequest.(type) {
 			case *ssh3Messages.PtyRequest:
-				fmt.Fprintf(os.Stderr, "pty request not implemented\n")
+				fmt.Fprintf(os.Stderr, "receiving a pty request on the client is not implemented\n")
 			case *ssh3Messages.X11Request:
-				fmt.Fprintf(os.Stderr, "x11 request not implemented\n")
+				fmt.Fprintf(os.Stderr, "receiving a x11 request on the client is not implemented\n")
 			case *ssh3Messages.ShellRequest:
-				fmt.Fprintf(os.Stderr, "shell request not implemented\n")
+				fmt.Fprintf(os.Stderr, "receiving a shell request on the client is not implemented\n")
 			case *ssh3Messages.ExecRequest:
-				fmt.Fprintf(os.Stderr, "exec request not implemented\n")
+				fmt.Fprintf(os.Stderr, "receiving a exec request on the client is not implemented\n")
 			case *ssh3Messages.SubsystemRequest:
-				fmt.Fprintf(os.Stderr, "subsystem request not implemented\n")
+				fmt.Fprintf(os.Stderr, "receiving a subsystem request on the client is not implemented\n")
 			case *ssh3Messages.WindowChangeRequest:
-				fmt.Fprintf(os.Stderr, "windowchange request not implemented\n")
+				fmt.Fprintf(os.Stderr, "receiving a windowchange request on the client is not implemented\n")
 			case *ssh3Messages.SignalRequest:
-				fmt.Fprintf(os.Stderr, "signal request not implemented\n")
+				fmt.Fprintf(os.Stderr, "receiving a signal request on the client is not implemented\n")
 			case *ssh3Messages.ExitStatusRequest:
 				log.Info().Msgf("ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
 				// forward the process' status code to the user
