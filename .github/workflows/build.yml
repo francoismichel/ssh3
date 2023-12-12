@@ -38,9 +38,9 @@ jobs:
       - name: Install Go dependencies
         run: go get ./...
       - name: Build Client
-        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v client/main.go
+        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v cli/client/main.go
       - name: Build Server
-        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v server/main.go
+        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v cli/server/main.go
       - name: Add test user
         run: sudo useradd -m ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
       - name: Create .ssh3 directory
@@ -86,7 +86,7 @@ jobs:
         run: go get ./...
       # No Build Server on MacOS right now as the server currently does no build on MacOS
       - name: Build Client
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v client/main.go
+        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v cli/client/main.go
       - name: Classical unit tests
         if: ${{ matrix.goarch == 'amd64' }} # only actually run the test suite with the architecture of the host
         run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo

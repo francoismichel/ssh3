@@ -39,7 +39,7 @@ int get_errno() { return errno; }
 import "C"
 import (
 	"fmt"
-	"ssh3/src/util"
+	"ssh3/util"
 	"unsafe"
 )
 

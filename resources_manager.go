@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/quic-go/quic-go/http3"
-	"ssh3/src/util"
+	"ssh3/util"
 )
 
 type ControlStreamID = uint64

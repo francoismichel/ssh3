@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	ssh3 "ssh3/src"
-	"ssh3/src/util/linux_util"
+	ssh3 "ssh3"
+	"ssh3/util/linux_util"
 	"strings"
 
 	"github.com/quic-go/quic-go"

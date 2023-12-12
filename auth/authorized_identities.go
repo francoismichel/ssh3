@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"ssh3/src/util"
+	"ssh3/util"
 	"strings"
 
 	"github.com/rs/zerolog/log"

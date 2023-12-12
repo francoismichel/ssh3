@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"crypto/rand"
 	mathrand "math/rand"
-	ssh3 "ssh3/src/message"
-	"ssh3/src/util"
+	ssh3 "ssh3/message"
+	"ssh3/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

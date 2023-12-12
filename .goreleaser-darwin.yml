@@ -18,7 +18,7 @@ before:
 builds:
   - 
     id: "ssh3"
-    main: ./client/main.go
+    main: ./cli/client/main.go
     binary: ssh3
     env:
       - CGO_ENABLED=1

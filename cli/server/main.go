@@ -28,11 +28,11 @@ import (
 	// "github.com/quic-go/quic-go/logging"
 	// "github.com/quic-go/quic-go/qlog"
 
-	ssh3 "ssh3/src"
-	"ssh3/src/linux_server"
-	ssh3Messages "ssh3/src/message"
-	util "ssh3/src/util"
-	"ssh3/src/util/linux_util"
+	ssh3 "ssh3"
+	"ssh3/linux_server"
+	ssh3Messages "ssh3/message"
+	util "ssh3/util"
+	"ssh3/util/linux_util"
 )
 
 var signals = map[string]os.Signal{
