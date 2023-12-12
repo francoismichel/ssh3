@@ -48,7 +48,7 @@ jobs:
       - name: Put test public key in testuser's authorized_identities
         env:
           TESTUSER_PUBKEY_BASE64: ${{ secrets.TESTUSER_PUBKEY_BASE64 }}
-        run: echo $TESTUSER_PUBKEY_BASE64 | base64 --decode | sudo cp /dev/stdin ${{matrix.testuserhome}}/.ssh/authorized_identities
+        run: echo $TESTUSER_PUBKEY_BASE64 | base64 --decode | sudo cp /dev/stdin ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Generate test private key
         env:
           TESTUSER_PRIVKEY_BASE64: ${{ secrets.TESTUSER_PRIVKEY_BASE64 }}
