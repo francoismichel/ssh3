@@ -69,7 +69,7 @@ jobs:
           CERT_PRIV_KEY: /cert_priv.key
           TESTUSER_PRIVKEY: /privkey
           TESTUSER_USERNAME: ${{matrix.testuser}}
-          SSH3_INTEGRATION_TESTS_ENABLED: "1"
+          SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED: "1"
         run: sudo env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
   build-macos:
     strategy:

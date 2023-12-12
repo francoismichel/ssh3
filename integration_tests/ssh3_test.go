@@ -25,18 +25,24 @@ var _ = BeforeSuite(func() {
 	var err error
 	ssh3Path, err = Build("../client/main.go")
 	Expect(err).ToNot(HaveOccurred())
-	ssh3ServerPath, err = Build("../server/main.go")
-	Expect(err).ToNot(HaveOccurred())
-	serverCommand = exec.Command(ssh3ServerPath,
-									"-bind", serverBind,
-									"-v",
-									"-enable-password-login",
-									"-url-path", DEFAULT_URL_PATH,
-									"-cert", os.Getenv("CERT_PEM"),
-									"-key", os.Getenv("CERT_PRIV_KEY"))
-	serverCommand.Env = append(serverCommand.Env, "SSH3_LOG_LEVEL=debug")
-	serverSession, err = Start(serverCommand, GinkgoWriter, GinkgoWriter)
-	Expect(err).ToNot(HaveOccurred())
+	if os.Getenv("SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED") == "1" {
+		// Tests implying a server will only work on Linux
+		// (the server currently only builds on Linux)
+		// and the server needs root priviledges, so we only
+		// run them is they are enabled explicitly.
+		ssh3ServerPath, err = Build("../server/main.go")
+		Expect(err).ToNot(HaveOccurred())
+		serverCommand = exec.Command(ssh3ServerPath,
+										"-bind", serverBind,
+										"-v",
+										"-enable-password-login",
+										"-url-path", DEFAULT_URL_PATH,
+										"-cert", os.Getenv("CERT_PEM"),
+										"-key", os.Getenv("CERT_PRIV_KEY"))
+		serverCommand.Env = append(serverCommand.Env, "SSH3_LOG_LEVEL=debug")
+		serverSession, err = Start(serverCommand, GinkgoWriter, GinkgoWriter)
+		Expect(err).ToNot(HaveOccurred())
+	}
 })
 
 var _ = AfterSuite(func() {
@@ -60,7 +66,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 		var privKeyPath = os.Getenv("TESTUSER_PRIVKEY")
 		var username = os.Getenv("TESTUSER_USERNAME")
 		BeforeEach(func() {
-			if os.Getenv("SSH3_INTEGRATION_TESTS_ENABLED") != "1" {
+			if os.Getenv("SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED") != "1" {
 				Skip("skipping integration tests")
 			}
 		})
