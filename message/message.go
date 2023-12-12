@@ -3,7 +3,7 @@ package ssh3
 import (
 	"errors"
 	"io"
-	"ssh3/src/util"
+	"ssh3/util"
 )
 
 // ssh messages type

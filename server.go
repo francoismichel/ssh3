@@ -13,7 +13,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog/log"
 
-	"ssh3/src/util"
+	"ssh3/util"
 )
 
 type ServerConversationHandler func(authenticatedUsername string, conversation *Conversation) error

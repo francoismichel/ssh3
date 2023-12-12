@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
-	util "ssh3/src/util"
+	util "ssh3/util"
 )
 
 var ChannelRequestParseFuncs = map[string]func(util.Reader) (ChannelRequest, error){

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"ssh3/src/util"
+	"ssh3/util"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net"
-	ssh3 "ssh3/src/message"
-	"ssh3/src/util"
+	ssh3 "ssh3/message"
+	"ssh3/util"
 
 	"github.com/quic-go/quic-go"
 )

@@ -3,8 +3,8 @@ package ssh3
 import (
 	"net/http"
 	"os"
-	"ssh3/src/auth"
-	"ssh3/src/util"
+	"ssh3/auth"
+	"ssh3/util"
 
 	"github.com/rs/zerolog/log"
 )

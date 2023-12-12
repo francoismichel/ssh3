@@ -31,10 +31,10 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
-	ssh3 "ssh3/src"
-	"ssh3/src/auth"
-	ssh3Messages "ssh3/src/message"
-	"ssh3/src/util"
+	"ssh3"
+	"ssh3/auth"
+	ssh3Messages "ssh3/message"
+	"ssh3/util"
 
 	"github.com/kevinburke/ssh_config"
 	"github.com/quic-go/quic-go"
