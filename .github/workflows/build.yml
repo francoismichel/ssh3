@@ -11,7 +11,7 @@ jobs:
           goos: [linux]
           testuser: [ssh3-testuser]
           testpasswd: [ssh3-testpasswd]
-          testuserhome: [/tests-home/ssh3-testuser/.ssh]
+          testuserhome: [/home/ssh3-testuser]
           archparams: [{goarch: amd64, cc: gcc}] #,{goarch: arm64, cc: aarch64-linux-gnu-gcc}]
     runs-on: ubuntu-22.04
 
@@ -42,7 +42,7 @@ jobs:
       - name: Build Server
         run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v server/main.go
       - name: Add test user
-        run: sudo useradd -m ${{matrix.testuserhome}} ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
+        run: sudo useradd -m ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
       - name: Create .ssh3 directory
         run: sudo su ${{matrix.testuser}} -c 'mkdir ${{matrix.testuserhome}}/.ssh'
       - name: Put test public key in testuser's authorized_identities
