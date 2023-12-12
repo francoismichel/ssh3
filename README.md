@@ -16,6 +16,8 @@ Among others, SSH3 allows the following improvements:
 - UDP port forwarding in addition to classical TCP port forwarding
 - All the features allowed by the modern QUIC protocol: including connection migration (soon) and multipath connections
 
+You quickly want to get started ? Checkout the sections explaining how to [setup an SSH3 server](#deploying-an-ssh3-server) and how to [use the SSH3 client](#using-the-ssh3-client).
+
 > [!TIP]
 > SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
 > [secret path](#-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL. 
