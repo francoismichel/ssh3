@@ -44,7 +44,7 @@ jobs:
       - name: Add test user
         run: sudo useradd -m ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
       - name: Create .ssh3 directory
-        run: sudo su ${{matrix.testuser}} -c 'mkdir ${{matrix.testuserhome}}/.ssh'
+        run: sudo su ${{matrix.testuser}} -c 'mkdir ${{matrix.testuserhome}}/.ssh ${{matrix.testuserhome}}/.ssh3'
       - name: Put test public key in testuser's authorized_identities
         env:
           TESTUSER_PUBKEY_BASE64: ${{ secrets.TESTUSER_PUBKEY_BASE64 }}
