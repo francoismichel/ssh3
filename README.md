@@ -18,7 +18,7 @@ Among others, SSH3 allows the following improvements:
 
 > [!TIP]
 > SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
-> [secret path](#🥷-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL. 
+> [secret path](#-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL. 
 
 *SSH3* stands for the concatenation of *SSH* and *H3*. 
 
@@ -130,7 +130,7 @@ sessions requests querying the `/ssh3` URL path:
 
 #### Authorized keys and authorized identities
 By default, the SSH3 server will look for identities in the `~/.ssh/authorized_keys` and `~/.ssh3/authorized_identities` files for each user.
-`~/.ssh3/authorized_identities` allows new identities such as OpenID Connect (`oidc`) discussed [below](#openid-connect-authentication-still-experimental)  It currently handles `rsa`, `ed25519` and
+`~/.ssh3/authorized_identities` allows new identities such as OpenID Connect (`oidc`) discussed [below](#openid-connect-authentication-still-experimental). It currently handles `rsa`, `ed25519` and
 keys in the OpenSSH format, as well as the `oidc` identity used for OpenID Connect authentication
 discussed below.
 
