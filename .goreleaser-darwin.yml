@@ -32,7 +32,7 @@ archives:
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
-      {{- title .Os }}_
+      {{ .Version }}_macos_darwin_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
@@ -46,4 +46,4 @@ changelog:
       - "^test:"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_Darwin_checksums.txt'
+  name_template: '{{ .ProjectName }}_{{ .Version }}_macos_darwin_checksums.txt'
