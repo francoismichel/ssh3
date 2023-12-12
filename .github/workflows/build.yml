@@ -16,10 +16,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Add ARM repos to sources.list
         run: |
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy main multiverse universe" >> /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-security main multiverse universe" >> /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-backports main multiverse universe" >> /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-updates main multiverse universe" >> /etc/apt/sources.list
+          sudo echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy main multiverse universe" | sudo tee -a /etc/apt/sources.list
+          sudo echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-security main multiverse universe" | sudo tee -a /etc/apt/sources.list
+          sudo echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-backports main multiverse universe" | sudo tee -a /etc/apt/sources.list
+          sudo echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-updates main multiverse universe" | sudo tee -a /etc/apt/sources.list
       - name: Add ARM architecture and update
         run: sudo dpkg --add-architecture arm64 && sudo apt-get -y update || true
       - name: Install toolchain for compiling ARM
