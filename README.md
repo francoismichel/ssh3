@@ -4,7 +4,7 @@
 </div>
 
 
-# SSH3: faster and feature rich secure shell using HTTP/3
+# SSH3: faster and rich secure shell using HTTP/3
 SSH3 is a complete revisit of the SSH
 protocol, mapping its semantics on top of the HTTP mechanisms.
 In a nutshell, SSH3 uses [QUIC](https://datatracker.ietf.org/doc/html/rfc9000)+[TLS1.3](https://datatracker.ietf.org/doc/html/rfc8446) for
