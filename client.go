@@ -137,6 +137,7 @@ type Identity interface {
 	SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error
 	// provides an authentication name that can be used as a hint for the server in the url query params
 	AuthHint() string
+	fmt.Stringer
 }
 
 // represents private keys stored in a classical file
@@ -158,6 +159,9 @@ func (i *privkeyFileIdentity) AuthHint() string {
 	return "pubkey"
 }
 
+func (i *privkeyFileIdentity) String() string {
+	return fmt.Sprintf("pubkey-identity: ALG=%s", i.signingMethod.Alg())
+}
 
 type agentSigningMethod struct {
 	Agent agent.ExtendedAgent
@@ -214,6 +218,10 @@ func (i *agentBasedIdentity) AuthHint() string {
 	return "pubkey"
 }
 
+func (i *agentBasedIdentity) String() string {
+	return fmt.Sprintf("agent-identity: %s", string(i.pubkey.Marshal()))
+}
+
 type passwordIdentity string
 
 func (i passwordIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
@@ -223,6 +231,10 @@ func (i passwordIdentity) SetAuthorizationHeader(req *http.Request, username str
 
 func (i passwordIdentity) AuthHint() string {
 	return "password"
+}
+
+func (i passwordIdentity) String() string {
+	return "password-identity"
 }
 
 
@@ -237,6 +249,9 @@ func (i rawBearerTokenIdentity) AuthHint() string {
 	return "jwt"
 }
 
+func (i rawBearerTokenIdentity) String() string {
+	return "raw-bearer-identity"
+}
 
 func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, port int, user string, authMethodsToTry []interface{}, err error) {
 	port = -1

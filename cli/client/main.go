@@ -804,6 +804,8 @@ func mainWithStatusCode() int {
 			} else if err != nil {
 				log.Warn().Msgf("Could not load private key: %s", err)
 			}
+		case *ssh3.AgentAuthMethod:
+			identity = m.IntoIdentity(agentClient)
 		case *ssh3.OidcAuthMethod:
 			token, err := auth.Connect(context.Background(), m.OIDCConfig(), m.OIDCConfig().IssuerUrl, *doPKCE)
 			if err != nil {
@@ -822,6 +824,7 @@ func mainWithStatusCode() int {
 		return -1
 	}
 
+	log.Debug().Msgf("try the following Identity: %s", identity)
 	err = identity.SetAuthorizationHeader(req, username, conv)
 	if err != nil {
 		log.Error().Msgf("could not set authorization header in HTTP request: %s", err)
