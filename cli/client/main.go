@@ -566,6 +566,14 @@ func mainWithStatusCode() int {
 
 	log.Debug().Msgf("dialing QUIC host at %s", fmt.Sprintf("%s:%d", hostname, port))
 
+	if hostnameIsAnIP {
+		ip := net.ParseIP(hostname)
+		if ip.To4() == nil && ip.To16() != nil {
+			// enforce the square-bracketed notation for ipv6 UDP addresses
+			hostname = fmt.Sprintf("[%s]", hostname)
+		}
+	}
+
 	qClient, err := quic.DialAddrEarly(ctx,
 		fmt.Sprintf("%s:%d", hostname, port),
 		tlsConf,
