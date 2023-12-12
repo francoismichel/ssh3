@@ -182,14 +182,14 @@ Host my-server
 
 Similarly to what OpenSSH does, the following `ssh3` command will connect you to the SSH3 server running on 192.0.2.0 on UDP port 443 using public key authentication with the private key located in `.ssh/id_rsa` :
 
-      ssh3 my-server
+      ssh3 my-server/my-secret-path
 
 If you do not want a config-based utilization of SSH3, yo ucan read the sections below to see how to use the CLI parameters of `ssh3`.
 
 #### Private-key authentication
-You can connect to your SSH3 server at my-server.example.org using the private key located in `~/.ssh/id_rsa` with the following command:
+You can connect to your SSH3 server at my-server.example.org listening on `/my-secret-path` using the private key located in `~/.ssh/id_rsa` with the following command:
 
-      ssh3 -privkey ~/.ssh/id_rsa username@my-server.example.org
+      ssh3 -privkey ~/.ssh/id_rsa username@my-server.example.org/my-secret-path
 
 #### Agent-based private key authentication
 The SSH3 client works with the OpenSSH agent and uses the classical `SSH_AUTH_SOCK` environment variable to
@@ -204,7 +204,7 @@ a direct access to the private key but you only have access to the public key.
 While discouraged, you can connect to your server using passwords (if explicitly enabled on the `ssh3-server`)
 with the following command:
 
-      ssh3 -use-password username@my-server.example.org
+      ssh3 -use-password username@my-server.example.org/my-secret-path
 
 #### OpenID Connect authentication (still experimental)
 This feature allows you to connect using an external identity provider such as the one
