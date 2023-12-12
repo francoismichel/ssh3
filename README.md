@@ -7,11 +7,11 @@
 # SSH3: faster and feature rich secure shell using HTTP/3
 SSH3 is a complete revisit of the SSH
 protocol, mapping its semantics on top of the HTTP mechanisms.
-In a nutshell, SSH3 uses QUIC+TLS1.3 for
-secure channel establishment and the HTTP Authorization mechanisms for user authentication.
+In a nutshell, SSH3 uses [QUIC](https://datatracker.ietf.org/doc/html/rfc9000)+[TLS1.3](https://datatracker.ietf.org/doc/html/rfc8446) for
+secure channel establishment and the [HTTP Authorization](https://www.rfc-editor.org/rfc/rfc9110.html#name-authorization) mechanisms for user authentication.
 Among others, SSH3 allows the following improvements:
 - Significantly faster session establishment
-- New HTTP authentication methods such as OAuth 2.0 and OpenID Connect in addition to classical passwords and pubkey authentication
+- New HTTP authentication methods such as [OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749) and [OpenID Connect](https://openid.net/specs/openid-connect-core-1_0.html) in addition to classical passwords and pubkey authentication
 - Robustness to port scanning attacks: your SSH3 server can be made **invisible** to other Internet users
 - UDP port forwarding in addition to classical TCP port forwarding
 - All the features allowed by the modern QUIC protocol: including connection migration (soon) and multipath connections
@@ -65,10 +65,11 @@ This SSH3 implementation already provides many of the popular features of OpenSS
 - Direct TCP port forwarding (reverse port forwarding will be implemented in the future)
 
 ## Installing SSH3
-You can either download one of the release binaries or compile the code from source.
+You can either download the last [release binaries](https://github.com/francoismichel/ssh3/releases) 
+or generate these binaries yourself by compiling the code from source.
 
 ### Compiling SSH3 from source
-You need a recent Golang version to do this.
+You need a recent [Golang](https://go.dev/dl/) version to do this.
 Downloading the source code and compiling the binaries can be done with the following steps:
 
 ```bash
@@ -128,7 +129,8 @@ sessions requests querying the `/ssh3` URL path:
 > Similarly to OpenSSH, the server must be run with root priviledges to log in as other users.
 
 #### Authorized keys and authorized identities
-By default, the SSH3 server will look for identities in the `~/.ssh/authorized_keys` and `~/.ssh3/authorized_identities` files for each user. It currently handles `rsa`, `ed25519` and
+By default, the SSH3 server will look for identities in the `~/.ssh/authorized_keys` and `~/.ssh3/authorized_identities` files for each user.
+`~/.ssh3/authorized_identities` allows new identities such as OpenID Connect (`oidc`) discussed [below](#openid-connect-authentication-still-experimental)  It currently handles `rsa`, `ed25519` and
 keys in the OpenSSH format, as well as the `oidc` identity used for OpenID Connect authentication
 discussed below.
 
@@ -201,7 +203,7 @@ with the following command:
 
       ssh3 -use-password username@my-server.example.org
 
-#### OpenID Connect authentication (still experimental).
+#### OpenID Connect authentication (still experimental)
 This feature allows you to connect using an external identity provider such as the one
 of your company or any other provider that implements the OpenID Connect standard, such as Google Identity,
 Github or Microsoft Entra. The authentication flow is illustrated in the GIF below.
