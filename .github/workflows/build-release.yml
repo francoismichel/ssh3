@@ -17,26 +17,37 @@ jobs:
   gorelease:
     strategy:
         matrix:
-          osvariant: [ { imgname: ubuntu-latest, goarch: linux }, { imgname: macos-latest, goarch: darwin } ]
+          osvariant: [ { imgname: ubuntu-22.04, goos: linux }, { imgname: macos-latest, goos: darwin } ]
     runs-on: ${{ matrix.osvariant.imgname }}
     steps:
-      -
-        name: Checkout
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      -
-        name: Set up Go
+      # Right now, compilation for linux-arm64 is disable as it is a pain.
+      # ARM actions might come soon on GitHub anyway
+      # - name: Add ARM repos to sources.list
+      #   run: |
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-security main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-backports main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-updates main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      # - name: Add ARM architecture and update
+      #   run: sudo dpkg --add-architecture arm64 && sudo apt-get -y update || true
+      # - name: Install toolchain for compiling ARM
+      #   run:  sudo apt-get -y install gcc-aarch64-linux-gnu
+      # - name: Install lcrypt for arm64
+      #   run:  sudo apt-get -y install libc6:arm64 libcrypt-dev:arm64
+      - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.21.x'
-      -
-        name: Run GoReleaser
+      - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
           # either 'goreleaser' (default) or 'goreleaser-pro'
           distribution: goreleaser
           version: latest
-          args: release --clean --config .goreleaser-${{ matrix.osvariant.goarch }}.yml
+          args: release --clean --config .goreleaser-${{ matrix.osvariant.goos }}.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

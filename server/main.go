@@ -252,7 +252,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *util.User, runningCommand *runningCommand, authAgentSocketPath string) error {
 	setupEnv(user, runningCommand, authAgentSocketPath)
 	if openPty != nil {
-		err := util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
+		err := linux_util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
 		if err != nil {
 			return err
 		}

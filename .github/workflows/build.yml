@@ -9,29 +9,43 @@ jobs:
         matrix:
           go-version: [ '1.20.x', '1.21.x' ]
           goos: [linux]
-          goarch: [amd64]
-    runs-on: ubuntu-latest
+          archparams: [{goarch: amd64, cc: gcc}] #,{goarch: arm64, cc: aarch64-linux-gnu-gcc}]
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
+      # Right now, compilation for linux-arm64 is disable as it is a pain.
+      # ARM actions might come soon on GitHub anyway
+      # - name: Add ARM repos to sources.list
+      #   run: |
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-security main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-backports main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-updates main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      # - name: Add ARM architecture and update
+      #   run: sudo dpkg --add-architecture arm64 && sudo apt-get -y update || true
+      # - name: Install toolchain for compiling ARM
+      #   run:  sudo apt-get -y install gcc-aarch64-linux-gnu
+      # - name: Install lcrypt for arm64
+      #   run:  sudo apt-get -y install libc6:arm64 libcrypt-dev:arm64
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
           go-version: '${{matrix.go-version}}'
-      - name: Install dependencies
+      - name: Install Go dependencies
         run: go get ./...
       - name: Build Client
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v client/main.go
+        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v client/main.go
       - name: Build Server
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v server/main.go
+        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v server/main.go
       - name: Test with the Go CLI
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
+        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
   build-macos:
     strategy:
       matrix:
         go-version: [ '1.20.x', '1.21.x' ]
         goos: [darwin]
-        goarch: [amd64]
+        goarch: [amd64,arm64]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,4 +59,5 @@ jobs:
       - name: Build Client
         run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v client/main.go
       - name: Test with the Go CLI
+        if: ${{ matrix.goarch == 'amd64' }} # only actually run the test suite with the architecture of the host
         run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
