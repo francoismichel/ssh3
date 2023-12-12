@@ -47,7 +47,9 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	CleanupBuildArtifacts()
-	serverSession.Terminate()
+	if serverSession != nil {
+		serverSession.Terminate()
+	}
 })
 
 var _ = Describe("Testing the ssh3 cli", func() {
