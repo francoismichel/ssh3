@@ -219,7 +219,11 @@ func (i *agentBasedIdentity) AuthHint() string {
 }
 
 func (i *agentBasedIdentity) String() string {
-	return fmt.Sprintf("agent-identity: %s", string(i.pubkey.Marshal()))
+	retval := "agent-identity"
+	if stringer, ok := i.pubkey.(fmt.Stringer); ok {
+		retval = fmt.Sprintf("%s: %s", retval, stringer.String())
+	}
+	return retval
 }
 
 type passwordIdentity string
