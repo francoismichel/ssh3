@@ -20,6 +20,7 @@ import (
 	"os"
 	osuser "os/user"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -58,15 +59,31 @@ type windowSize struct {
 	PixelHeight uint16
 }
 
-func getWinsize() (windowSize, error) {
-	var winSize windowSize
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(syscall.Stdin), uintptr(syscall.TIOCGWINSZ),
-		uintptr(unsafe.Pointer(&winSize)))
-	var err error = nil
-	if errno != 0 {
-		err = errno
+func getWinsize() (ws windowSize, err error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return ws, fmt.Errorf("stdin is not a terminal")
 	}
-	return winSize, err
+	if runtime.GOOS == "windows" {
+		// for Windows, it is a bit more complicated to get the window size in pixels, so on rely
+		// on window size expressed in columns
+		width, height, err := term.GetSize(int(os.Stdin.Fd()))
+		if err != nil {
+			return ws, err
+		}
+		ws.NCols = uint16(width)
+		ws.NRows = uint16(height)
+		ws.PixelWidth = 0
+		ws.PixelHeight = 0
+		return ws, nil
+	} else {
+		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(syscall.Stdin), uintptr(syscall.TIOCGWINSZ),
+		uintptr(unsafe.Pointer(&ws)))
+		var err error = nil
+		if errno != 0 {
+			err = errno
+		}
+		return ws, err
+	}
 }
 
 func forwardAgent(parent context.Context, channel ssh3.Channel) error {
