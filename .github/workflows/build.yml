@@ -10,14 +10,22 @@ jobs:
           go-version: [ '1.20.x', '1.21.x' ]
           goos: [linux]
           archparams: [{goarch: amd64, cc: gcc},{goarch: arm64, cc: aarch64-linux-gnu-gcc}]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
+      - name: Add ARM repos to sources.list
+        run: |
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy main multiverse universe" >> /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-security main multiverse universe" >> /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-backports main multiverse universe" >> /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-updates main multiverse universe" >> /etc/apt/sources.list
+      - name: Add ARM architecture and update
+        run: sudo dpkg --add-architecture arm64 && sudo apt-get -y update || true
       - name: Install toolchain for compiling ARM
-        run: sudo apt-get -y install gcc-aarch64-linux-gnu
+        run:  sudo apt-get -y install gcc-aarch64-linux-gnu
       - name: Install lcrypt for arm64
-        run:  sudo dpkg --add-architecture arm64 && sudo apt-get -y update && sudo apt-get -y install libcrypt-dev:arm64
+        run:  sudo apt-get -y install libcrypt-dev:arm64
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
