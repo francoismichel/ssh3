@@ -667,6 +667,10 @@ func openAgentSocketAndForwardAgent(parent context.Context, conv *ssh3.Conversat
 	return sockPath, nil
 }
 
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
+}
 
 func main() {
 	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
@@ -680,6 +684,23 @@ func main() {
 	if !*enablePasswordLogin {
 		fmt.Fprintln(os.Stderr, "password login is currently disabled")
 	}
+
+	certPathExists := fileExists(*certPath)
+	keyPathExists := fileExists(*keyPath)
+	if !certPathExists {
+		fmt.Fprintf(os.Stderr, "the \"%s\" certificate file does not exist\n", *certPath)
+	}
+	if !keyPathExists {
+		fmt.Fprintf(os.Stderr, "the \"%s\" certificate private key file does not exist\n", *keyPath)
+	}
+
+	if !certPathExists || !keyPathExists {
+		fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
+						 		"you can generate a self-signed certificate using the following script:")
+		fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
+		return
+	}
+
 
 	if *verbose {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
