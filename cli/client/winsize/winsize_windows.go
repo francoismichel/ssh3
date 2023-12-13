@@ -10,7 +10,7 @@ import "golang.org/x/term"
 func GetWinsize() (ws WindowSize, err error) {
 	// for Windows, it is a bit more complicated to get the window size in pixels, so on rely
 	// on window size expressed in columns
-	width, height, err := term.GetSize(int(os.Stdin.Fd()))
+	width, height, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
 		return ws, err
 	}
