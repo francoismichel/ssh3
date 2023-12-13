@@ -18,7 +18,7 @@ jobs:
     strategy:
         matrix:
           variant: [ { imgname: ubuntu-latest, releaserfile: linux }, { imgname: ubuntu-latest, releaserfile: client-only-all } ]
-    runs-on: ${{ matrix.osvariant.imgname }}
+    runs-on: ${{ matrix.variant.imgname }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
