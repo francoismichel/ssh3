@@ -1,17 +1,15 @@
-package ssh3
+package linux_server
 
 import (
 	"net/http"
 	"os"
-	"ssh3/auth"
+	"ssh3"
 	"ssh3/util"
+	"ssh3/util/linux_util"
 
 	"github.com/rs/zerolog/log"
 )
 
-type AuthenticatedHandlerFunc func(authenticatedUserName string, newConv *Conversation, w http.ResponseWriter, r *http.Request)
-
-type UnauthenticatedBearerFunc func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request)
 
 // BearerAuth returns the bearer token
 // Authorization header, if the request uses HTTP Basic Authentication.
@@ -36,7 +34,7 @@ func parseBearerAuth(auth string) (bearer string, ok bool) {
 	return string(auth[len(prefix):]), true
 }
 
-func HandleBearerAuth(username string, base64ConversationID string, handlerFunc UnauthenticatedBearerFunc) http.HandlerFunc {
+func HandleBearerAuth(username string, base64ConversationID string, handlerFunc ssh3.UnauthenticatedBearerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bearerString, ok := BearerAuth(r)
 		if !ok {
@@ -48,20 +46,20 @@ func HandleBearerAuth(username string, base64ConversationID string, handlerFunc 
 }
 
 // currently only supports RS256 and EdDSA signing algorithms
-func HandleJWTAuth(username string, newConv *Conversation, handlerFunc AuthenticatedHandlerFunc) UnauthenticatedBearerFunc {
+func HandleJWTAuth(username string, newConv *ssh3.Conversation, handlerFunc ssh3.AuthenticatedHandlerFunc) ssh3.UnauthenticatedBearerFunc {
 	return func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request) {
-		user, err := util.GetUser(username)
+		user, err := linux_util.GetUser(username)
 		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
-		filenames := auth.DefaultIdentitiesFileNames(user)
-		var identities []auth.Identity
+		filenames := DefaultIdentitiesFileNames(user)
+		var identities []Identity
 		for _, filename := range filenames {
 			identitiesFile, err := os.Open(filename)
 			if err == nil {
-				newIdentities, err := auth.ParseAuthorizedIdentitiesFile(user, identitiesFile)
+				newIdentities, err := ParseAuthorizedIdentitiesFile(user, identitiesFile)
 				if err != nil {
 					// TODO: logging
 					log.Error().Msgf("error when parsing authorized identities: %s", err)

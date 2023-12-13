@@ -17,7 +17,7 @@ jobs:
   gorelease:
     strategy:
         matrix:
-          osvariant: [ { imgname: ubuntu-22.04, goos: linux }, { imgname: macos-latest, goos: darwin } ]
+          variant: [ { imgname: ubuntu-latest, releaserfile: linux }, { imgname: ubuntu-latest, releaserfile: client-only-all } ]
     runs-on: ${{ matrix.osvariant.imgname }}
     steps:
       - name: Checkout
@@ -48,6 +48,6 @@ jobs:
           # either 'goreleaser' (default) or 'goreleaser-pro'
           distribution: goreleaser
           version: latest
-          args: release --clean --config .goreleaser-${{ matrix.osvariant.goos }}.yml
+          args: release --clean --config .goreleaser-${{ matrix.variant.releaserfile }}.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
