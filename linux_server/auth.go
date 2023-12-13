@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	ssh3 "ssh3"
+	"ssh3"
 	"ssh3/util/linux_util"
 	"strings"
 
@@ -62,7 +62,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 			if username == "" {
 				username = r.URL.Query().Get("user")
 			}
-			ssh3.HandleBearerAuth(username, base64ConvID, ssh3.HandleJWTAuth(username, conv, handlerFunc))(w, r)
+			HandleBearerAuth(username, base64ConvID, HandleJWTAuth(username, conv, handlerFunc))(w, r)
 		} else {
 			w.WriteHeader(http.StatusUnauthorized)
 		}

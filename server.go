@@ -122,9 +122,11 @@ func (s *Server) removeConnection(streamCreator http3.StreamCreator) {
 	delete(s.conversations, streamCreator)
 }
 
-type SSH3Handler = AuthenticatedHandlerFunc
+type AuthenticatedHandlerFunc func(authenticatedUserName string, newConv *Conversation, w http.ResponseWriter, r *http.Request)
 
-func (s *Server) GetHTTPHandlerFunc(ctx context.Context) SSH3Handler {
+type UnauthenticatedBearerFunc func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request)
+
+func (s *Server) GetHTTPHandlerFunc(ctx context.Context) AuthenticatedHandlerFunc {
 
 	return func(authenticatedUsername string, newConv *Conversation, w http.ResponseWriter, r *http.Request) {
 		log.Info().Msgf("got request: method: %s, URL: %s", r.Method, r.URL.String())

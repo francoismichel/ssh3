@@ -20,39 +20,26 @@ builds:
     id: "ssh3"
     main: ./cli/client/main.go
     binary: ssh3
-    env:
-      - CGO_ENABLED=1
     goos:
       - linux
+      - darwin
+      - windows
     goarch:
+      - '386'
       - amd64
-      # - arm64
-    overrides:
+      - arm
+      - arm64
+
+    ignore:
       - goos: linux
-        goarch: arm64
-        env:
-          - CC=aarch64-linux-gnu-gcc
-  - 
-    id: "ssh3-server"
-    main: ./cli/server/main.go
-    binary: ssh3-server
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - linux
-    goarch:
-      - amd64
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - CC=aarch64-linux-gnu-gcc
+        goarch: amd64
       
 archives:
   - format: tar.gz
     name_template: >-
       {{ .ProjectName }}_
-      {{- .Version }}_linux_
+      {{- .Version }}_clientonly_
+      {{- .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
@@ -66,4 +53,4 @@ changelog:
       - "^test:"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_linux_checksums.txt'
+  name_template: '{{ .ProjectName }}_{{ .Version }}_clientonly_checksums.txt'

@@ -20,12 +20,10 @@ import (
 	"os"
 	osuser "os/user"
 	"path"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -33,6 +31,7 @@ import (
 
 	"ssh3"
 	"ssh3/auth"
+	"ssh3/cli/client/winsize"
 	ssh3Messages "ssh3/message"
 	"ssh3/util"
 
@@ -52,39 +51,6 @@ func homedir() string {
 	}
 }
 
-type windowSize struct {
-	NRows       uint16
-	NCols       uint16
-	PixelWidth  uint16
-	PixelHeight uint16
-}
-
-func getWinsize() (ws windowSize, err error) {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return ws, fmt.Errorf("stdin is not a terminal")
-	}
-	if runtime.GOOS == "windows" {
-		// for Windows, it is a bit more complicated to get the window size in pixels, so on rely
-		// on window size expressed in columns
-		width, height, err := term.GetSize(int(os.Stdin.Fd()))
-		if err != nil {
-			return ws, err
-		}
-		ws.NCols = uint16(width)
-		ws.NRows = uint16(height)
-		ws.PixelWidth = 0
-		ws.PixelHeight = 0
-		return ws, nil
-	} else {
-		_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(syscall.Stdin), uintptr(syscall.TIOCGWINSZ),
-		uintptr(unsafe.Pointer(&ws)))
-		var err error = nil
-		if errno != 0 {
-			err = errno
-		}
-		return ws, err
-	}
-}
 
 func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	sockPath := os.Getenv("SSH_AUTH_SOCK")
@@ -885,7 +851,7 @@ func mainWithStatusCode() int {
 		// similar behaviour to OpenSSH
 		isATTY := term.IsTerminal(int(os.Stdin.Fd()))
 		if isATTY {
-			windowSize, err := getWinsize()
+			windowSize, err := winsize.GetWinsize()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Could not get window size: %+v", err)
 				os.Exit(-1)

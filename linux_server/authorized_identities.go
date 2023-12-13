@@ -1,4 +1,4 @@
-package auth
+package linux_server
 
 import (
 	"bufio"
@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"ssh3/auth"
 	"ssh3/util"
+	"ssh3/util/linux_util"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -34,7 +36,7 @@ type PubKeyIdentity struct {
 	pubkey   crypto.PublicKey
 }
 
-func DefaultIdentitiesFileNames(user *util.User) []string {
+func DefaultIdentitiesFileNames(user *linux_util.User) []string {
 	return []string{path.Join(user.Dir, ".ssh3", "authorized_identities"), path.Join(user.Dir, ".ssh", "authorized_keys")}
 }
 
@@ -92,7 +94,7 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 	log.Debug().Msgf("verifying openid connect idenitity")
 	switch candidate := genericCandidate.(type) {
 	case util.JWTTokenString:
-		token, err := VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.Token)
+		token, err := auth.VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.Token)
 		if err != nil {
 			log.Error().Msgf("cannot verify raw token: %s", err.Error())
 			return false
@@ -126,7 +128,7 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 	}
 }
 
-func ParseIdentity(user *util.User, identityStr string) (Identity, error) {
+func ParseIdentity(user *linux_util.User, identityStr string) (Identity, error) {
 	out, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
 	if err == nil {
 		log.Debug().Msg("parsing ssh authorized key")
@@ -166,7 +168,7 @@ func ParseIdentity(user *util.User, identityStr string) (Identity, error) {
 	return nil, fmt.Errorf("unknown identity format")
 }
 
-func ParseAuthorizedIdentitiesFile(user *util.User, file *os.File) (identities []Identity, err error) {
+func ParseAuthorizedIdentitiesFile(user *linux_util.User, file *os.File) (identities []Identity, err error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
