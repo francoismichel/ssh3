@@ -679,8 +679,10 @@ func main() {
 	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
 	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key " +
 										"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
-	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
-	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
+	certPath := flag.String("cert", "./cert.pem", "the path to the server certificate (or fullchain) to use. If the file does not exist, " +
+									"-generate-selfsigned-cert can be set to generate it")
+	keyPath := flag.String("key", "./priv.key", "the path to the certificate private key to use. If the file does not exist, " +
+								  "-generate-selfsigned-cert can be set to generate it")
 	flag.Parse()
 
 	if !*enablePasswordLogin {

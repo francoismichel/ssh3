@@ -114,14 +114,16 @@ Usage of ./ssh3-server:
   -bind string
         the address:port pair to listen to, e.g. 0.0.0.0:443 (default "[::]:443")
   -cert string
-        the filename of the server certificate (or fullchain) (default "./cert.pem")
-  -enable-password-login
-        if set, enable password authentication (disabled by default)
+        the path to the server certificate (or fullchain) to use. If the file does not
+        exist, -generate-selfsigned-cert must be set (default "./cert.pem")
+  -key string
+        the path to the certificate private key to use. If the file does not exist,
+        -generate-selfsigned-cert must be set (default "./priv.key")
   -generate-selfsigned-cert
         if set, generates a self-self-signed cerificate and key that will be stored
         at the paths indicated by the -cert and -key args (they must not already exist)
-  -key string
-        the filename of the certificate private key (default "./priv.key")
+  -enable-password-login
+        if set, enable password authentication (disabled by default)
   -url-path string
         the secret URL path on which the ssh3 server listens (default "/ssh3-term")
   -v    verbose mode, if set

@@ -56,6 +56,12 @@ func main() {
 	remoteReleaseFilePath := flag.String("remote-release-file-path", "/tmp/ssh3-latest-release.tar.gz", "the path to store the release archive on the server")
 	remoteBinaryDirPath := flag.String("remote-binary-dir-path", "/usr/bin", "the path to store the ssh3-server binary")
 	dryRun := flag.Bool("dry-run", false, "if set, only print the command to execute on the remote host instead of executing from here")
+	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key " +
+										"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
+	certPath := flag.String("cert", "./cert.pem", "the path to the server certificate (or fullchain) to use. If the file does not exist, " +
+												  "-generate-selfsigned-cert can be set to generate it")
+	keyPath := flag.String("key", "./priv.key", "the path to the certificate private key to use. If the file does not exist, " +
+									  			"-generate-selfsigned-cert can be set to generate it")
 	sshCommand := flag.Args()
 
 
@@ -80,8 +86,13 @@ func main() {
 	if *enablePasswordLogin {
 		passwordFlag = "-enable-password-login"
 	}
+	generateCertFlag := ""
+	if *generateSelfSignedCert {
+		generateCertFlag = "-generate-selfsigned-cert"
+	}
 
-	ssh3ServerCommand := fmt.Sprintf("screen -d -m %s/ssh3-server -bind %s -url-path %s %s %s", *remoteBinaryDirPath, *bindAddr, *urlPath, verboseFlag, passwordFlag)
+	ssh3ServerCommand := fmt.Sprintf("screen -S ssh3-server -d -m %s/ssh3-server -bind %s -url-path %s -cert %s -key %s %s %s %s",
+									 *remoteBinaryDirPath, *bindAddr, *urlPath, *certPath, *keyPath, verboseFlag, passwordFlag, generateCertFlag)
 	shellCommandToRun := strings.Join([]string{wgetCmd, tarCmd, ssh3ServerCommand}, " && ")
 	if *dryRun {
 		fmt.Println(shellCommandToRun)
