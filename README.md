@@ -117,6 +117,9 @@ Usage of ./ssh3-server:
         the filename of the server certificate (or fullchain) (default "./cert.pem")
   -enable-password-login
         if set, enable password authentication (disabled by default)
+  -generate-selfsigned-cert
+        if set, generates a self-self-signed cerificate and key that will be stored
+        at the paths indicated by the -cert and -key args (they must not already exist)
   -key string
         the filename of the certificate private key (default "./priv.key")
   -url-path string
