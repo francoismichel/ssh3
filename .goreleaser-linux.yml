@@ -20,8 +20,6 @@ builds:
     id: "ssh3"
     main: ./cli/client/main.go
     binary: ssh3
-    env:
-      - CGO_ENABLED=1
     goos:
       - linux
     goarch:
@@ -32,6 +30,8 @@ builds:
         goarch: arm64
         env:
           - CC=aarch64-linux-gnu-gcc
+    ldflags:
+      - -extldflags=-static
   - 
     id: "ssh3-server"
     main: ./cli/server/main.go
@@ -47,6 +47,8 @@ builds:
         goarch: arm64
         env:
           - CC=aarch64-linux-gnu-gcc
+    ldflags:
+      - -extldflags=-static
       
 archives:
   - format: tar.gz
