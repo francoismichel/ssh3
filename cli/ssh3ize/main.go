@@ -63,10 +63,9 @@ func main() {
 												  "-generate-selfsigned-cert can be set to generate it")
 	keyPath := flag.String("key", "./priv.key", "the path to the certificate private key to use. If the file does not exist, " +
 									  			"-generate-selfsigned-cert can be set to generate it")
-	sshCommand := flag.Args()
-
-
 	flag.Parse()
+
+	sshCommand := flag.Args()
 
 	client := github.NewClient(nil)
 	release, _, err := client.Repositories.GetLatestRelease(context.Background(), "francoismichel", "ssh3")
@@ -99,12 +98,13 @@ func main() {
 		fmt.Println(shellCommandToRun)
 		os.Exit(0)
 	}
-	sshCommandToRun := sshCommand
+	sshCommandToRun := []string{}
 	if *useSudo {
 		sshCommandToRun = append(sshCommandToRun, "sudo")
 	}
-	sshCommandToRun = append(sshCommandToRun, "sh", "-c", shellCommandToRun)
-	cmd := exec.Command(sshCommandToRun[0], sshCommandToRun[1:]...)
+	sshCommandToRun = append(sshCommandToRun, "sh", "-c", fmt.Sprintf("'%s'", shellCommandToRun))
+	sshCommand = append(sshCommand, strings.Join(sshCommandToRun, " "))
+	cmd := exec.Command(sshCommand[0], sshCommand[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
