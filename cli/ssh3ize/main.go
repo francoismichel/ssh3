@@ -54,6 +54,7 @@ func main() {
 	enablePasswordLogin := flag.Bool("enable-password-login", false, "if set, enable password authentication (disabled by default)")
 	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
 	remoteReleaseFilePath := flag.String("remote-release-file-path", "/tmp/ssh3-latest-release.tar.gz", "the path to store the release archive on the server")
+	useSudo := flag.Bool("sudo", false, "if set, use sudo on the remote host to run the commands with priviledges")
 	remoteBinaryDirPath := flag.String("remote-binary-dir-path", "/usr/bin", "the path to store the ssh3-server binary")
 	dryRun := flag.Bool("dry-run", false, "if set, only print the command to execute on the remote host instead of executing from here")
 	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key " +
@@ -99,6 +100,9 @@ func main() {
 		os.Exit(0)
 	}
 	sshCommandToRun := sshCommand
+	if *useSudo {
+		sshCommandToRun = append(sshCommandToRun, "sudo")
+	}
 	sshCommandToRun = append(sshCommandToRun, "sh", "-c", shellCommandToRun)
 	cmd := exec.Command(sshCommandToRun[0], sshCommandToRun[1:]...)
 	cmd.Stdout = os.Stdout
