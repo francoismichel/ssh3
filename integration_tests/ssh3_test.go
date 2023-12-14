@@ -298,8 +298,13 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					// Wait for some time to ensure that the client has established the forwarding
 					time.Sleep(2 * time.Second)
 			
+					// if the remote addr is IPv4 (resp. IPv6), ssh3 listens on the IPv4 (resp. IPv6) loopback
+					localIP := "::1"
+					if remoteAddr.IP.To4() != nil {
+						localIP = "127.0.0.1"
+					}
 					// Try to connect to the local forwarded port
-					localAddr := fmt.Sprintf("127.0.0.1:%d", localPort)
+					localAddr := fmt.Sprintf("%s:%d", localIP, localPort)
 					
 					var conn net.Conn
 					Eventually(func() error {
