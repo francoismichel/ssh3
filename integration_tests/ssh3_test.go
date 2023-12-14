@@ -153,6 +153,10 @@ var _ = Describe("Testing the ssh3 cli", func() {
 				// through the SSH3 connection towards the specified remote IP and port.
 				Context("TCP port forwarding", func() {
 					testTCPPortForwarding := func(localPort uint16, remoteAddr *net.TCPAddr, messageFromClient string, messageFromServer string) {
+						localIP := "[::1]"
+						if remoteAddr.IP.To4() != nil {
+							localIP = "127.0.0.1"
+						}
 						serverStarted := make(chan struct{})
 						// Start a TCP server on the specified remote IP and port
 						go func() {
@@ -194,7 +198,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						defer session.Terminate()
 				
 						// Try to connect to the local forwarded port
-						localAddr := fmt.Sprintf("127.0.0.1:%d", localPort)
+						localAddr := fmt.Sprintf("%s:%d", localIP, localPort)
 						var conn net.Conn
 						// connection refused might happen betwen the time when the process starts and actually listens the socket
 						Eventually(func() error {
@@ -265,6 +269,12 @@ var _ = Describe("Testing the ssh3 cli", func() {
 			// through the SSH3 connection towards the specified remote IP and port.
 			Context("UDP port forwarding", func() {
 				testUDPPortForwarding := func(localPort uint16, remoteAddr *net.UDPAddr, messageFromClient, messageFromServer string) {
+					localIP := "[::1]"
+					localIPWithoutBrackets := "::1"
+					if remoteAddr.IP.To4() != nil {
+						localIP = "127.0.0.1"
+						localIPWithoutBrackets = localIP
+					}
 					serverStarted := make(chan struct{})
 					// Start a UDP server on the specified remote IP and port
 					go func() {
@@ -279,7 +289,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						buffer := make([]byte, 2*len(messageFromClient))
 						n, clientAddr, err := conn.ReadFromUDP(buffer)
 						Expect(err).ToNot(HaveOccurred())
-						Expect(clientAddr.IP.String()).To(Equal("127.0.0.1"))
+						Expect(clientAddr.IP.String()).To(Equal(localIPWithoutBrackets))
 						Expect(string(buffer[:n])).To(Equal(messageFromClient))
 			
 						// Send message to client
@@ -299,10 +309,6 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					time.Sleep(2 * time.Second)
 			
 					// if the remote addr is IPv4 (resp. IPv6), ssh3 listens on the IPv4 (resp. IPv6) loopback
-					localIP := "[::1]"
-					if remoteAddr.IP.To4() != nil {
-						localIP = "127.0.0.1"
-					}
 					// Try to connect to the local forwarded port
 					localAddr := fmt.Sprintf("%s:%d", localIP, localPort)
 					
