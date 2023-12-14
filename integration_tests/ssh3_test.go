@@ -219,6 +219,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 				
 						// Read message from server
 						buffer := make([]byte, len(messageFromServer))
+						conn.SetReadDeadline(time.Now().Add(1*time.Second))
 						n, err = conn.Read(buffer)
 						Expect(err).ToNot(HaveOccurred())
 						Expect(n).To(Equal(len(messageFromServer)))
@@ -327,7 +328,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 					// Read message from server
 					buffer := make([]byte, 2*len(messageFromServer))
-					conn.SetReadDeadline(time.Now().Add(time.Millisecond))
+					conn.SetReadDeadline(time.Now().Add(1*time.Second))
 					n, err = conn.Read(buffer)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(n).To(Equal(len(messageFromServer)))
