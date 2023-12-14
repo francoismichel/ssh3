@@ -153,13 +153,17 @@ var _ = Describe("Testing the ssh3 cli", func() {
 				// through the SSH3 connection towards the specified remote IP and port.
 				Context("TCP port forwarding", func() {
 					testTCPPortForwarding := func(localPort uint16, remoteAddr *net.TCPAddr, messageFromClient string, messageFromServer string) {
+						serverStarted := make(chan struct{})
 						// Start a TCP server on the specified remote IP and port
 						go func() {
+							defer close(serverStarted)
 							defer GinkgoRecover()
 							listener, err := net.ListenTCP("tcp", remoteAddr)
 							Expect(err).ToNot(HaveOccurred())
 							defer listener.Close()
-				
+
+							serverStarted <- struct{}{}
+
 							conn, err := listener.Accept()
 							Expect(err).ToNot(HaveOccurred())
 							defer conn.Close()
@@ -181,6 +185,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 							Expect(n).To(Equal(0))
 						}()
 				
+						Eventually(serverStarted).Should(Receive())
 						// Execute the client with TCP port forwarding
 						clientArgs := getClientArgs(privKeyPath, "-forward-tcp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
 						command := exec.Command(ssh3Path, clientArgs...)
@@ -188,12 +193,15 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						Expect(err).ToNot(HaveOccurred())
 						defer session.Terminate()
 				
-						// Wait for some time to ensure that the client has established the forwarding
-						time.Sleep(2 * time.Second)
-				
 						// Try to connect to the local forwarded port
 						localAddr := fmt.Sprintf("127.0.0.1:%d", localPort)
-						conn, err := net.DialTimeout("tcp", localAddr, 2*time.Second)
+						var conn net.Conn
+						// connection refused might happen betwen the time when the process starts and actually listens the socket
+						Eventually(func() error {
+							var err error
+							conn, err = net.Dial("tcp", localAddr)
+							return err
+						}).ShouldNot(HaveOccurred())
 						Expect(err).ToNot(HaveOccurred())
 						defer conn.Close()
 				
@@ -257,12 +265,16 @@ var _ = Describe("Testing the ssh3 cli", func() {
 			// through the SSH3 connection towards the specified remote IP and port.
 			Context("UDP port forwarding", func() {
 				testUDPPortForwarding := func(localPort uint16, remoteAddr *net.UDPAddr, messageFromClient, messageFromServer string) {
+					serverStarted := make(chan struct{})
 					// Start a UDP server on the specified remote IP and port
 					go func() {
+						defer close(serverStarted)
 						defer GinkgoRecover()
 						conn, err := net.ListenUDP("udp", remoteAddr)
 						Expect(err).ToNot(HaveOccurred())
 						defer conn.Close()
+
+						serverStarted <- struct{}{}
 			
 						buffer := make([]byte, 2*len(messageFromClient))
 						n, clientAddr, err := conn.ReadFromUDP(buffer)
@@ -275,6 +287,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						Expect(err).ToNot(HaveOccurred())
 					}()
 			
+					Eventually(serverStarted).Should(Receive())
 					// Execute the client with UDP port forwarding
 					clientArgs := getClientArgs(privKeyPath, "-forward-udp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
 					command := exec.Command(ssh3Path, clientArgs...)
@@ -287,8 +300,13 @@ var _ = Describe("Testing the ssh3 cli", func() {
 			
 					// Try to connect to the local forwarded port
 					localAddr := fmt.Sprintf("127.0.0.1:%d", localPort)
-					conn, err := net.Dial("udp", localAddr)
-					Expect(err).ToNot(HaveOccurred())
+					
+					var conn net.Conn
+					Eventually(func() error {
+						var err error
+						conn, err = net.Dial("udp", localAddr)
+						return err
+					}).ShouldNot(HaveOccurred())
 					defer conn.Close()
 			
 					// Send message from client
