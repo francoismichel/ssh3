@@ -101,6 +101,9 @@ func main() {
 	sshCommandToRun := sshCommand
 	sshCommandToRun = append(sshCommandToRun, "sh", "-c", shellCommandToRun)
 	cmd := exec.Command(sshCommandToRun[0], sshCommandToRun[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
 	err = cmd.Run()
 	if err != nil {
 		log.Fatalf("error running the remote command: %s", err)
