@@ -30,7 +30,13 @@ builds:
         goarch: arm64
         env:
           - CC=aarch64-linux-gnu-gcc
+    tags:
+      - osusergo
+      - netgo
+      - static_build
+      - feature
     ldflags:
+      - -linkmode=external
       - -extldflags=-static
   - 
     id: "ssh3-server"
@@ -47,8 +53,14 @@ builds:
         goarch: arm64
         env:
           - CC=aarch64-linux-gnu-gcc
+    tags:
+      - osusergo
+      - netgo
+      - static_build
+      - feature
     ldflags:
       - -extldflags=-static
+      - -linkmode=external
       
 archives:
   - format: tar.gz
