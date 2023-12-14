@@ -9,7 +9,7 @@ import (
 )
 const MAJOR int = 0
 const MINOR int = 1
-const PATCH int = 0
+const PATCH int = 3
 
 type InvalidSSHVersion struct {
 	versionString string
