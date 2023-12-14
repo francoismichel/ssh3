@@ -268,7 +268,7 @@ func (c *Conversation) AddDatagram(ctx context.Context, datagram []byte) error {
 	channel, ok := c.channelsManager.getChannel(channelID)
 	if !ok {
 		dgramQueue := util.NewDatagramsQueue(10)
-		dgramQueue.Add(datagram)
+		dgramQueue.Add(datagram[buf.Size()-int64(buf.Len()):])
 		c.channelsManager.addDanglingDatagramsQueue(channelID, dgramQueue)
 		return util.ChannelNotFound{ChannelID: channelID}
 	}
