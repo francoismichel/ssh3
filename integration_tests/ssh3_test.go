@@ -299,7 +299,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					time.Sleep(2 * time.Second)
 			
 					// if the remote addr is IPv4 (resp. IPv6), ssh3 listens on the IPv4 (resp. IPv6) loopback
-					localIP := "::1"
+					localIP := "[::1]"
 					if remoteAddr.IP.To4() != nil {
 						localIP = "127.0.0.1"
 					}
