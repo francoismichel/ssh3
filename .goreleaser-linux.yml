@@ -24,12 +24,7 @@ builds:
       - linux
     goarch:
       - amd64
-      # - arm64
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - CC=aarch64-linux-gnu-gcc
+      - arm64
     tags:
       - osusergo
       - netgo
@@ -50,11 +45,14 @@ builds:
       - linux
     goarch:
       - amd64
+      - arm64
     overrides:
       - goos: linux
         goarch: arm64
         env:
-          - CC=aarch64-linux-gnu-gcc
+          - CC=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
+          - CGO_ENABLED=1
+          - CGO_CFLAGS=
     tags:
       - osusergo
       - netgo
