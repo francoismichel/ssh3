@@ -677,6 +677,8 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	enablePasswordLogin := flag.Bool("enable-password-login", false, "if set, enable password authentication (disabled by default)")
 	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
+	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key " +
+										"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
 	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
 	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
 	flag.Parse()
@@ -687,18 +689,47 @@ func main() {
 
 	certPathExists := fileExists(*certPath)
 	keyPathExists := fileExists(*keyPath)
-	if !certPathExists {
-		fmt.Fprintf(os.Stderr, "the \"%s\" certificate file does not exist\n", *certPath)
-	}
-	if !keyPathExists {
-		fmt.Fprintf(os.Stderr, "the \"%s\" certificate private key file does not exist\n", *keyPath)
-	}
 
-	if !certPathExists || !keyPathExists {
-		fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
-						 		"you can generate a self-signed certificate using the following script:")
-		fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
-		return
+	if !*generateSelfSignedCert {
+		if !certPathExists {
+			fmt.Fprintf(os.Stderr, "the \"%s\" certificate file does not exist\n", *certPath)
+		}
+		if !keyPathExists {
+			fmt.Fprintf(os.Stderr, "the \"%s\" certificate private key file does not exist\n", *keyPath)
+		}
+		if !certPathExists || !keyPathExists {
+			fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
+									 "you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
+			fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
+			os.Exit(-1)
+		}
+	} else {
+		if certPathExists {
+			fmt.Fprintf(os.Stderr, "asked for generating a certificate but the \"%s\" file already exists\n", *certPath)
+		}
+		if keyPathExists {
+			fmt.Fprintf(os.Stderr, "asked for generating a private key but the \"%s\" file already exists\n", *keyPath)
+		}
+		if certPathExists || keyPathExists {
+			os.Exit(-1)
+		}
+		pubkey, privkey, err := util.GenerateKey()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not generate private key: %s\n", err)
+			os.Exit(-1)
+		}
+		cert, err := util.GenerateCert(privkey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not generate certificate: %s\n", err)
+			os.Exit(-1)
+		}
+
+		err = util.DumpCertAndKeyToFiles(cert, pubkey, privkey, *certPath, *keyPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not save certificate and key to files: %s\n", err)
+			os.Exit(-1)
+		}
+
 	}
 
 
