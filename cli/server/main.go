@@ -854,6 +854,9 @@ func main() {
 		ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
 		mux.HandleFunc(*urlPath, linux_server.HandleAuths(context.Background(), *enablePasswordLogin, 30000, ssh3Handler))
 		server.Handler = mux
+		outputMessage := fmt.Sprintf("Server started, listening on %s%s", *bindAddr, *urlPath)
+		fmt.Fprintln(os.Stderr, outputMessage)
+		log.Info().Msg(outputMessage)
 		err = server.ListenAndServeTLS(*certPath, *keyPath)
 
 		if err != nil {
