@@ -40,7 +40,7 @@ jobs:
       # - name: Install lcrypt for arm64
       #   run:  sudo apt-get -y install libc6:arm64 libcrypt-dev:arm64
       - name: Install musl
-        run:  sudo apt-get -y update && sudo apt-get -y install musl musl-tools
+        run:  sudo apt-get -y update && sudo apt-get -y install musl musl-dev musl-tools
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
