@@ -43,6 +43,8 @@ jobs:
         run:  sudo apt-get -y update && sudo apt-get -y install musl musl-dev musl-tools
       - name: Get musl crypt.h header missing on Ubuntu
         run:  sudo apt-get -y install wget && sudo wget -O /usr/include/x86_64-linux-musl/crypt.h https://git.musl-libc.org/cgit/musl/plain/include/crypt.h
+      - name: Get musl libcrypt.a header missing on Ubuntu (it is an empty archive anyway so we just copy annother empty one)
+        run:  sudo cp /usr/lib/x86_64-linux-musl/librt.a /usr/lib/x86_64-linux-musl/libcrypt.a
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
