@@ -72,4 +72,4 @@ changelog:
       - "^test:"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_linux_{{ .Arch }}_checksums.txt'
+  name_template: '{{ .ProjectName }}_{{ .Version }}_linux_arm64_checksums.txt'
