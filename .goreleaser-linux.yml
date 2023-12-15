@@ -45,7 +45,6 @@ builds:
     env:
       - CGO_ENABLED=1
       - CC=musl-gcc
-      - CGO_CFLAGS=-I/usr/include/x86_64-linux-musl/
     goos:
       - linux
     goarch:
