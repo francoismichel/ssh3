@@ -173,22 +173,6 @@ Usage of ssh3:
   -v    if set, enable verbose mode
 ```
 
-#### Config-based session establishment
-`ssh3` parses your OpenSSH config. Currently, it only handles the `Hostname`; `User`, `Port` and `IdentityFile` options.
-Let's say you have the following lines in your OpenSSH config located in `~/.ssh/config` :
-```
-Host my-server
-  HostName 192.0.2.0
-  User username
-  IdentityFile ~/.ssh/id_rsa
-```
-
-Similarly to what OpenSSH does, the following `ssh3` command will connect you to the SSH3 server running on 192.0.2.0 on UDP port 443 using public key authentication with the private key located in `.ssh/id_rsa` :
-
-      ssh3 my-server/my-secret-path
-
-If you do not want a config-based utilization of SSH3, yo ucan read the sections below to see how to use the CLI parameters of `ssh3`.
-
 #### Private-key authentication
 You can connect to your SSH3 server at my-server.example.org listening on `/my-secret-path` using the private key located in `~/.ssh/id_rsa` with the following command:
 
@@ -208,6 +192,22 @@ While discouraged, you can connect to your server using passwords (if explicitly
 with the following command:
 
       ssh3 -use-password username@my-server.example.org/my-secret-path
+
+#### Config-based session establishment
+`ssh3` parses your OpenSSH config. Currently, it only handles the `Hostname`; `User`, `Port` and `IdentityFile` options.
+Let's say you have the following lines in your OpenSSH config located in `~/.ssh/config` :
+```
+Host my-server
+  HostName 192.0.2.0
+  User username
+  IdentityFile ~/.ssh/id_rsa
+```
+
+Similarly to what OpenSSH does, the following `ssh3` command will connect you to the SSH3 server running on 192.0.2.0 on UDP port 443 using public key authentication with the private key located in `.ssh/id_rsa` :
+
+      ssh3 my-server/my-secret-path
+
+If you do not want a config-based utilization of SSH3, yo ucan read the sections below to see how to use the CLI parameters of `ssh3`.
 
 #### OpenID Connect authentication (still experimental)
 This feature allows you to connect using an external identity provider such as the one
