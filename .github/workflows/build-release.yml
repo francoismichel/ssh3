@@ -50,7 +50,7 @@ jobs:
       - name: Ensure musl gcc can run
         run:  /tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc --version
       - name: Set a different ld for each arch
-        run: cp /usr/bin/ld /usr/bin/amd64-ld && cp /tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc /usr/bin/arm64-ld
+        run: sudo cp /usr/bin/ld /usr/bin/amd64-ld && sudo cp /tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc /usr/bin/arm64-ld
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
