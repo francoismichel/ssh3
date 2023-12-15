@@ -35,7 +35,6 @@ package linux_util
 #include <pwd.h>
 size_t size_of_passwd() { return sizeof(struct passwd); }
 size_t size_of_shadow() { return sizeof(struct spwd); }
-size_t size_of_crypt_data() { return sizeof(struct crypt_data); }
 int get_errno() { return errno; }
 */
 import "C"
@@ -99,12 +98,9 @@ func Crypt(clearPassword, setting string) (string, error) {
 	cSetting := C.CString(string(setting))
 	defer C.free(unsafe.Pointer(cSetting))
 
-	ccrypt_data := (*C.struct_crypt_data)(C.malloc(C.size_of_crypt_data()))
-	defer C.free(unsafe.Pointer(ccrypt_data))
+	ccrypt_ret := C.crypt(cPassword, cSetting)
 
-	C.crypt_r(cPassword, cSetting, ccrypt_data)
-
-	hashedPassword := C.GoString(&ccrypt_data.output[0])
+	hashedPassword := C.GoString(ccrypt_ret)
 	if hashedPassword[0] == '*' {
 		return "", fmt.Errorf("bad password hashing")
 	}

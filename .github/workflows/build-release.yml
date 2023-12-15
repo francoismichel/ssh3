@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       # Right now, compilation for linux-arm64 is disable as it is a pain.
       # ARM actions might come soon on GitHub anyway
       # - name: Add ARM repos to sources.list
@@ -38,6 +39,8 @@ jobs:
       #   run:  sudo apt-get -y install gcc-aarch64-linux-gnu
       # - name: Install lcrypt for arm64
       #   run:  sudo apt-get -y install libc6:arm64 libcrypt-dev:arm64
+      - name: Install musl
+        run:  sudo apt-get -y update && sudo apt-get -y install musl musl-tools
       - name: Set up Go
         uses: actions/setup-go@v4
         with:

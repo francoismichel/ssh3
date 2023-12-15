@@ -44,6 +44,7 @@ builds:
     binary: ssh3-server
     env:
       - CGO_ENABLED=1
+      - CC=musl-gcc
     goos:
       - linux
     goarch:
