@@ -42,7 +42,7 @@ jobs:
       - name: Get musl source
         run:  sudo apt-get -y install wget && pushd /tmp && sudo wget -O musl-1.2.4.tar.gz https://git.musl-libc.org/cgit/musl/snapshot/musl-1.2.4.tar.gz && tar xzvf musl-1.2.4.tar.gz && popd
       - name: Compile and install musl
-        run:  pushd /tmp/musl-1.2.4 && ./configure --prefix=/usr && make && sudo make install && popd
+        run:  pushd /tmp/musl-1.2.4 && ./configure --prefix=/usr/local/musl/ && make && sudo make install && popd
       - name: Set up Go
         uses: actions/setup-go@v4
         with:

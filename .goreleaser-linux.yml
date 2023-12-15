@@ -44,7 +44,8 @@ builds:
     binary: ssh3-server
     env:
       - CGO_ENABLED=1
-      - CC=musl-gcc
+      - CC=/usr/local/musl/bin/musl-gcc
+      - CGO_CFLAGS=-I/usr/local/musl/include/
     goos:
       - linux
     goarch:
