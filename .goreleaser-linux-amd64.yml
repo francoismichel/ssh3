@@ -82,4 +82,4 @@ changelog:
       - "^test:"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_linux_amd64_checksums.txt'
+  name_template: '{{ .ProjectName }}_{{ .Version }}_linux_x86_64_checksums.txt'
