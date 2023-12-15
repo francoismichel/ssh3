@@ -466,22 +466,17 @@ func mainWithStatusCode() int {
 	}
 
 	if certs, ok := knownHosts[hostname]; ok {
-		foundAnIPSAN := false
+		foundSelfsignedSSH3 := false
 
 		for _, cert := range certs {
-			hasIPSAN, err := util.CertHasIPSANs(cert)
-			if err != nil {
-				log.Warn().Msgf("could not parse known_hosts certificate for hostname %s", hostname)
-				continue
-			}
 			pool.AddCert(cert)
-			if hasIPSAN {
-				foundAnIPSAN = true
+			if cert.VerifyHostname("selfsigned.ssh3") == nil {
+				foundSelfsignedSSH3 = true
 			}
 		}
 
 		// If no IP SAN was in the cert, then assume the self-signed cert at least matches the .ssh3 TLD
-		if hostnameIsAnIP && !foundAnIPSAN {
+		if foundSelfsignedSSH3 {
 			// Put "ssh3" as ServerName so that the TLS verification can succeed
 			// Otherwise, TLS refuses to validate a certificate without IP SANs
 			// if the hostname is an IP address.
