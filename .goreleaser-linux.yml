@@ -53,6 +53,7 @@ builds:
           - CC=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
           - CGO_ENABLED=1
           - CGO_CFLAGS=
+          - CGO_LDFLAGS=-fuse-ld=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-ld
     tags:
       - osusergo
       - netgo
