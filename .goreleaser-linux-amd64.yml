@@ -1,0 +1,85 @@
+# This is an example .goreleaser.yml file with some sensible defaults.
+# Make sure to check the documentation at https://goreleaser.com
+
+# The lines below are called `modelines`. See `:help modeline`
+# Feel free to remove those if you don't want/need to use them.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 1
+
+before:
+  hooks:
+    # You may remove this if you don't use go modules.
+    - go mod tidy
+    # you may remove this if you don't need go generate
+    - go generate ./...
+
+builds:
+  - 
+    id: "ssh3"
+    main: ./cli/client/main.go
+    binary: ssh3
+    goos:
+      - linux
+    goarch:
+      - amd64
+    tags:
+      - osusergo
+      - netgo
+      - static_build
+      - feature
+  - 
+    id: "ssh3-server"
+    main: ./cli/server/main.go
+    binary: ssh3-server
+    env:
+      - CGO_ENABLED=1
+      - CC=/usr/local/musl/bin/musl-gcc
+      - CGO_CFLAGS=-I/usr/local/musl/include/
+    goos:
+      - linux
+    goarch:
+      - amd64
+    hooks:
+      pre:
+        - sudo cp /usr/bin/{{ .Arch }}-ld /usr/bin/ld
+    overrides:
+      - goos: linux
+        goarch: arm64
+        env:
+          - CC=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
+          - CGO_ENABLED=1
+          - CGO_CFLAGS=
+        ldflags:
+          - -extld=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
+          - -extldflags=-static
+          - -linkmode=external
+    tags:
+      - osusergo
+      - netgo
+      - static_build
+      - feature
+    ldflags:
+      - -extldflags=-static
+      - -linkmode=external
+      
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_linux_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_linux_checksums.txt'
