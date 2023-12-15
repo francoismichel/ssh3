@@ -53,6 +53,10 @@ builds:
           - CC=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
           - CGO_ENABLED=1
           - CGO_CFLAGS=
+        ldflags:
+          - -extldflags=-static
+          - -linkmode=external
+          - -extld=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
     tags:
       - osusergo
       - netgo
@@ -61,7 +65,6 @@ builds:
     ldflags:
       - -extldflags=-static
       - -linkmode=external
-      - -extld=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
       
 archives:
   - format: tar.gz
