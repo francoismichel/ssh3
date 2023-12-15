@@ -22,48 +22,38 @@ builds:
     binary: ssh3
     goos:
       - linux
-    goarch:
-      - amd64
-      # - arm64
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - CC=aarch64-linux-gnu-gcc
+    goarch: 
+      - arm64
     tags:
       - osusergo
       - netgo
       - static_build
       - feature
-    ldflags:
-      - -linkmode=external
-      - -extldflags=-static
   - 
     id: "ssh3-server"
     main: ./cli/server/main.go
     binary: ssh3-server
     env:
+      - CC=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
       - CGO_ENABLED=1
-      - CC=/usr/local/musl/bin/musl-gcc
-      - CGO_CFLAGS=-I/usr/local/musl/include/
+      - CGO_CFLAGS=
+    ldflags:
+      - -extld=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
+      - -extldflags=-static
+      - -linkmode=external
     goos:
       - linux
     goarch:
-      - amd64
-    overrides:
-      - goos: linux
-        goarch: arm64
-        env:
-          - CC=aarch64-linux-gnu-gcc
+      - arm64
+    hooks:
+      pre:
+        - sudo cp /usr/bin/{{ .Arch }}-ld /usr/bin/ld
     tags:
       - osusergo
       - netgo
       - static_build
       - feature
-    ldflags:
-      - -extldflags=-static
-      - -linkmode=external
-      
+
 archives:
   - format: tar.gz
     name_template: >-
@@ -82,4 +72,4 @@ changelog:
       - "^test:"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_linux_checksums.txt'
+  name_template: '{{ .ProjectName }}_{{ .Version }}_linux_arm64_checksums.txt'

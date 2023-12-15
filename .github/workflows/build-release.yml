@@ -17,32 +17,25 @@ jobs:
   gorelease:
     strategy:
         matrix:
-          variant: [ { imgname: ubuntu-latest, releaserfile: linux }, { imgname: ubuntu-latest, releaserfile: client-only-all } ]
+          variant: [ { imgname: ubuntu-latest, releaserfile: linux-amd64 }, { imgname: ubuntu-latest, releaserfile: linux-arm64 }, { imgname: ubuntu-latest, releaserfile: client-only-all } ]
     runs-on: ${{ matrix.variant.imgname }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      # Right now, compilation for linux-arm64 is disable as it is a pain.
-      # ARM actions might come soon on GitHub anyway
-      # - name: Add ARM repos to sources.list
-      #   run: |
-      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy main multiverse universe" | sudo tee -a /etc/apt/sources.list
-      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-security main multiverse universe" | sudo tee -a /etc/apt/sources.list
-      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-backports main multiverse universe" | sudo tee -a /etc/apt/sources.list
-      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-updates main multiverse universe" | sudo tee -a /etc/apt/sources.list
-      # - name: Add ARM architecture and update
-      #   run: sudo dpkg --add-architecture arm64 && sudo apt-get -y update || true
-      # - name: Install toolchain for compiling ARM
-      #   run:  sudo apt-get -y install gcc-aarch64-linux-gnu
-      # - name: Install lcrypt for arm64
-      #   run:  sudo apt-get -y install libc6:arm64 libcrypt-dev:arm64
       - name: Get musl source
         run:  sudo apt-get -y install wget && pushd /tmp && sudo wget -O musl-1.2.4.tar.gz https://git.musl-libc.org/cgit/musl/snapshot/musl-1.2.4.tar.gz && tar xzvf musl-1.2.4.tar.gz && popd
       - name: Compile and install musl
         run:  pushd /tmp/musl-1.2.4 && ./configure --prefix=/usr/local/musl/ && make && sudo make install && popd
+      - name: Get musl cross-compiler for arm64
+        run:  wget -O /tmp/aarch64-linux-musl-cross.tgz https://musl.cc/aarch64-linux-musl-cross.tgz
+      - name: Untar musl cross-compiler for arm64
+        run:  tar -C /tmp/ -x -z -f /tmp/aarch64-linux-musl-cross.tgz
+      - name: Ensure musl gcc can run
+        run:  /tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc --version
+      - name: Set a different ld for each arch # ugly but there are no working flags to explicitly set the ld to use...
+        run: sudo cp /usr/bin/x86_64-linux-gnu-ld /usr/bin/amd64-ld && sudo cp /tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc /usr/bin/arm64-ld
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
@@ -53,6 +46,6 @@ jobs:
           # either 'goreleaser' (default) or 'goreleaser-pro'
           distribution: goreleaser
           version: latest
-          args: release --clean --config .goreleaser-${{ matrix.variant.releaserfile }}.yml
+          args: release --verbose --clean --config .goreleaser-${{ matrix.variant.releaserfile }}.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
