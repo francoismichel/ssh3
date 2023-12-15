@@ -44,7 +44,9 @@ jobs:
       - name: Compile and install musl
         run:  pushd /tmp/musl-1.2.4 && ./configure --prefix=/usr/local/musl/ && make && sudo make install && popd
       - name: Get musl cross-compiler for arm64
-        run:  wget -O /tmp/aarch64-linux-musl-cross.tgz https://musl.cc/aarch64-linux-musl-cross.tgz && tar -C /tmp/ -x -z -f /tmp/aarch64-linux-musl-cross.tgz
+        run:  wget -O /tmp/aarch64-linux-musl-cross.tgz https://musl.cc/aarch64-linux-musl-cross.tgz
+      - name: Untar musl cross-compiler for arm64
+        run:  tar -C /tmp/ -x -z -f /tmp/aarch64-linux-musl-cross.tgz
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
@@ -55,6 +57,6 @@ jobs:
           # either 'goreleaser' (default) or 'goreleaser-pro'
           distribution: goreleaser
           version: latest
-          args: release --clean --config .goreleaser-${{ matrix.variant.releaserfile }}.yml
+          args: release --verbose --clean --config .goreleaser-${{ matrix.variant.releaserfile }}.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
