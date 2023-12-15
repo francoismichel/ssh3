@@ -46,6 +46,9 @@ builds:
     goarch:
       - amd64
       - arm64
+    hooks:
+      pre:
+        - cp /usr/bin/{{ .Arch }}-ld /usr/bin/ld
     overrides:
       - goos: linux
         goarch: arm64
