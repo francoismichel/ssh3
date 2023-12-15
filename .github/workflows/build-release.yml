@@ -41,6 +41,8 @@ jobs:
       #   run:  sudo apt-get -y install libc6:arm64 libcrypt-dev:arm64
       - name: Install musl
         run:  sudo apt-get -y update && sudo apt-get -y install musl musl-dev musl-tools
+      - name: Get musl crypt.h header missing on Ubuntu
+        run:  sudo apt-get -y install wget && sudo wget -O /usr/include/x86_64-linux-musl/crypt.h https://git.musl-libc.org/cgit/musl/plain/include/crypt.h
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
