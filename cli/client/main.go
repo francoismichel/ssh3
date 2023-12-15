@@ -410,20 +410,18 @@ func mainWithStatusCode() int {
 		return -1
 	}
 
-	hostname := configHostname
+	hostname := urlHostname
 	if hostname == "" {
-		hostname = urlHostname
+		hostname = configHostname
 	}
 
 	hostnameIsAnIP := net.ParseIP(hostname) != nil
-
-	port := configPort
-	if port == -1 && urlPort != "" {
-		port, err = strconv.Atoi(urlPort)
-		if err != nil {
-			log.Error().Msgf("invalid port number: %s: %s", urlPort, err)
+	port, err := strconv.Atoi(urlPort)
+	if err != nil && configPort == -1 {
+		log.Fatal().Msg("No valid port is configured!")
 			return -1
-		}
+	} else if err != nil {
+		port = configPort
 	}
 
 	username := parsedUrl.User.Username()
