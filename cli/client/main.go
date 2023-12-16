@@ -400,9 +400,6 @@ func mainWithStatusCode() int {
 	}
 
 	urlHostname, urlPort := parsedUrl.Hostname(), parsedUrl.Port()
-	if urlPort == "" {
-		urlPort = "443"
-	}
 
 	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
 	if err != nil {
@@ -416,12 +413,33 @@ func mainWithStatusCode() int {
 	}
 
 	hostnameIsAnIP := net.ParseIP(hostname) != nil
-	port, err := strconv.Atoi(urlPort)
-	if err != nil && configPort == -1 {
-		log.Fatal().Msg("No valid port is configured!")
+	// *** Port selection ***
+	// There are six scenarios:
+	//
+	// | CLI port | parse | config port | program behaviour    |
+	// | -------- | ----- | ----------- | -------------------- |
+	// |    yes   |  nok  |     yes     | throw error and exit |
+	// |    yes   |  nok  |     no      | throw error and exit |
+	// |    yes   |  ok   |     yes     | use CLI port         |
+	// |    yes   |  ok   |     no      | use CLI port         |
+	// |    no    |  ---  |     yes     | use config port      |
+	// |    no    |  ---  |     no      | use default port     |
+
+	var port int
+	if urlPort != "" {
+		if parsedPort, err := strconv.Atoi(urlPort); err != nil || parsedPort > 0xffff {
+			// use WithLevel(zerolog.FatalLevel) to log a fatal level, but let us handle
+			// programm termination. log.Fatal() exits with os.Exit(1).
+			log.WithLevel(zerolog.FatalLevel).Str("Port", urlPort).Err(err).Msg("cli contains an invalid port")
+			fmt.Fprintf(os.Stderr, "Bad port '%s'\n", urlPort)
 			return -1
-	} else if err != nil {
+		} else {
+			port = parsedPort
+		}
+	} else if configPort != -1 {
 		port = configPort
+	} else {
+		port = 443
 	}
 
 	username := parsedUrl.User.Username()
