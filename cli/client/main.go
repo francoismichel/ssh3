@@ -407,9 +407,9 @@ func mainWithStatusCode() int {
 		return -1
 	}
 
-	hostname := urlHostname
+	hostname := configHostname
 	if hostname == "" {
-		hostname = configHostname
+		hostname = urlHostname
 	}
 
 	hostnameIsAnIP := net.ParseIP(hostname) != nil
