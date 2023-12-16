@@ -207,7 +207,7 @@ Similarly to what OpenSSH does, the following `ssh3` command will connect you to
 
       ssh3 my-server/my-secret-path
 
-If you do not want a config-based utilization of SSH3, yo ucan read the sections below to see how to use the CLI parameters of `ssh3`.
+If you do not want a config-based utilization of SSH3, you can read the sections below to see how to use the CLI parameters of `ssh3`.
 
 #### OpenID Connect authentication (still experimental)
 This feature allows you to connect using an external identity provider such as the one
