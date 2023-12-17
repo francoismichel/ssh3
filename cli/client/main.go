@@ -639,6 +639,8 @@ func mainWithStatusCode() int {
 		EnableDatagrams: true,
 	}
 
+	log.Debug().Msg("created HTTP3 round tripper")
+
 	ctx, _ := context.WithCancelCause(context.Background())
 
 	defer roundTripper.Close()
