@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies to generate ssh keys and certificates
         run: sudo apt -y update && sudo apt -y install openssh-client openssl
       - name: Generate server cert
-        run: pushd / && sh ${{ github.workspace }}/generate_openssl_selfsigned_certificate.sh && popd
+        run: pushd / && sudo sh ${{ github.workspace }}/generate_openssl_selfsigned_certificate.sh && popd
       - name: Generate testuser's SSH key
         run: sudo ssh-keygen -b 4096 -t rsa -f /testuser_id_rsa -q -N ""
       - name: Generate attacker's SSH key
