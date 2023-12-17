@@ -687,6 +687,7 @@ func mainWithStatusCode() int {
 		if ip.To4() == nil && ip.To16() != nil {
 			// enforce the square-bracketed notation for ipv6 UDP addresses
 			hostname = fmt.Sprintf("[%s]", hostname)
+			log.Debug().IPAddr("HostIP", ip).Str("Hostname", hostname).Msg("enforcing [IPv6] notation")
 		}
 	}
 
