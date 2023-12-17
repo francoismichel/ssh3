@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && !amd64 && !arm64
 
 // partially copied from https://github.com/google/minions/blob/v0.1.0/src/go/minions/passwd/minion.go
 

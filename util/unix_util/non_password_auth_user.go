@@ -1,4 +1,4 @@
-//go:build !linux && unix
+//go:build unix
 
 package unix_util
 
