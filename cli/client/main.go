@@ -646,18 +646,30 @@ func mainWithStatusCode() int {
 	defer roundTripper.Close()
 
 	// connect to SSH agent if it exists
+	log.Debug().Msg("attempting SSH agent connection")
 	var agentClient agent.ExtendedAgent
 	var agentKeys []ssh.PublicKey
 
 	socketPath := os.Getenv("SSH_AUTH_SOCK")
+	log.Debug().Str("SSHAgentSocketPath", socketPath).Msg("fetched socket path from env")
 	if socketPath != "" {
 		conn, err := net.Dial("unix", socketPath)
+		log.
+			Debug().
+			Err(err).
+			Str("LocalAddressNetwork", conn.LocalAddr().Network()).
+			Str("LocalAddressString", conn.LocalAddr().String()).
+			Str("RemoteAddressNetwork", conn.RemoteAddr().Network()).
+			Str("RemoteAddressString", conn.RemoteAddr().String()).
+			Msg("dialed socket path using unix network")
 		if err != nil {
 			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
 			return -1
 		}
+
 		agentClient = agent.NewClient(conn)
 		keys, err := agentClient.List()
+		log.Debug().Any("SSHAgentKeys", keys).Err(err).Msg("list agent keys")
 		if err != nil {
 			log.Error().Msgf("Failed to list agent keys: %s", err)
 			return -1
@@ -666,6 +678,7 @@ func mainWithStatusCode() int {
 			agentKeys = append(agentKeys, key)
 		}
 	}
+	log.Trace().Msg("done reading SSH agent")
 
 	log.Debug().Msgf("dialing QUIC host at %s", fmt.Sprintf("%s:%d", hostname, port))
 
