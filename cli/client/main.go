@@ -439,9 +439,10 @@ func mainWithStatusCode() int {
 		Str("SSHConfigFilePath", configPath).
 		Int("ConfigBytes", len(configBytes)).
 		Err(err).
-		Msg("parsed ssh config")
+		Msg("read SSH config file")
 	if err == nil {
 		sshConfig, err = ssh_config.DecodeBytes(configBytes)
+		log.Debug().Err(err).Msg("read SSH config")
 		if err != nil {
 			log.Warn().Msgf("could not parse %s: %s, ignoring config", configPath, err)
 			sshConfig = nil
