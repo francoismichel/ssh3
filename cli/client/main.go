@@ -376,28 +376,58 @@ func mainWithStatusCode() int {
 	}
 
 	if *forwardTCP != "" {
+		log.Debug().Str("TCPForwarding", *forwardTCP).Msg("setting up TCP forwarding")
+
 		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardTCP)
+		log.
+			Debug().
+			Str("TCPForwarding", *forwardTCP).
+			Int("LocalPort", localPort).
+			IPAddr("RemoteIP", remoteIP).
+			Int("RemotePort", remotePort).
+			Err(err).
+			Msg("parsed TCP forwarding address")
 		if err != nil {
-			log.Error().Msgf("UDP forwarding parsing error %s", err)
+			log.Error().Msgf("TCP forwarding parsing error %s", err)
 		}
+
 		remoteTCPAddr = &net.TCPAddr{
 			IP:   remoteIP,
 			Port: remotePort,
 		}
+
 		if remoteIP.To4() != nil {
 			localTCPAddr = &net.TCPAddr{
 				IP:   net.IPv4(127, 0, 0, 1),
 				Port: localPort,
 			}
+			log.
+				Debug().
+				Any("RemoteTCPAddress", remoteTCPAddr).
+				Any("LocalTCPAddress", localTCPAddr).
+				Msg("remote TCP address is an IPv4 address")
 		} else if remoteIP.To16() != nil {
 			localTCPAddr = &net.TCPAddr{
 				IP:   net.IPv6loopback,
 				Port: localPort,
 			}
+			log.
+				Debug().
+				Any("RemoteTCPAddress", remoteTCPAddr).
+				Any("LocalTCPAddress", localTCPAddr).
+				Msg("remote TCP address is an IPv6 address")
 		} else {
-			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+			log.
+				Error().
+				Err(err).
+				Any("RemoteTCPAddress", remoteTCPAddr).
+				IPAddr("RemoteIP", remoteIP).
+				Int("RemotePort", remotePort).
+				Msgf("Unrecognized IP length %d", len(remoteIP))
 			return -1
 		}
+
+		log.Trace().Msg("done setting up TCP forwarding")
 	}
 
 	var sshConfig *ssh_config.Config
