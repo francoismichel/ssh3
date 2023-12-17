@@ -458,11 +458,13 @@ func mainWithStatusCode() int {
 	if *oidcConfigFileName == "" {
 		defaultFileName := path.Join(ssh3Dir, "oidc_config.json")
 		oidcConfigFile, err = os.Open(defaultFileName)
+		log.Debug().Str("OIDCConfigFile", defaultFileName).Err(err).Msg("opened OIDC config")
 		if err != nil && !os.IsNotExist(err) {
 			log.Warn().Msgf("could not open %s: %s", defaultFileName, err.Error())
 		}
 	} else {
 		oidcConfigFile, err = os.Open(*oidcConfigFileName)
+		log.Debug().Str("OIDCConfigFile", *oidcConfigFileName).Err(err).Msg("opened OIDC config")
 		if err != nil {
 			log.Error().Msgf("could not open %s: %s", *oidcConfigFileName, err.Error())
 			return -1
@@ -471,6 +473,12 @@ func mainWithStatusCode() int {
 
 	if oidcConfigFile != nil {
 		data, err := io.ReadAll(oidcConfigFile)
+		log.
+			Debug().
+			Str("OIDCConfigFile", oidcConfigFile.Name()).
+			Int("OIDCConfigFileLenght", len(data)).
+			Err(err).
+			Msg("read OIDC config")
 		if err != nil {
 			log.Error().Msgf("could not read oidc config file: %s", err.Error())
 			return -1
