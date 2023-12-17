@@ -79,8 +79,8 @@ Downloading the source code and compiling the binaries can be done with the foll
 ```bash
 git clone https://github.com/francoismichel/ssh3    # clone the repo
 cd ssh3
-go build -o ssh3 cli/client/main.go                     # build the client
-go build -o ssh3-server cli/server/main.go              # build the server
+go build -o ssh3 cli/client/main.go                        # build the client
+CGO_ENABLED=1 go build -o ssh3-server cli/server/main.go   # build the server, requires having gcc installed
 ```
 
 If you have root/sudo priviledges and you want to make ssh3 accessible to all you users,
