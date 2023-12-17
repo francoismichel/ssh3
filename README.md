@@ -79,8 +79,8 @@ Downloading the source code and compiling the binaries can be done with the foll
 ```bash
 git clone https://github.com/francoismichel/ssh3    # clone the repo
 cd ssh3
-go build -o ssh3 cli/client/main.go                     # build the client
-go build -o ssh3-server cli/server/main.go              # build the server
+go build -o ssh3 cli/client/main.go                        # build the client
+CGO_ENABLED=1 go build -o ssh3-server cli/server/main.go   # build the server, requires having gcc installed
 ```
 
 If you have root/sudo priviledges and you want to make ssh3 accessible to all you users,
@@ -207,7 +207,7 @@ Similarly to what OpenSSH does, the following `ssh3` command will connect you to
 
       ssh3 my-server/my-secret-path
 
-If you do not want a config-based utilization of SSH3, yo ucan read the sections below to see how to use the CLI parameters of `ssh3`.
+If you do not want a config-based utilization of SSH3, you can read the sections below to see how to use the CLI parameters of `ssh3`.
 
 #### OpenID Connect authentication (still experimental)
 This feature allows you to connect using an external identity provider such as the one

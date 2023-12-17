@@ -97,6 +97,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 			if os.Getenv("SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED") != "1" {
 				Skip("skipping integration tests")
 			}
+			Consistently(serverSession, "200ms").ShouldNot(Exit())
 		})
 
 		Context("Insecure", func() {
@@ -246,7 +247,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						n, err = rng.Read(messageFromServer)
 						Expect(n).To(Equal(len(messageFromServer)))
 						Expect(err).ToNot(HaveOccurred())
-						testTCPPortForwarding(8080, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
+						testTCPPortForwarding(8081, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
 					})
 
 
@@ -259,7 +260,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						if !IPv6LoopbackAvailable(addrs) {
 							Skip("IPv6 not available on this host")
 						}
-						testTCPPortForwarding(8080, &net.TCPAddr{IP: net.ParseIP("::1"), Port: 9091}, "hello from client", "hello from server")
+						testTCPPortForwarding(8082, &net.TCPAddr{IP: net.ParseIP("::1"), Port: 9091}, "hello from client", "hello from server")
 					})
 				})
 			})
@@ -352,7 +353,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					n, err = rng.Read(messageFromServer)
 					Expect(n).To(Equal(len(messageFromServer)))
 					Expect(err).ToNot(HaveOccurred())
-					testUDPPortForwarding(8080,  &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
+					testUDPPortForwarding(8081,  &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
 				})
 			
 				It("works with IPv6 addresses", func() {
@@ -362,7 +363,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					if !IPv6LoopbackAvailable(addrs) {
 						Skip("IPv6 not available on this host")
 					}
-					testUDPPortForwarding(8080, &net.UDPAddr{IP: net.ParseIP("::1"), Port: 9091}, "hello from client", "hello from server")
+					testUDPPortForwarding(8082, &net.UDPAddr{IP: net.ParseIP("::1"), Port: 9091}, "hello from client", "hello from server")
 				})
 			})
 
