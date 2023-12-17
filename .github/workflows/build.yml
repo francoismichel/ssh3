@@ -101,7 +101,7 @@ jobs:
             goarch: amd64
           - goos: linux
             goarch: arm64
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go
@@ -117,4 +117,4 @@ jobs:
         run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v cli/server/main.go
       - name: Classical unit tests
         if: ${{ matrix.goarch == 'amd64' }} # only actually run the test suite with the architecture of the host
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo
+        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo
