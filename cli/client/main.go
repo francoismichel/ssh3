@@ -494,7 +494,12 @@ func mainWithStatusCode() int {
 
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {
+		log.
+			Warn().
+			Str("KeyLogFile", *keyLogFile).
+			Msg("QUIC keylogging enabled. This is a debugging functionality ONLY!")
 		f, err := os.Create(*keyLogFile)
+		log.Debug().Str("KeyLogFile", *keyLogFile).Err(err).Msg("created keylog file")
 		if err != nil {
 			log.Fatal().Msgf("%s", err)
 		}
