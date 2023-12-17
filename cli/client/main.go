@@ -51,7 +51,6 @@ func homedir() string {
 	}
 }
 
-
 func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	sockPath := os.Getenv("SSH_AUTH_SOCK")
 	if sockPath == "" {
@@ -260,11 +259,39 @@ func mainWithStatusCode() int {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
 	}
 
+	log.
+		Debug().
+		Str("KeylogFile", *keyLogFile).
+		Str("PrivateKeyFile", *privKeyFile).
+		Str("AgentPublicKey", *pubkeyForAgent).
+		Bool("PasswordAuth", *passwordAuthentication).
+		Bool("InsecureConn", *insecure).
+		Str("OIDCIssuerURL", *issuerUrl).
+		Str("OIDCConfigFile", *oidcConfigFileName).
+		Bool("Verbose", *verbose).
+		Bool("OIDCWithPKCE", *doPKCE).
+		Bool("SSHAgentForwarding", *forwardSSHAgent).
+		Str("UdPForwarding", *forwardUDP).
+		Str("TCPForwarding", *forwardTCP).
+		Msg("parsed CLI flags")
+
+	log.Debug().Msg("parsing user known hosts")
+
 	knownHostsPath := path.Join(ssh3Dir, "known_hosts")
 	knownHosts, skippedLines, err := ssh3.ParseKnownHosts(knownHostsPath)
+	log.
+		Debug().
+		Int("InvalidLines", len(skippedLines)).
+		Int("Certificates", len(knownHosts)).
+		Err(err).
+		Msg("parsed known hosts")
 	if len(skippedLines) != 0 {
 		stringSkippedLines := []string{}
 		for _, lineNumber := range skippedLines {
+			log.
+				Warn().
+				Int("LineNumber", lineNumber).
+				Msg("invalid line")
 			stringSkippedLines = append(stringSkippedLines, fmt.Sprintf("%d", lineNumber))
 		}
 		log.Warn().Msgf("the following lines in %s are invalid: %s", knownHostsPath, strings.Join(stringSkippedLines, ", "))
@@ -274,44 +301,80 @@ func mainWithStatusCode() int {
 	}
 
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	log.Debug().Err(err).Msg("opened tty")
 	if err != nil {
 		tty = nil
+		log.Debug().Msg("error while opening tty: falling back and set to nil")
 	}
 
 	urlFromParam := args[0]
+	log.Debug().Str("ConnectionURL", urlFromParam).Msg("got url")
 	if !strings.HasPrefix(urlFromParam, "https://") {
+		log.Debug().Str("ConnectionURL", urlFromParam).Msg("url has no prefix, adding")
 		urlFromParam = fmt.Sprintf("https://%s", urlFromParam)
 	}
 	command := args[1:]
+	log.Debug().Str("Command", strings.Join(command, " ")).Msg("got command")
 
 	var localUDPAddr *net.UDPAddr = nil
 	var remoteUDPAddr *net.UDPAddr = nil
 	var localTCPAddr *net.TCPAddr = nil
 	var remoteTCPAddr *net.TCPAddr = nil
 	if *forwardUDP != "" {
+		log.Debug().Str("UDPForwarding", *forwardUDP).Msg("setting up UDP forwarding")
+
 		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardUDP)
+		log.
+			Debug().
+			Str("UDPForwarding", *forwardUDP).
+			Int("LocalPort", localPort).
+			IPAddr("RemoteIP", remoteIP).
+			Int("RemotePort", remotePort).
+			Err(err).
+			Msg("parsed UDP forwarding address")
 		if err != nil {
 			log.Error().Msgf("UDP forwarding parsing error %s", err)
 		}
+
 		remoteUDPAddr = &net.UDPAddr{
 			IP:   remoteIP,
 			Port: remotePort,
 		}
+
 		if remoteIP.To4() != nil {
 			localUDPAddr = &net.UDPAddr{
 				IP:   net.IPv4(127, 0, 0, 1),
 				Port: localPort,
 			}
+			log.
+				Debug().
+				Any("RemoteUDPAddress", remoteUDPAddr).
+				Any("LocalUDPAddress", localUDPAddr).
+				Msg("remote UDP address is an IPv4 address")
 		} else if remoteIP.To16() != nil {
 			localUDPAddr = &net.UDPAddr{
 				IP:   net.IPv6loopback,
 				Port: localPort,
 			}
+			log.
+				Debug().
+				Any("RemoteUDPAddress", remoteUDPAddr).
+				Any("LocalUDPAddress", localUDPAddr).
+				Msg("remote UDP address is an IPv6 address")
 		} else {
-			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+			log.
+				Error().
+				Err(err).
+				Any("RemoteUDPAddress", remoteUDPAddr).
+				IPAddr("RemoteIP", remoteIP).
+				Int("RemotePort", remotePort).
+				Msgf("Unrecognized IP length %d", len(remoteIP))
 			return -1
 		}
+
+		log.Trace().Msg("done setting up UDP forwarding")
 	}
+
 	if *forwardTCP != "" {
 		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardTCP)
 		if err != nil {
@@ -341,6 +404,12 @@ func mainWithStatusCode() int {
 	var configBytes []byte
 	configPath := path.Join(homedir(), ".ssh", "config")
 	configBytes, err = os.ReadFile(configPath)
+	log.
+		Debug().
+		Str("SSHConfigFilePath", configPath).
+		Int("ConfigBytes", len(configBytes)).
+		Err(err).
+		Msg("parsed ssh config")
 	if err == nil {
 		sshConfig, err = ssh_config.DecodeBytes(configBytes)
 		if err != nil {
@@ -381,7 +450,8 @@ func mainWithStatusCode() int {
 		}
 	}
 
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	// Duplicate logger set
+	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {
@@ -393,8 +463,8 @@ func mainWithStatusCode() int {
 		keyLog = f
 	}
 
-
 	parsedUrl, err := url.Parse(urlFromParam)
+	log.Debug().Any("ParsedURL", parsedUrl).Msg("parsed URL")
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
@@ -403,8 +473,17 @@ func mainWithStatusCode() int {
 	if urlPort == "" {
 		urlPort = "443"
 	}
+	log.Debug().Str("Host", urlHostname).Str("Port", urlPort).Msg("parsed url and port")
 
 	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	log.
+		Debug().
+		Str("Host", urlHostname).
+		Str("Port", urlPort).
+		Str("ConfigHost", configHostname).
+		Int("ConfigPort", configPort).
+		Str("ConfigUser", configUser).
+		Msg("fetched Host config")
 	if err != nil {
 		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
 		return -1
@@ -414,6 +493,12 @@ func mainWithStatusCode() int {
 	if hostname == "" {
 		hostname = urlHostname
 	}
+	log.
+		Debug().
+		Str("DialHostname", hostname).
+		Str("URLHostname", urlHostname).
+		Str("ConfigHostname", configHostname).
+		Msg("set hostname")
 
 	hostnameIsAnIP := net.ParseIP(hostname) != nil
 
@@ -425,6 +510,7 @@ func mainWithStatusCode() int {
 			return -1
 		}
 	}
+	log.Debug().Int("Port", port).Int("ConfigPort", configPort).Str("URLPort", urlPort).Msg("set port")
 
 	username := parsedUrl.User.Username()
 	if username == "" {
@@ -451,12 +537,10 @@ func mainWithStatusCode() int {
 	parsedUrl.RawQuery = urlQuery.Encode()
 	requestUrl := parsedUrl.String()
 
-
 	pool, err := x509.SystemCertPool()
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
-
 
 	tlsConf := &tls.Config{
 		RootCAs:            pool,
@@ -501,7 +585,6 @@ func mainWithStatusCode() int {
 
 	defer roundTripper.Close()
 
-
 	// connect to SSH agent if it exists
 	var agentClient agent.ExtendedAgent
 	var agentKeys []ssh.PublicKey
@@ -524,7 +607,6 @@ func mainWithStatusCode() int {
 		}
 	}
 
-
 	log.Debug().Msgf("dialing QUIC host at %s", fmt.Sprintf("%s:%d", hostname, port))
 
 	if hostnameIsAnIP {
@@ -540,16 +622,16 @@ func mainWithStatusCode() int {
 		tlsConf,
 		&qconf)
 	if err != nil {
-		if transportErr, ok :=  err.(*quic.TransportError); ok {
+		if transportErr, ok := err.(*quic.TransportError); ok {
 			if transportErr.ErrorCode.IsCryptoError() {
 				if tty == nil {
 					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
 					return -1
 				}
 				if _, ok = knownHosts[hostname]; ok {
-					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. " + 
-									 "If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
-									 "TLS error: %s", knownHostsPath, err)
+					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. "+
+						"If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
+						"TLS error: %s", knownHostsPath, err)
 					log.Error().Msgf("Aborting.")
 					return -1
 				}
@@ -563,9 +645,9 @@ func mainWithStatusCode() int {
 				}
 
 				_, err := quic.DialAddrEarly(ctx,
-											 fmt.Sprintf("%s:%d", hostname, port),
-											 tlsConf,
-											 &qconf)
+					fmt.Sprintf("%s:%d", hostname, port),
+					tlsConf,
+					&qconf)
 				if !errors.Is(err, certError) {
 					log.Error().Msgf("could not create client QUIC connection: %s", err)
 					return -1
@@ -578,22 +660,22 @@ func mainWithStatusCode() int {
 				// first, carriage return
 				_, _ = tty.WriteString("\r")
 				_, err = tty.WriteString("Received an unknown self-signed certificate from the server.\n\r" +
-										 "We recommend not using self-signed certificates.\n\r" +
-										 "This session is vulnerable a machine-in-the-middle attack.\n\r" + 
-										 "Certificate fingerprint: " +
-										 "SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
-				 						 "Do you want to add this certificate to ~/.ssh3/known_hosts (yes/no)? ")
+					"We recommend not using self-signed certificates.\n\r" +
+					"This session is vulnerable a machine-in-the-middle attack.\n\r" +
+					"Certificate fingerprint: " +
+					"SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
+					"Do you want to add this certificate to ~/.ssh3/known_hosts (yes/no)? ")
 				if err != nil {
 					log.Error().Msgf("cound not write on /dev/tty: %s", err)
 					return -1
 				}
-				
+
 				answer := ""
 				reader := bufio.NewReader(tty)
 				for {
 					answer, _ = reader.ReadString('\n')
 					answer = strings.TrimSpace(answer)
-					_, _ = tty.WriteString("\r")	// always ensure a carriage return
+					_, _ = tty.WriteString("\r") // always ensure a carriage return
 					if answer == "yes" || answer == "no" {
 						break
 					}
@@ -649,7 +731,7 @@ func mainWithStatusCode() int {
 		if *privKeyFile != "" {
 			authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
 		}
-	
+
 		if *pubkeyForAgent != "" {
 			if agentClient == nil {
 				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
@@ -667,7 +749,7 @@ func mainWithStatusCode() int {
 						return -1
 					}
 				}
-	
+
 				for _, candidateKey := range agentKeys {
 					if pubkey == nil || bytes.Equal(candidateKey.Marshal(), pubkey.Marshal()) {
 						log.Debug().Msgf("found key in agent: %s", candidateKey)
@@ -676,11 +758,11 @@ func mainWithStatusCode() int {
 				}
 			}
 		}
-	
+
 		if *passwordAuthentication {
 			authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
 		}
-	
+
 	} else {
 		// for now, only perform OIDC if it was explicitly asked by the user
 		if *issuerUrl != "" {
@@ -716,7 +798,10 @@ func mainWithStatusCode() int {
 			}
 			identity = m.IntoIdentity(string(password))
 		case *ssh3.PrivkeyFileAuthMethod:
+			log.Debug().Msg("attempting pk auth")
+
 			identity, err = m.IntoIdentityWithoutPassphrase()
+			log.Debug().Err(err).Msg("attempted loading key without password")
 			// could not identify without passphrase, try agent authentication by using the key's public key
 			if passphraseErr, ok := err.(*ssh.PassphraseMissingError); ok {
 				// the pubkey may be contained in the privkey file
