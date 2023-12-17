@@ -3,11 +3,13 @@
 package unix_util
 
 import (
+	"runtime"
 	"strconv"
 
-	"github.com/rs/zerolog/log"
 	"fmt"
 	osuser "os/user"
+
+	"github.com/rs/zerolog/log"
 )
 
 
@@ -43,5 +45,5 @@ func getUser(username string) (*User, error) {
  *  server. May return a UserNotFound error when the user does not exist.
  */
  func userPasswordAuthentication(username, password string) (bool, error) {
-	return false,  fmt.Errorf("password-based authentication is not implemented on non-Linux Unix platforms")
+	return false,  fmt.Errorf("password-based authentication is not implemented on %s/%s systems", runtime.GOOS, runtime.GOARCH)
 }

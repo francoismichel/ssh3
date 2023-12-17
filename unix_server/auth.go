@@ -17,7 +17,7 @@ import (
 
 func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacketSize uint64, handlerFunc ssh3.AuthenticatedHandlerFunc) (http.HandlerFunc, error) {
 	if runtime.GOOS != "linux" && enablePasswordLogin {
-		return nil, fmt.Errorf("password login not supported on non-Linux Unix platforms")
+		return nil, fmt.Errorf("password login not supported on %s/%s systems", runtime.GOOS, runtime.GOARCH)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer w.(http.Flusher).Flush()
