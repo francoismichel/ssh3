@@ -97,6 +97,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 			if os.Getenv("SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED") != "1" {
 				Skip("skipping integration tests")
 			}
+			Consistently(serverSession, "200ms").ShouldNot(Exit())
 		})
 
 		Context("Insecure", func() {
