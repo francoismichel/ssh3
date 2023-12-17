@@ -90,3 +90,31 @@ jobs:
       - name: Classical unit tests
         if: ${{ matrix.goarch == 'amd64' }} # only actually run the test suite with the architecture of the host
         run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo
+  build-other-unix:
+    strategy:
+      matrix:
+        go-version: [ '1.20.x', '1.21.x' ]
+        goos: [openbsd,freebsd,linux]
+        goarch: [amd64,"386",arm64,arm]
+        exclude:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '${{matrix.go-version}}'
+      - name: Install dependencies
+        run: go get ./...
+      # No Build Server on MacOS right now as the server currently does no build on MacOS
+      - name: Build Client
+        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v cli/client/main.go
+      - name: Build Server
+        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v cli/server/main.go
+      - name: Classical unit tests
+        if: ${{ matrix.goarch == 'amd64' }} # only actually run the test suite with the architecture of the host
+        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo
