@@ -557,14 +557,18 @@ func mainWithStatusCode() int {
 	log.Debug().Int("Port", port).Int("ConfigPort", configPort).Str("URLPort", urlPort).Msg("set port")
 
 	username := parsedUrl.User.Username()
+	log.Debug().Str("Username", username).Msg("fetching username from URL user")
 	if username == "" {
 		username = parsedUrl.Query().Get("user")
+		log.Debug().Str("Username", username).Msg("fetching username from URL query")
 	}
 	if username == "" {
 		username = configUser
+		log.Debug().Str("Username", username).Msg("fetching username from config")
 	}
 	if username == "" {
 		u, err := osuser.Current()
+		log.Debug().Str("Username", u.Username).Err(err).Msg("fetching username from OS")
 		if err == nil {
 			username = u.Username
 		} else {
