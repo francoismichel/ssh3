@@ -50,4 +50,4 @@ changelog:
       - "^test:"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_clientonly_checksums.txt'
+  name_template: '{{ .ProjectName }}_{{ .Version }}_clientonly_windows_checksums.txt'

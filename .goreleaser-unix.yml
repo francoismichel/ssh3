@@ -79,4 +79,4 @@ changelog:
       - "^test:"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_checksums.txt'
+  name_template: '{{ .ProjectName }}_{{ .Version }}_other_unix_checksums.txt'
