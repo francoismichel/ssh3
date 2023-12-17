@@ -35,6 +35,14 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '${{matrix.go-version}}'
+      - name: Install dependencies to generate ssh keys and certificates
+        run: sudo apt -y update && sudo apt -y install openssh-client openssl
+      - name: Generate server cert
+        run: pushd / && sudo sh ${{ github.workspace }}/generate_openssl_selfsigned_certificate.sh && popd
+      - name: Generate testuser's SSH key
+        run: sudo ssh-keygen -b 4096 -t rsa -f /testuser_id_rsa -q -N ""
+      - name: Generate attacker's SSH key
+        run: sudo ssh-keygen -b 4096 -t rsa -f /attacker_id_rsa -q -N ""
       - name: Install Go dependencies
         run: go get ./...
       - name: Build Client
@@ -46,29 +54,11 @@ jobs:
       - name: Create .ssh3 directory
         run: sudo su ${{matrix.testuser}} -c 'mkdir ${{matrix.testuserhome}}/.ssh ${{matrix.testuserhome}}/.ssh3'
       - name: Put test public key in testuser's authorized_identities
-        env:
-          TESTUSER_PUBKEY_BASE64: ${{ secrets.TESTUSER_PUBKEY_BASE64 }}
-        run: echo $TESTUSER_PUBKEY_BASE64 | base64 --decode | sudo cp /dev/stdin ${{matrix.testuserhome}}/.ssh3/authorized_identities
-      - name: Generate test private key
-        env:
-          TESTUSER_PRIVKEY_BASE64: ${{ secrets.TESTUSER_PRIVKEY_BASE64 }}
-        run: echo $TESTUSER_PRIVKEY_BASE64 | base64 --decode | sudo cp /dev/stdin /privkey
-      - name: Generate attacker's private key
-        env:
-          ATTACKER_PRIVKEY_BASE64: ${{ secrets.ATTACKER_PRIVKEY_BASE64 }}
-        run: echo $ATTACKER_PRIVKEY_BASE64 | base64 --decode | sudo cp /dev/stdin /attacker-privkey
-      - name: Generate server's cert private key
-        env:
-          TESTSERVER_CERT_PRIVKEY_BASE64: ${{ secrets.TESTSERVER_CERT_PRIVKEY_BASE64 }}
-        run: echo $TESTSERVER_CERT_PRIVKEY_BASE64 | base64 --decode | sudo cp /dev/stdin /cert_priv.key
-      - name: Generate server's cert
-        env:
-          TESTSERVER_CERT_BASE64: ${{ secrets.TESTSERVER_CERT_BASE64 }}
-        run: echo $TESTSERVER_CERT_BASE64 | base64 --decode | sudo cp /dev/stdin /cert.pem
+        run: sudo cp /testuser_id_rsa.pub ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Classical unit tests
         run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
       - name: Integration tests
-        run: sudo env CERT_PEM=/cert.pem CERT_PRIV_KEY=/cert_priv.key ATTACKER_PRIVKEY=/attacker-privkey TESTUSER_PRIVKEY=/privkey TESTUSER_USERNAME=${{matrix.testuser}} CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED=1 go run github.com/onsi/ginkgo/v2/ginkgo ./integration_tests
+        run: sudo env CERT_PEM=/cert.pem CERT_PRIV_KEY=/priv.key ATTACKER_PRIVKEY=/attacker_id_rsa TESTUSER_PRIVKEY=/testuser_id_rsa TESTUSER_USERNAME=${{matrix.testuser}} CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED=1 go run github.com/onsi/ginkgo/v2/ginkgo ./integration_tests
   build-macos:
     strategy:
       matrix:
