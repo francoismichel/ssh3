@@ -584,8 +584,10 @@ func mainWithStatusCode() int {
 	urlQuery.Set("user", username)
 	parsedUrl.RawQuery = urlQuery.Encode()
 	requestUrl := parsedUrl.String()
+	log.Debug().Str("RequestURL", requestUrl).Msg("final request URL")
 
 	pool, err := x509.SystemCertPool()
+	log.Debug().Err(err).Msg("fetching system certificate trust pool")
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
@@ -596,6 +598,11 @@ func mainWithStatusCode() int {
 		KeyLogWriter:       keyLog,
 		NextProtos:         []string{http3.NextProtoH3},
 	}
+	log.
+		Debug().
+		Bool("InsecureSkipVerify", *insecure).
+		Str("KeyLogFile", *keyLogFile).
+		Msg("set client TLS configuration")
 
 	if certs, ok := knownHosts[hostname]; ok {
 		foundSelfsignedSSH3 := false
@@ -606,6 +613,7 @@ func mainWithStatusCode() int {
 				foundSelfsignedSSH3 = true
 			}
 		}
+		log.Debug().Bool("SSH3SelfSignedCertificate", foundSelfsignedSSH3).Msg("checking for selfsigned certificates")
 
 		// If no IP SAN was in the cert, then assume the self-signed cert at least matches the .ssh3 TLD
 		if foundSelfsignedSSH3 {
@@ -614,6 +622,8 @@ func mainWithStatusCode() int {
 			// if the hostname is an IP address.
 			tlsConf.ServerName = "selfsigned.ssh3"
 		}
+	} else {
+		log.Debug().Str("Hostname", hostname).Msg("no known host found")
 	}
 
 	var qconf quic.Config
