@@ -22,6 +22,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
@@ -164,13 +165,31 @@ func (q *DatagramsQueue) WaitNext(ctx context.Context) ([]byte, error) {
 }
 
 func JWTSigningMethodFromCryptoPubkey(pubkey crypto.PublicKey) (jwt.SigningMethod, error) {
+	log.Debug().Type("SigningMethodType", pubkey).Msg("fetching singing method from crypto.PublicKey")
+
 	switch pubkey.(type) {
-	case *rsa.PublicKey:
+	case rsa.PublicKey, *rsa.PublicKey:
+		log.
+			Trace().
+			Type("SigningMethodType", pubkey).
+			Str("FoundSigningMethod", "RSA").
+			Msg("found public key type")
 		return jwt.SigningMethodRS256, nil
-	case *ed25519.PublicKey:
+	case ed25519.PublicKey, *ed25519.PublicKey:
+		log.
+			Trace().
+			Type("SigningMethodType", pubkey).
+			Str("FoundSigningMethod", "ED25519").
+			Msg("found public key type")
 		return jwt.SigningMethodEdDSA, nil
+	default:
+		log.
+			Error().
+			Type("SigningMethodType", pubkey).
+			Str("FoundSigningMethod", "unknown").
+			Msg("did not find public key type")
+		return nil, UnknownSSHPubkeyType{pubkey: pubkey}
 	}
-	return nil, UnknownSSHPubkeyType{pubkey: pubkey}
 }
 
 func Sha256Fingerprint(in []byte) string {
