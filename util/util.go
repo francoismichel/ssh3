@@ -168,14 +168,14 @@ func JWTSigningMethodFromCryptoPubkey(pubkey crypto.PublicKey) (jwt.SigningMetho
 	log.Debug().Type("SigningMethodType", pubkey).Msg("fetching singing method from crypto.PublicKey")
 
 	switch pubkey.(type) {
-	case rsa.PublicKey, *rsa.PublicKey:
+	case *rsa.PublicKey:
 		log.
 			Trace().
 			Type("SigningMethodType", pubkey).
 			Str("FoundSigningMethod", "RSA").
 			Msg("found public key type")
 		return jwt.SigningMethodRS256, nil
-	case ed25519.PublicKey, *ed25519.PublicKey:
+	case ed25519.PublicKey:
 		log.
 			Trace().
 			Type("SigningMethodType", pubkey).
