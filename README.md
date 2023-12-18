@@ -29,7 +29,7 @@ Faster for session establishment, not throughput ! SSH3 offers a significantly f
 <i>SSH3 (top) VS SSHv2 (bottom) session establishement with a 100ms ping towards the server.</i>
 </p>
 
-## ⚡ SSH3 is an experimental prototype
+## ⚡ SSH3 is still experimental
 
 While SSH3 shows promise for faster session establishment, it is 
 still at an early proof-of-concept stage. As with any new complex 
@@ -37,9 +37,9 @@ protocol, **expert cryptographic review over an extended timeframe is required b
 
 We are developing SSH3 as an open source project to facilitate community feedback and analysis. However, we **cannot yet endorse its appropriateness for production systems** without further peer review. Please collaborate with us if you have relevant expertise!
 
-## 🥷 Your SSH3 server should not yet be made public
+## 🥷 Do not deploy the SSH3 server on your production servers for now
 
-Given the current prototype state, we advise **testing SSH3 only on private networks**. Making experimental servers directly Internet-accessible could introduce risk before thorough security vetting.
+Given the current prototype state, we advise *testing SSH3 in sandboxed environments or private networks*. Be aware that making experimental servers directly Internet-accessible could introduce risk before thorough security vetting.
 
 While [hidding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it 
 does not negate the need for rigorous vulnerability analysis before 
