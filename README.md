@@ -29,7 +29,37 @@ Faster for session establishment, not throughput ! SSH3 offers a significantly f
 <i>SSH3 (top) VS SSHv2 (bottom) session establishement with a 100ms ping towards the server.</i>
 </p>
 
-## 🔒 SSH3 is secure
+## ⚡ SSH3 is an experimental prototype
+
+While SSH3 shows promise for faster session establishment, it is 
+still at an early proof-of-concept stage. As with any new complex 
+protocol, **expert cryptographic review over an extended timeframe is required before reasonable security conclusions can be made**.
+
+We are developing SSH3 as an open source project to facilitate community feedback and analysis. However, we **cannot yet endorse its appropriateness for production systems** without further peer review. Please collaborate with us if you have relevant expertise!
+
+## 🥷 Your SSH3 server should not yet be made public
+
+Given the current prototype state, we advise **testing SSH3 only on private networks**. Making experimental servers directly Internet-accessible could introduce risk before thorough security vetting.
+
+While [hidding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it 
+does not negate the need for rigorous vulnerability analysis before 
+public launch. We are excited by SSH3's future possibilities but 
+encourage additional scrutiny first.
+
+## 🙏 Community support needed
+
+Help us progress SSH3 responsibly! We welcome capable security 
+researchers to review our codebase and provide feedback. Please also 
+connect us with relevant standards bodies to potentially advance SSH3 
+through the formal IETF/IRTF processes over time.
+
+With collaborative assistance, we hope to iteratively improve SSH3 
+towards safe production readiness. But we cannot credibly make 
+definitive security claims without evidence of extensive expert 
+cryptographic review and adoption by respected security authorities. 
+Let's work together to realize SSH3's possibilities!
+
+## 🔒 SSH3 security
 While SSHv2 defines its own protocols for user authentication and secure channel establishment, SSH3 relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP. These protocols are already extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
 
 SSH3 already implements the common password-based and public-key (RSA and EdDSA/ed25519) authentication methods.
