@@ -55,8 +55,12 @@ jobs:
         run: sudo useradd -m ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
       - name: Create .ssh3 directory
         run: sudo su ${{matrix.testuser}} -c 'mkdir ${{matrix.testuserhome}}/.ssh ${{matrix.testuserhome}}/.ssh3'
+      - name: add the attacker's key as commented in testuser's authorzed identities
+        run: echo "#" $(cat attacker_id_rsa.pub) | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Put test public keys in testuser's authorized_identities
         run: cat /testuser_id_rsa.pub /testuser_id_ed25519.pub | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
+      - name: log authorized_identities
+        run: cat ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Classical unit tests
         run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
       - name: Integration tests
