@@ -170,8 +170,18 @@ func ParseIdentity(user *linux_util.User, identityStr string) (Identity, error) 
 
 func ParseAuthorizedIdentitiesFile(user *linux_util.User, file *os.File) (identities []Identity, err error) {
 	scanner := bufio.NewScanner(file)
+	lineNumber := 0
 	for scanner.Scan() {
+		lineNumber += 1
 		line := scanner.Text()
+		if len(strings.TrimSpace(line)) == 0 {
+			log.Info().Msgf("%s:%d: skip empty line", file.Name(), lineNumber)
+			continue
+		} else if line[0] == '#' {
+			// commented line
+			log.Info().Msgf("%s:%d: skip commented identity", file.Name(), lineNumber)
+			continue
+		}
 		identity, err := ParseIdentity(user, line)
 		if err == nil {
 			identities = append(identities, identity)
