@@ -413,32 +413,25 @@ func mainWithStatusCode() int {
 	}
 
 	hostnameIsAnIP := net.ParseIP(hostname) != nil
-	// *** Port selection ***
-	// There are six scenarios:
-	//
-	// | CLI port | parse | config port | program behaviour    |
-	// | -------- | ----- | ----------- | -------------------- |
-	// |    yes   |  nok  |     yes     | throw error and exit |
-	// |    yes   |  nok  |     no      | throw error and exit |
-	// |    yes   |  ok   |     yes     | use CLI port         |
-	// |    yes   |  ok   |     no      | use CLI port         |
-	// |    no    |  ---  |     yes     | use config port      |
-	// |    no    |  ---  |     no      | use default port     |
 
 	var port int
 	if urlPort != "" {
-		if parsedPort, err := strconv.Atoi(urlPort); err != nil || parsedPort > 0xffff {
+		if parsedPort, err := strconv.Atoi(urlPort); err == nil && parsedPort < 0xffff {
+			// There is a port in the CLI and the port is valid. Use the CLI port.
+			port = parsedPort
+		} else {
+			// There is a port in the CLI but it is not valid.
 			// use WithLevel(zerolog.FatalLevel) to log a fatal level, but let us handle
 			// program termination. log.Fatal() exits with os.Exit(1).
 			log.WithLevel(zerolog.FatalLevel).Str("Port", urlPort).Err(err).Msg("cli contains an invalid port")
 			fmt.Fprintf(os.Stderr, "Bad port '%s'\n", urlPort)
 			return -1
-		} else {
-			port = parsedPort
 		}
 	} else if configPort != -1 {
+		// There is no port in the CLI, but one in a config file. Use the config port.
 		port = configPort
 	} else {
+		// There is no port specified, neither in the CLI, nor in the configuration.
 		port = 443
 	}
 
