@@ -429,7 +429,7 @@ func mainWithStatusCode() int {
 	if urlPort != "" {
 		if parsedPort, err := strconv.Atoi(urlPort); err != nil || parsedPort > 0xffff {
 			// use WithLevel(zerolog.FatalLevel) to log a fatal level, but let us handle
-			// programm termination. log.Fatal() exits with os.Exit(1).
+			// program termination. log.Fatal() exits with os.Exit(1).
 			log.WithLevel(zerolog.FatalLevel).Str("Port", urlPort).Err(err).Msg("cli contains an invalid port")
 			fmt.Fprintf(os.Stderr, "Bad port '%s'\n", urlPort)
 			return -1
