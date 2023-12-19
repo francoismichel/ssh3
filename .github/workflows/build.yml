@@ -82,7 +82,6 @@ jobs:
           go-version: '${{matrix.go-version}}'
       - name: Install dependencies
         run: go get ./...
-      # No Build Server on MacOS right now as the server currently does no build on MacOS
       - name: Build Client
         run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v cli/client/main.go
       - name: Build Server
