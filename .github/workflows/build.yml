@@ -53,6 +53,8 @@ jobs:
         run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v cli/server/main.go
       - name: Add test user
         run: sudo useradd -s /bin/bash -m ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
+      - name: Ensure there are no existing .profile or similar files for testuser
+        run:  rm ${{matrix.testuserhome}}/.profile ${{matrix.testuserhome}}/.bash_profile ${{matrix.testuserhome}}/.bash_login
       - name: Create .ssh3 directory
         run: sudo su ${{matrix.testuser}} -c 'mkdir ${{matrix.testuserhome}}/.ssh ${{matrix.testuserhome}}/.ssh3'
       - name: add the attacker's key as commented in testuser's authorzed identities
