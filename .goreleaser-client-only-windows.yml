@@ -20,19 +20,23 @@ builds:
     id: "ssh3"
     main: ./cmd/ssh3/main.go
     binary: ssh3
-    env:
-      - CGO_ENABLED=1
     goos:
-      - darwin
+      - windows
     goarch:
+      - '386'
       - amd64
+      - arm
       - arm64
+      
 archives:
   - format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of `uname`.
+    format_overrides:
+      - goos: windows
+        format: zip
     name_template: >-
       {{ .ProjectName }}_
-      {{- .Version }}_macos_darwin_
+      {{- .Version }}_clientonly_
+      {{- .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
@@ -46,8 +50,7 @@ changelog:
       - "^test:"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_macos_darwin_checksums.txt'
-
+  name_template: '{{ .ProjectName }}_{{ .Version }}_clientonly_windows_checksums.txt'
 
 release:
   # If set to auto, will mark the release as not ready for production

@@ -1,4 +1,4 @@
-package linux_server
+package unix_server
 
 import (
 	"bufio"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/francoismichel/ssh3/auth"
 	"github.com/francoismichel/ssh3/util"
-	"github.com/francoismichel/ssh3/util/linux_util"
+	"github.com/francoismichel/ssh3/util/unix_util"
 
 	"github.com/rs/zerolog/log"
 
@@ -37,7 +37,7 @@ type PubKeyIdentity struct {
 	pubkey   crypto.PublicKey
 }
 
-func DefaultIdentitiesFileNames(user *linux_util.User) []string {
+func DefaultIdentitiesFileNames(user *unix_util.User) []string {
 	return []string{path.Join(user.Dir, ".ssh3", "authorized_identities"), path.Join(user.Dir, ".ssh", "authorized_keys")}
 }
 
@@ -129,7 +129,7 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 	}
 }
 
-func ParseIdentity(user *linux_util.User, identityStr string) (Identity, error) {
+func ParseIdentity(user *unix_util.User, identityStr string) (Identity, error) {
 	out, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
 	if err == nil {
 		log.Debug().Msg("parsing ssh authorized key")
@@ -169,7 +169,7 @@ func ParseIdentity(user *linux_util.User, identityStr string) (Identity, error) 
 	return nil, fmt.Errorf("unknown identity format")
 }
 
-func ParseAuthorizedIdentitiesFile(user *linux_util.User, file *os.File) (identities []Identity, err error) {
+func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []Identity, err error) {
 	scanner := bufio.NewScanner(file)
 	lineNumber := 0
 	for scanner.Scan() {
