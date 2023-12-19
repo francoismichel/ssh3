@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"ssh3/util"
 	"syscall"
 	"unsafe"
@@ -202,17 +203,19 @@ func GetUser(username string) (*User, error) {
 }
 
 
-func (u *User) CreateShell(addEnv string, stdout, stderr io.Writer, stdin io.Reader) (*exec.Cmd, error) {
-	cmd, _, _, _, err := u.CreateCommand(addEnv, stdout, stderr, stdin, u.Shell)
-	return cmd, err
-}
 
 
-func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
+func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader, loginShell bool, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
 	cmd := exec.Command(command, args...)
-	
 	cmd.Env = append(cmd.Env, addEnv)
 	cmd.Dir = u.Dir
+
+	if loginShell {
+		// from man bash: A  login shell is one whose first character of argument zero is a -, or 
+		// 				  one started with the --login option.
+		// We chose to start it with a preprended "-"
+		cmd.Args[0] = fmt.Sprintf("-%s", filepath.Base(cmd.Args[0]))
+	}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(u.Uid), Gid: uint32(u.Gid)}
@@ -249,7 +252,7 @@ func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.R
 	return cmd, stdoutR, stderrR, stdinW, err
 }
 
-func (u *User) CreateCommandPipeOutput(addEnv string, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
+func (u *User) CreateCommandPipeOutput(addEnv string, loginShell bool, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
 	cmd := exec.Command(command, args...)
 	
 	cmd.Env = append(cmd.Env, addEnv)
@@ -258,5 +261,5 @@ func (u *User) CreateCommandPipeOutput(addEnv string, command string, args ...st
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
 	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(u.Uid), Gid: uint32(u.Gid)}
 
-	return u.CreateCommand(addEnv, nil, nil, nil, command, args...)
+	return u.CreateCommand(addEnv, nil, nil, nil, loginShell, command, args...)
 }

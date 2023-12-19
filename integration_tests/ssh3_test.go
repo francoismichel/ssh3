@@ -72,6 +72,8 @@ var _ = BeforeSuite(func() {
 		username = os.Getenv("TESTUSER_USERNAME")
 		Expect(fileExists(rsaPrivKeyPath)).To(BeTrue())
 		Expect(fileExists(attackerPrivKeyPath)).To(BeTrue())
+		err = os.WriteFile(fmt.Sprintf("/home/%s/.profile", username), []byte("echo 'hello from .profile'"), 0777)
+		Expect(err).ToNot(HaveOccurred())
 	}
 })
 
@@ -158,6 +160,20 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					session, err = Start(commandMinus1, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(255))
+				})
+
+				It("Should run the interactive shell in login mode and read .profile", func() {
+					clientArgs = getClientArgs(rsaPrivKeyPath)
+					command := exec.Command(ssh3Path, clientArgs...)
+					stdin, err := command.StdinPipe()
+					Expect(err).ToNot(HaveOccurred())
+					session, err := Start(command, GinkgoWriter, GinkgoWriter)
+					Expect(err).ToNot(HaveOccurred())
+					Consistently(session).ShouldNot(Exit())
+					Eventually(session.Out).Should(Say("hello from .profile"))
+					_, err = stdin.Write([]byte("exit\n"))	// 0x04 = EOT character, closing the bash session
+					Expect(err).ToNot(HaveOccurred())
+					Eventually(session).Should(Exit(0))
 				})
 
 				// It checks that upon executing the client with the -forward-tcp,

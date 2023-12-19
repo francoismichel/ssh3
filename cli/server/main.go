@@ -413,7 +413,7 @@ func newX11Req(user *linux_util.User, channel ssh3.Channel, request ssh3Messages
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newCommand(user *linux_util.User, channel ssh3.Channel, command string, args ...string) error {
+func newCommand(user *linux_util.User, channel ssh3.Channel, loginShell bool, command string, args ...string) error {
 	var session *runningSession
 	session, ok := runningSessions[channel]
 	if !ok {
@@ -442,7 +442,7 @@ func newCommand(user *linux_util.User, channel ssh3.Channel, command string, arg
 		stdoutR = session.pty.pty
 		stderrR = nil
 		stdinW = session.pty.pty
-		cmd, _, _, _, err = user.CreateCommand(env, stdoutW, stderrW, stdinR, command, args...)
+		cmd, _, _, _, err = user.CreateCommand(env, stdoutW, stderrW, stdinR, loginShell, command, args...)
 	} else {
 		stdoutR, stdoutW, err = os.Pipe()
 		if err != nil {
@@ -456,7 +456,7 @@ func newCommand(user *linux_util.User, channel ssh3.Channel, command string, arg
 		if err != nil {
 			return err
 		}
-		cmd, stdoutR, stderrR, stdinW, err = user.CreateCommandPipeOutput(env, command, args...)
+		cmd, stdoutR, stderrR, stdinW, err = user.CreateCommandPipeOutput(env, loginShell, command, args...)
 	}
 
 	if err != nil {
@@ -478,12 +478,12 @@ func newCommand(user *linux_util.User, channel ssh3.Channel, command string, arg
 }
 
 func newShellReq(user *linux_util.User, channel ssh3.Channel, wantReply bool) error {
-	return newCommand(user, channel, user.Shell)
+	return newCommand(user, channel, true, user.Shell)
 }
 
 // similar behaviour to OpenSSH; exec requests are just pasted in the user's shell
 func newCommandInShellReq(user *linux_util.User, channel ssh3.Channel, wantReply bool, command string) error {
-	return newCommand(user, channel, user.Shell, "-c", command)
+	return newCommand(user, channel, false, user.Shell, "-c", command)
 }
 
 func newSubsystemReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
