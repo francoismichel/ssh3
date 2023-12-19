@@ -244,6 +244,7 @@ func mainWithStatusCode() int {
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
+	usernameFromCliArg := flag.String("l", "", "if set, specifies the user to connect to on the remote host")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	args := flag.Args()
@@ -435,7 +436,10 @@ func mainWithStatusCode() int {
 		port = 443
 	}
 
-	username := parsedUrl.User.Username()
+	username := *usernameFromCliArg
+	if username == "" {
+		username = parsedUrl.User.Username()
+	}
 	if username == "" {
 		username = parsedUrl.Query().Get("user")
 	}
