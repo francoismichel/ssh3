@@ -84,7 +84,9 @@ jobs:
         run: go get ./...
       # No Build Server on MacOS right now as the server currently does no build on MacOS
       - name: Build Client
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v cli/client/main.go
+        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v cli/client/main.go
+      - name: Build Server
+        run: env GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v cli/server/main.go
       - name: Classical unit tests
         if: ${{ matrix.goarch == 'amd64' }} # only actually run the test suite with the architecture of the host
         run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo

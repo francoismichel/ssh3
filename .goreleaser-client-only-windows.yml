@@ -21,18 +21,12 @@ builds:
     main: ./cli/client/main.go
     binary: ssh3
     goos:
-      - linux
-      - darwin
       - windows
     goarch:
       - '386'
       - amd64
       - arm
       - arm64
-
-    ignore:
-      - goos: linux
-        goarch: amd64
       
 archives:
   - format: tar.gz

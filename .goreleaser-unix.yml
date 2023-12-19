@@ -20,19 +20,52 @@ builds:
     id: "ssh3"
     main: ./cli/client/main.go
     binary: ssh3
-    env:
-      - CGO_ENABLED=1
     goos:
       - darwin
+      - freebsd
+      - openbsd
     goarch:
       - amd64
       - arm64
+      - arm
+      - 386
+    ignore:
+      - goos: linux
+        goarch: amd64
+      - goos: linux
+        goarch: arm64
+    tags:
+      - osusergo
+      - netgo
+      - static_build
+  -
+    id: "ssh3-server"
+    main: ./cli/server/main.go
+    binary: ssh3-server
+    goos:
+      - darwin
+      - freebsd
+      - openbsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - 386
+    ignore:
+      - goos: linux
+        goarch: amd64
+      - goos: linux
+        goarch: arm64
+    tags:
+      - osusergo
+      - netgo
+      - static_build
 archives:
   - format: tar.gz
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
-      {{- .Version }}_macos_darwin_
+      {{- .Version }}_{{ .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
@@ -46,4 +79,4 @@ changelog:
       - "^test:"
 
 checksum:
-  name_template: '{{ .ProjectName }}_{{ .Version }}_macos_darwin_checksums.txt'
+  name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_checksums.txt'
