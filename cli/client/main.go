@@ -245,6 +245,8 @@ func mainWithStatusCode() int {
 	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	usernameFromCliArg := flag.String("l", "", "if set, specifies the user to connect to on the remote host")
+	urlPathFromCliArg := flag.String("url-path", "", "the secret URL path on which the ssh3 server listens")
+
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	args := flag.Args()
@@ -398,6 +400,14 @@ func mainWithStatusCode() int {
 	parsedUrl, err := url.Parse(urlFromParam)
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
+	}
+
+	if *urlPathFromCliArg != "" {
+		if parsedUrl.Path != "" {
+			log.Error().Msgf("the URL path is specified in both the -url-path (%s) CLI arg and in the remote host URL (%s)", *urlPathFromCliArg, parsedUrl.Path)
+			return -1
+		}
+		parsedUrl.Path = *urlPathFromCliArg
 	}
 
 	urlHostname, urlPort := parsedUrl.Hostname(), parsedUrl.Port()
