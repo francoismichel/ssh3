@@ -29,11 +29,11 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
-	"ssh3"
-	"ssh3/auth"
-	"ssh3/cli/client/winsize"
-	ssh3Messages "ssh3/message"
-	"ssh3/util"
+	"github.com/francoismichel/ssh3"
+	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/cli/client/winsize"
+	ssh3Messages "github.com/francoismichel/ssh3/message"
+	"github.com/francoismichel/ssh3/util"
 
 	"github.com/kevinburke/ssh_config"
 	"github.com/quic-go/quic-go"
@@ -50,7 +50,6 @@ func homedir() string {
 		return os.Getenv("HOME")
 	}
 }
-
 
 func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	sockPath := os.Getenv("SSH_AUTH_SOCK")
@@ -393,7 +392,6 @@ func mainWithStatusCode() int {
 		keyLog = f
 	}
 
-
 	parsedUrl, err := url.Parse(urlFromParam)
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
@@ -460,12 +458,10 @@ func mainWithStatusCode() int {
 	parsedUrl.RawQuery = urlQuery.Encode()
 	requestUrl := parsedUrl.String()
 
-
 	pool, err := x509.SystemCertPool()
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
-
 
 	tlsConf := &tls.Config{
 		RootCAs:            pool,
@@ -510,7 +506,6 @@ func mainWithStatusCode() int {
 
 	defer roundTripper.Close()
 
-
 	// connect to SSH agent if it exists
 	var agentClient agent.ExtendedAgent
 	var agentKeys []ssh.PublicKey
@@ -533,7 +528,6 @@ func mainWithStatusCode() int {
 		}
 	}
 
-
 	log.Debug().Msgf("dialing QUIC host at %s", fmt.Sprintf("%s:%d", hostname, port))
 
 	if hostnameIsAnIP {
@@ -549,16 +543,16 @@ func mainWithStatusCode() int {
 		tlsConf,
 		&qconf)
 	if err != nil {
-		if transportErr, ok :=  err.(*quic.TransportError); ok {
+		if transportErr, ok := err.(*quic.TransportError); ok {
 			if transportErr.ErrorCode.IsCryptoError() {
 				if tty == nil {
 					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
 					return -1
 				}
 				if _, ok = knownHosts[hostname]; ok {
-					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. " + 
-									 "If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
-									 "TLS error: %s", knownHostsPath, err)
+					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. "+
+						"If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
+						"TLS error: %s", knownHostsPath, err)
 					log.Error().Msgf("Aborting.")
 					return -1
 				}
@@ -572,9 +566,9 @@ func mainWithStatusCode() int {
 				}
 
 				_, err := quic.DialAddrEarly(ctx,
-											 fmt.Sprintf("%s:%d", hostname, port),
-											 tlsConf,
-											 &qconf)
+					fmt.Sprintf("%s:%d", hostname, port),
+					tlsConf,
+					&qconf)
 				if !errors.Is(err, certError) {
 					log.Error().Msgf("could not create client QUIC connection: %s", err)
 					return -1
@@ -587,22 +581,22 @@ func mainWithStatusCode() int {
 				// first, carriage return
 				_, _ = tty.WriteString("\r")
 				_, err = tty.WriteString("Received an unknown self-signed certificate from the server.\n\r" +
-										 "We recommend not using self-signed certificates.\n\r" +
-										 "This session is vulnerable a machine-in-the-middle attack.\n\r" + 
-										 "Certificate fingerprint: " +
-										 "SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
-				 						 "Do you want to add this certificate to ~/.ssh3/known_hosts (yes/no)? ")
+					"We recommend not using self-signed certificates.\n\r" +
+					"This session is vulnerable a machine-in-the-middle attack.\n\r" +
+					"Certificate fingerprint: " +
+					"SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
+					"Do you want to add this certificate to ~/.ssh3/known_hosts (yes/no)? ")
 				if err != nil {
 					log.Error().Msgf("cound not write on /dev/tty: %s", err)
 					return -1
 				}
-				
+
 				answer := ""
 				reader := bufio.NewReader(tty)
 				for {
 					answer, _ = reader.ReadString('\n')
 					answer = strings.TrimSpace(answer)
-					_, _ = tty.WriteString("\r")	// always ensure a carriage return
+					_, _ = tty.WriteString("\r") // always ensure a carriage return
 					if answer == "yes" || answer == "no" {
 						break
 					}
@@ -658,7 +652,7 @@ func mainWithStatusCode() int {
 		if *privKeyFile != "" {
 			authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
 		}
-	
+
 		if *pubkeyForAgent != "" {
 			if agentClient == nil {
 				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
@@ -676,7 +670,7 @@ func mainWithStatusCode() int {
 						return -1
 					}
 				}
-	
+
 				for _, candidateKey := range agentKeys {
 					if pubkey == nil || bytes.Equal(candidateKey.Marshal(), pubkey.Marshal()) {
 						log.Debug().Msgf("found key in agent: %s", candidateKey)
@@ -685,11 +679,11 @@ func mainWithStatusCode() int {
 				}
 			}
 		}
-	
+
 		if *passwordAuthentication {
 			authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
 		}
-	
+
 	} else {
 		// for now, only perform OIDC if it was explicitly asked by the user
 		if *issuerUrl != "" {

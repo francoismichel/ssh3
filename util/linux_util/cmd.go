@@ -1,10 +1,10 @@
 package linux_util
 
 import (
+	ptylib "github.com/creack/pty"
 	"os"
 	"os/exec"
 	"syscall"
-	ptylib "github.com/creack/pty"
 )
 
 // copied and adapted from github.com/creack/pty
@@ -60,4 +60,3 @@ func StartWithSizeAndPty(cmd *exec.Cmd, ws *ptylib.Winsize, pty *os.File, tty *o
 	cmd.SysProcAttr.Setctty = true
 	return StartWithAttrsAndPty(cmd, ws, cmd.SysProcAttr, pty, tty)
 }
-

@@ -28,10 +28,10 @@ func ParseKnownHosts(filename string) (knownHosts map[string][]*x509.Certificate
 	if err != nil {
 		return nil, nil, err
 	}
-    scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(file)
 
-    for i := 0 ; scanner.Scan() ; i++ {
-        knownHost := strings.TrimSpace(scanner.Text())
+	for i := 0; scanner.Scan(); i++ {
+		knownHost := strings.TrimSpace(scanner.Text())
 		fields := strings.Fields(knownHost)
 		if len(fields) != 3 || fields[1] != "x509-certificate" {
 			invalidLines = append(invalidLines, i)
@@ -50,13 +50,13 @@ func ParseKnownHosts(filename string) (knownHosts map[string][]*x509.Certificate
 		certs := knownHosts[fields[0]]
 		certs = append(certs, cert)
 		knownHosts[fields[0]] = certs
-    }
+	}
 	return knownHosts, invalidLines, nil
 }
 
 func AppendKnownHost(filename string, host string, cert *x509.Certificate) error {
 	encodedCert := base64.StdEncoding.EncodeToString(cert.Raw)
-	knownHosts, err := os.OpenFile(filename, os.O_CREATE | syscall.O_APPEND | syscall.O_WRONLY, 0600)
+	knownHosts, err := os.OpenFile(filename, os.O_CREATE|syscall.O_APPEND|syscall.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}

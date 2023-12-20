@@ -73,7 +73,6 @@ func ConfigureLogger(logLevel string) {
 	}
 }
 
-
 // Accept queue copied from https://github.com/quic-go/webtransport-go/blob/master/session.go
 type AcceptQueue[T any] struct {
 	mx sync.Mutex
@@ -116,7 +115,6 @@ func (q *AcceptQueue[T]) Next() T {
 
 func (q *AcceptQueue[T]) Chan() <-chan struct{} { return q.c }
 
-
 type DatagramsQueue struct {
 	c chan []byte
 }
@@ -144,7 +142,6 @@ func (q *DatagramsQueue) WaitAdd(ctx context.Context, datagram []byte) error {
 		return context.Cause(ctx)
 	}
 }
-
 
 func (q *DatagramsQueue) Next() []byte {
 	select {
@@ -197,7 +194,6 @@ func Sha256Fingerprint(in []byte) string {
 	return base64.StdEncoding.EncodeToString(hash[:])
 }
 
-
 func getSANExtension(cert *x509.Certificate) []byte {
 	oidExtensionSubjectAltName := []int{2, 5, 29, 17}
 	for _, e := range cert.Extensions {
@@ -207,7 +203,6 @@ func getSANExtension(cert *x509.Certificate) []byte {
 	}
 	return nil
 }
-
 
 func forEachSAN(der cryptobyte.String, callback func(tag int, data []byte) error) error {
 	if !der.ReadASN1(&der, cryptobyte_asn1.SEQUENCE) {
@@ -227,7 +222,6 @@ func forEachSAN(der cryptobyte.String, callback func(tag int, data []byte) error
 	return nil
 }
 
-
 // returns true whether the certificat contains a SubjectAltName extension
 // with at least one IP address record
 func CertHasIPSANs(cert *x509.Certificate) (bool, error) {
@@ -245,7 +239,7 @@ func CertHasIPSANs(cert *x509.Certificate) (bool, error) {
 			case net.IPv4len, net.IPv6len:
 				ipAddresses = append(ipAddresses, data)
 			default:
-				return fmt.Errorf("x509: cannot parse IP address of length %d",len(data))
+				return fmt.Errorf("x509: cannot parse IP address of length %d", len(data))
 			}
 		default:
 		}
@@ -278,8 +272,8 @@ func GenerateCert(priv crypto.PrivateKey) (*x509.Certificate, error) {
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		DNSNames: []string{"*", "selfsigned.ssh3"},
-		IsCA: true,
+		DNSNames:              []string{"*", "selfsigned.ssh3"},
+		IsCA:                  true,
 	}
 
 	return &cert, nil
@@ -310,7 +304,7 @@ func DumpCertAndKeyToFiles(cert *x509.Certificate, pubkey crypto.PublicKey, priv
 	if err != nil {
 		return err
 	}
-	err = pem.Encode(keyFile, &pem.Block{ Type: "PRIVATE KEY", Bytes: keyBytes })
+	err = pem.Encode(keyFile, &pem.Block{Type: "PRIVATE KEY", Bytes: keyBytes})
 	if err != nil {
 		return err
 	}

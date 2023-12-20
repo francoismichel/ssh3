@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"ssh3/auth"
-	"ssh3/util"
-	"ssh3/util/linux_util"
 	"strings"
+
+	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/ssh3/util/linux_util"
 
 	"github.com/rs/zerolog/log"
 

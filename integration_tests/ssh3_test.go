@@ -17,13 +17,16 @@ import (
 
 var ssh3Path string
 var ssh3ServerPath string
+
 const DEFAULT_URL_PATH = "/ssh3-tests"
+
 var serverCommand *exec.Cmd
 var serverSession *Session
 var rsaPrivKeyPath string
 var ed25519PrivKeyPath string
 var attackerPrivKeyPath string
 var username string
+
 // must exist on the machine to successfully run the tests
 const serverBind = "127.0.0.1:4433"
 
@@ -56,12 +59,12 @@ var _ = BeforeSuite(func() {
 		ssh3ServerPath, err = Build("../cli/server/main.go")
 		Expect(err).ToNot(HaveOccurred())
 		serverCommand = exec.Command(ssh3ServerPath,
-										"-bind", serverBind,
-										"-v",
-										"-enable-password-login",
-										"-url-path", DEFAULT_URL_PATH,
-										"-cert", os.Getenv("CERT_PEM"),
-										"-key", os.Getenv("CERT_PRIV_KEY"))
+			"-bind", serverBind,
+			"-v",
+			"-enable-password-login",
+			"-url-path", DEFAULT_URL_PATH,
+			"-cert", os.Getenv("CERT_PEM"),
+			"-key", os.Getenv("CERT_PRIV_KEY"))
 		serverCommand.Env = append(serverCommand.Env, "SSH3_LOG_LEVEL=debug")
 		serverSession, err = Start(serverCommand, GinkgoWriter, GinkgoWriter)
 		Expect(err).ToNot(HaveOccurred())
@@ -106,7 +109,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 		Context("Insecure", func() {
 			var clientArgs []string
-			getClientArgs := func(privKeyPath string, additionalArgs... string) []string {
+			getClientArgs := func(privKeyPath string, additionalArgs ...string) []string {
 				args := []string{
 					"-insecure",
 					"-privkey", privKeyPath,
@@ -134,28 +137,28 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					Eventually(session).Should(Exit(0))
 					Eventually(session).Should(Say("Hello, World!\n"))
 				})
-	
+
 				It("Should return the correct exit status", func() {
 					clientArgs0 := append(getClientArgs(rsaPrivKeyPath), "exit", "0")
 					clientArgs1 := append(getClientArgs(rsaPrivKeyPath), "exit", "1")
 					clientArgs255 := append(getClientArgs(rsaPrivKeyPath), "exit", "255")
 					clientArgsMinus1 := append(getClientArgs(rsaPrivKeyPath), "exit", "-1")
-	
+
 					command0 := exec.Command(ssh3Path, clientArgs0...)
 					session, err := Start(command0, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(0))
-	
+
 					command1 := exec.Command(ssh3Path, clientArgs1...)
 					session, err = Start(command1, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(1))
-	
+
 					command255 := exec.Command(ssh3Path, clientArgs255...)
 					session, err = Start(command255, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(255))
-	
+
 					commandMinus1 := exec.Command(ssh3Path, clientArgsMinus1...)
 					session, err = Start(commandMinus1, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
@@ -171,7 +174,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					Expect(err).ToNot(HaveOccurred())
 					Consistently(session).ShouldNot(Exit())
 					Eventually(session.Out).Should(Say("hello from .profile"))
-					_, err = stdin.Write([]byte("exit\n"))	// 0x04 = EOT character, closing the bash session
+					_, err = stdin.Write([]byte("exit\n")) // 0x04 = EOT character, closing the bash session
 					Expect(err).ToNot(HaveOccurred())
 					Eventually(session).Should(Exit(0))
 				})
@@ -199,13 +202,13 @@ var _ = Describe("Testing the ssh3 cli", func() {
 							conn, err := listener.Accept()
 							Expect(err).ToNot(HaveOccurred())
 							defer conn.Close()
-				
+
 							// Read message from client
 							buffer := make([]byte, len(messageFromClient))
 							_, err = conn.Read(buffer)
 							Expect(err).ToNot(HaveOccurred())
 							Expect(string(buffer)).To(Equal(messageFromClient))
-				
+
 							// Send message to client
 							_, err = conn.Write([]byte(messageFromServer))
 							Expect(err).ToNot(HaveOccurred())
@@ -216,7 +219,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 							Expect(err).To(Equal(io.EOF))
 							Expect(n).To(Equal(0))
 						}()
-				
+
 						Eventually(serverStarted).Should(Receive())
 						// Execute the client with TCP port forwarding
 						clientArgs := getClientArgs(rsaPrivKeyPath, "-forward-tcp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
@@ -224,7 +227,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						session, err := Start(command, GinkgoWriter, GinkgoWriter)
 						Expect(err).ToNot(HaveOccurred())
 						defer session.Terminate()
-				
+
 						// Try to connect to the local forwarded port
 						localAddr := fmt.Sprintf("%s:%d", localIP, localPort)
 						var conn net.Conn
@@ -236,7 +239,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						}).ShouldNot(HaveOccurred())
 						Expect(err).ToNot(HaveOccurred())
 						defer conn.Close()
-				
+
 						// Send message from client
 						n, err := conn.Write([]byte(messageFromClient))
 						Expect(err).ToNot(HaveOccurred())
@@ -244,15 +247,15 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 						// Close the client-side connection
 						conn.(*net.TCPConn).CloseWrite()
-				
+
 						// Read message from server
 						buffer := make([]byte, len(messageFromServer))
-						conn.SetReadDeadline(time.Now().Add(1*time.Second))
+						conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 						n, err = conn.Read(buffer)
 						Expect(err).ToNot(HaveOccurred())
 						Expect(n).To(Equal(len(messageFromServer)))
 						Expect(string(buffer[:n])).To(Equal(messageFromServer))
-				
+
 						// If the messages are correctly exchanged, the forwarding is working as expected
 						// Now, check that the TCP conn is well closed and that no additional byte was sent
 						n, err = conn.Read(buffer)
@@ -277,8 +280,6 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						testTCPPortForwarding(8081, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
 					})
 
-
-					
 					It("works with IPv6 addresses", func() {
 						// we first have to check whether IPv6 are enabled on that host, it is still often
 						// not the case in many Docker containers...
@@ -291,7 +292,6 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					})
 				})
 			})
-
 
 			// It checks that upon executing the client with the -forward-udp,
 			// a UDP socket is indeed well open on the client and is indeed forwarded
@@ -314,18 +314,18 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						defer conn.Close()
 
 						serverStarted <- struct{}{}
-			
+
 						buffer := make([]byte, 2*len(messageFromClient))
 						n, clientAddr, err := conn.ReadFromUDP(buffer)
 						Expect(err).ToNot(HaveOccurred())
 						Expect(clientAddr.IP.String()).To(Equal(localIPWithoutBrackets))
 						Expect(string(buffer[:n])).To(Equal(messageFromClient))
-			
+
 						// Send message to client
 						_, err = conn.WriteToUDP([]byte(messageFromServer), clientAddr)
 						Expect(err).ToNot(HaveOccurred())
 					}()
-			
+
 					Eventually(serverStarted).Should(Receive())
 					// Execute the client with UDP port forwarding
 					clientArgs := getClientArgs(rsaPrivKeyPath, "-forward-udp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
@@ -333,14 +333,14 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
 					defer session.Terminate()
-			
+
 					// Wait for some time to ensure that the client has established the forwarding
 					time.Sleep(2 * time.Second)
-			
+
 					// if the remote addr is IPv4 (resp. IPv6), ssh3 listens on the IPv4 (resp. IPv6) loopback
 					// Try to connect to the local forwarded port
 					localAddr := fmt.Sprintf("%s:%d", localIP, localPort)
-					
+
 					var conn net.Conn
 					Eventually(func() error {
 						var err error
@@ -348,7 +348,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						return err
 					}).ShouldNot(HaveOccurred())
 					defer conn.Close()
-			
+
 					// Send message from client
 					n, err := conn.Write([]byte(messageFromClient))
 					Expect(err).ToNot(HaveOccurred())
@@ -356,17 +356,16 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 					// Read message from server
 					buffer := make([]byte, 2*len(messageFromServer))
-					conn.SetReadDeadline(time.Now().Add(1*time.Second))
+					conn.SetReadDeadline(time.Now().Add(1 * time.Second))
 					n, err = conn.Read(buffer)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(n).To(Equal(len(messageFromServer)))
 					Expect(string(buffer[:n])).To(Equal(messageFromServer))
 				}
-			
+
 				It("works with small messages", func() {
 					testUDPPortForwarding(8080, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server")
 				})
-
 
 				// Due to current quic-go limitations, the max datagram size is limited to 1200, whatever the real MTU is,
 				// so right now we test for 1150 messages and nothing more
@@ -380,9 +379,9 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					n, err = rng.Read(messageFromServer)
 					Expect(n).To(Equal(len(messageFromServer)))
 					Expect(err).ToNot(HaveOccurred())
-					testUDPPortForwarding(8081,  &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
+					testUDPPortForwarding(8081, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
 				})
-			
+
 				It("works with IPv6 addresses", func() {
 					// Check whether IPv6 is available on the host
 					addrs, err := net.InterfaceAddrs()

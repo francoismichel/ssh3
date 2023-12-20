@@ -28,11 +28,11 @@ import (
 	// "github.com/quic-go/quic-go/logging"
 	// "github.com/quic-go/quic-go/qlog"
 
-	ssh3 "ssh3"
-	"ssh3/linux_server"
-	ssh3Messages "ssh3/message"
-	util "ssh3/util"
-	"ssh3/util/linux_util"
+	ssh3 "github.com/francoismichel/ssh3"
+	"github.com/francoismichel/ssh3/linux_server"
+	ssh3Messages "github.com/francoismichel/ssh3/message"
+	util "github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/ssh3/util/linux_util"
 )
 
 var signals = map[string]os.Signal{
@@ -107,7 +107,6 @@ func setWinsize(f *os.File, charWidth, charHeight, pixWidth, pixHeight uint64) {
 	syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCSWINSZ),
 		uintptr(unsafe.Pointer(&struct{ h, w, x, y uint16 }{uint16(charHeight), uint16(charWidth), uint16(pixWidth), uint16(pixHeight)})))
 }
-
 
 // Size is needed by the /demo/upload handler to determine the size of the uploaded file
 type Size interface {
@@ -677,8 +676,8 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	enablePasswordLogin := flag.Bool("enable-password-login", false, "if set, enable password authentication (disabled by default)")
 	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
-	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key " +
-										"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
+	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key "+
+		"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
 	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
 	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
 	flag.Parse()
@@ -699,7 +698,7 @@ func main() {
 		}
 		if !certPathExists || !keyPathExists {
 			fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
-									 "you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
+				"you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
 			fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
 			os.Exit(-1)
 		}
@@ -731,7 +730,6 @@ func main() {
 		}
 
 	}
-
 
 	if *verbose {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
