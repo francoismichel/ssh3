@@ -642,7 +642,7 @@ func mainWithStatusCode() int {
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
-	req.Proto = "github.com/francoismichel/ssh3"
+	req.Proto = "ssh3"
 	req.Header.Set("User-Agent", ssh3.GetCurrentVersion())
 
 	var authMethods []interface{}

@@ -130,7 +130,7 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) AuthenticatedHandlerFun
 
 	return func(authenticatedUsername string, newConv *Conversation, w http.ResponseWriter, r *http.Request) {
 		log.Info().Msgf("got request: method: %s, URL: %s", r.Method, r.URL.String())
-		if r.Method == http.MethodConnect && r.Proto == "github.com/francoismichel/ssh3" {
+		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
 			hijacker, ok := w.(http3.Hijacker)
 			if !ok { // should never happen, unless quic-go change their API
 				log.Error().Msg("failed to hijack HTTP conversation: is it an HTTP/3 conversation ?")

@@ -54,7 +54,7 @@ func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64Conversation
 			return nil, fmt.Errorf("unsupported signature algorithm '%s' for %T", unvalidatedToken.Method.Alg(), i)
 		},
 			jwt.WithIssuer(i.username),
-			jwt.WithSubject("github.com/francoismichel/ssh3"),
+			jwt.WithSubject("ssh3"),
 			jwt.WithIssuedAt(),
 			jwt.WithAudience("unused"),
 			jwt.WithValidMethods([]string{"RS256", "EdDSA"}))
