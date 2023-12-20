@@ -8,7 +8,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"ssh3/util"
+
+	"github.com/francoismichel/ssh3/util"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -18,20 +19,21 @@ import (
 const SSH_FRAME_TYPE = 0xaf3627e6
 
 type ConversationID [32]byte
+
 func (cid ConversationID) String() string {
 	return base64.StdEncoding.EncodeToString(cid[:])
 }
 
 type Conversation struct {
-	controlStream   http3.Stream
-	maxPacketSize   uint64
-	defaultDatagramsQueueSize   uint64
-	streamCreator   http3.StreamCreator
-	messageSender   util.MessageSender
-	channelsManager *channelsManager
-	context			context.Context
-	cancelContext	context.CancelCauseFunc
-	conversationID  ConversationID	// generated using TLS exporters
+	controlStream             http3.Stream
+	maxPacketSize             uint64
+	defaultDatagramsQueueSize uint64
+	streamCreator             http3.StreamCreator
+	messageSender             util.MessageSender
+	channelsManager           *channelsManager
+	context                   context.Context
+	cancelContext             context.CancelCauseFunc
+	conversationID            ConversationID // generated using TLS exporters
 
 	channelsAcceptQueue *util.AcceptQueue[Channel]
 }
@@ -48,7 +50,7 @@ func GenerateConversationID(tls *tls.ConnectionState) (convID ConversationID, er
 	return convID, err
 }
 
-func NewClientConversation(maxPacketsize uint64, defaultDatagramsQueueSize uint64, tls *tls.ConnectionState)  (*Conversation, error) {
+func NewClientConversation(maxPacketsize uint64, defaultDatagramsQueueSize uint64, tls *tls.ConnectionState) (*Conversation, error) {
 	convID, err := GenerateConversationID(tls)
 	if err != nil {
 		log.Error().Msgf("could not generate conversation ID: %s", err)
@@ -56,21 +58,20 @@ func NewClientConversation(maxPacketsize uint64, defaultDatagramsQueueSize uint6
 	}
 	backgroundCtx, backgroundCancelCauseFunc := context.WithCancelCause(context.Background())
 	conv := &Conversation{
-		controlStream:       nil,
-		channelsAcceptQueue: util.NewAcceptQueue[Channel](),
-		streamCreator:       nil,
-		maxPacketSize:       maxPacketsize,
+		controlStream:             nil,
+		channelsAcceptQueue:       util.NewAcceptQueue[Channel](),
+		streamCreator:             nil,
+		maxPacketSize:             maxPacketsize,
 		defaultDatagramsQueueSize: defaultDatagramsQueueSize,
-		channelsManager:     newChannelsManager(),
-		context:			 backgroundCtx,
-		cancelContext: 		 backgroundCancelCauseFunc,
-		conversationID: 	 convID,
+		channelsManager:           newChannelsManager(),
+		context:                   backgroundCtx,
+		cancelContext:             backgroundCancelCauseFunc,
+		conversationID:            convID,
 	}
 	return conv, nil
 }
 
 func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripper *http3.RoundTripper) error {
-
 
 	roundTripper.StreamHijacker = func(frameType http3.FrameType, qconn quic.Connection, stream quic.Stream, err error) (bool, error) {
 		if err != nil {
@@ -93,11 +94,11 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 			return false, err
 		}
 		channelInfo := &ChannelInfo{
-			ConversationID: c.ConversationID(),
+			ConversationID:       c.ConversationID(),
 			ConversationStreamID: controlStreamID,
-			ChannelID: uint64(stream.StreamID()),
-			ChannelType: channelType,
-			MaxPacketSize: maxPacketSize,
+			ChannelID:            uint64(stream.StreamID()),
+			ChannelType:          channelType,
+			MaxPacketSize:        maxPacketSize,
 		}
 
 		newChannel := NewChannel(channelInfo.ConversationStreamID, channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, nil, c.channelsManager, false, false, true, c.defaultDatagramsQueueSize, nil)
@@ -115,11 +116,11 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	if err != nil {
 		log.Error().Msgf("Could not parse server version: \"%s\"", serverVersion)
 		if rsp.StatusCode == 200 {
-			return InvalidSSHVersion{ versionString: serverVersion }
+			return InvalidSSHVersion{versionString: serverVersion}
 		}
 	} else if major > MAJOR || minor > MINOR {
 		log.Warn().Msgf("The server runs a higher SSH version (%d.%d.%d), you may want to consider to update the client (currently %d.%d.%d)",
-						major, minor, patch, MAJOR, MINOR, PATCH)
+			major, minor, patch, MAJOR, MINOR, PATCH)
 	}
 
 	if rsp.StatusCode == 200 {
@@ -131,7 +132,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 		go func() {
 			// TODO: this hijacks the datagrams for the whole quic connection, so the server
 			//		 currently does not work for several conversations in the same QUIC connection
-			
+
 			for {
 				dgram, err := qconn.ReceiveMessage(c.Context())
 				if err != nil {
@@ -180,11 +181,11 @@ func NewServerConversation(ctx context.Context, controlStream http3.Stream, qcon
 		channelsAcceptQueue: util.NewAcceptQueue[Channel](),
 		streamCreator:       qconn,
 		maxPacketSize:       maxPacketsize,
-		messageSender: 		 messageSender,
+		messageSender:       messageSender,
 		channelsManager:     newChannelsManager(),
-		context: 			 backgroundContext,
-		cancelContext: 		 backgroundCancelFunc,
-		conversationID: 	 convID,
+		context:             backgroundContext,
+		cancelContext:       backgroundCancelFunc,
+		conversationID:      convID,
 	}
 	return conv, nil
 }

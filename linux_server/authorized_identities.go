@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"ssh3/auth"
-	"ssh3/util"
-	"ssh3/util/linux_util"
 	"strings"
+
+	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/ssh3/util/linux_util"
 
 	"github.com/rs/zerolog/log"
 
@@ -53,7 +54,7 @@ func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64Conversation
 			return nil, fmt.Errorf("unsupported signature algorithm '%s' for %T", unvalidatedToken.Method.Alg(), i)
 		},
 			jwt.WithIssuer(i.username),
-			jwt.WithSubject("ssh3"),
+			jwt.WithSubject("github.com/francoismichel/ssh3"),
 			jwt.WithIssuedAt(),
 			jwt.WithAudience("unused"),
 			jwt.WithValidMethods([]string{"RS256", "EdDSA"}))

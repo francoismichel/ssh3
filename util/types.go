@@ -49,7 +49,7 @@ func (e InvalidSSHString) Error() string {
 	return fmt.Sprintf("Invalid SSH string: %s", e.Reason)
 }
 
-type Unauthorized struct {}
+type Unauthorized struct{}
 
 func (e Unauthorized) Error() string {
 	return "Unauthorized"

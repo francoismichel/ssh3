@@ -3,20 +3,20 @@ package ssh3
 import (
 	"sync"
 
+	"github.com/francoismichel/ssh3/util"
 	"github.com/quic-go/quic-go/http3"
-	"ssh3/util"
 )
 
 type ControlStreamID = uint64
 
 type conversationsManager struct {
-	connection http3.StreamCreator
+	connection    http3.StreamCreator
 	conversations map[ControlStreamID]*Conversation
-	lock sync.Mutex
+	lock          sync.Mutex
 }
 
 func newConversationManager(connection http3.StreamCreator) *conversationsManager {
-	return &conversationsManager{ connection: connection, conversations: make(map[ControlStreamID]*Conversation)}
+	return &conversationsManager{connection: connection, conversations: make(map[ControlStreamID]*Conversation)}
 }
 
 func (m *conversationsManager) addConversation(conversation *Conversation) {
@@ -32,20 +32,20 @@ func (m *conversationsManager) getConversation(id ControlStreamID) (*Conversatio
 	return conv, ok
 }
 
-func (m * conversationsManager) removeConversation(conversation *Conversation) {
+func (m *conversationsManager) removeConversation(conversation *Conversation) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	delete(m.conversations, uint64(conversation.controlStream.StreamID()))
 }
 
 type channelsManager struct {
-	channels map[util.ChannelID]Channel
+	channels            map[util.ChannelID]Channel
 	danglingDgramQueues map[util.ChannelID]*util.DatagramsQueue
-	lock sync.Mutex
+	lock                sync.Mutex
 }
 
 func newChannelsManager() *channelsManager {
-	return &channelsManager{ channels: make(map[util.ChannelID]Channel), danglingDgramQueues: make(map[util.ChannelID]*util.DatagramsQueue)}
+	return &channelsManager{channels: make(map[util.ChannelID]Channel), danglingDgramQueues: make(map[util.ChannelID]*util.DatagramsQueue)}
 }
 
 func (m *channelsManager) addChannel(channel Channel) {
@@ -64,7 +64,7 @@ func (m *channelsManager) addDanglingDatagramsQueue(id util.ChannelID, queue *ut
 	// let's first check if a channel has recently been added
 	if channel, ok := m.channels[id]; ok {
 		dgram := queue.Next()
-		for ; dgram != nil ; dgram = queue.Next() {
+		for ; dgram != nil; dgram = queue.Next() {
 			channel.addDatagram(dgram)
 		}
 	} else {
@@ -79,7 +79,7 @@ func (m *channelsManager) getChannel(id util.ChannelID) (Channel, bool) {
 	return channel, ok
 }
 
-func (m * channelsManager) removeChannel(channel Channel) {
+func (m *channelsManager) removeChannel(channel Channel) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	delete(m.channels, util.ChannelID(channel.ChannelID()))

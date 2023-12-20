@@ -3,13 +3,13 @@ package linux_server
 import (
 	"net/http"
 	"os"
-	"ssh3"
-	"ssh3/util"
-	"ssh3/util/linux_util"
+
+	"github.com/francoismichel/ssh3"
+	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/ssh3/util/linux_util"
 
 	"github.com/rs/zerolog/log"
 )
-
 
 // BearerAuth returns the bearer token
 // Authorization header, if the request uses HTTP Basic Authentication.

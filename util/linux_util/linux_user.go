@@ -43,16 +43,16 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
-	"ssh3/util"
 	"syscall"
 	"unsafe"
+
+	"github.com/francoismichel/ssh3/util"
 )
 
 type ShadowEntry struct {
 	Username string
 	Password string
 }
-
 
 /*
  * Wrapper around libshadow's getspnam function
@@ -144,13 +144,12 @@ func UserPasswordAuthentication(username, password string) (bool, error) {
 	return ComparePasswordWithHashedPassword(password, shadowEntry.Password)
 }
 
-
 type User struct {
 	Username string
-	Uid		 uint64
-	Gid		 uint64
-	Dir		 string
-	Shell	 string
+	Uid      uint64
+	Gid      uint64
+	Dir      string
+	Shell    string
 }
 
 func GetUser(username string) (*User, error) {
@@ -160,12 +159,12 @@ func GetUser(username string) (*User, error) {
 /*
  * Wrapper around libc's getpwnam function
  */
- func getpwnam(name string) (*User, error) {
-    cname := C.CString(name)
-    defer C.free(unsafe.Pointer(cname))
+func getpwnam(name string) (*User, error) {
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
 
-    cpasswd := (*C.struct_passwd)(C.malloc(C.size_of_passwd()))
-    defer C.free(unsafe.Pointer(cpasswd))
+	cpasswd := (*C.struct_passwd)(C.malloc(C.size_of_passwd()))
+	defer C.free(unsafe.Pointer(cpasswd))
 
 	bufLen := uint64(1024)
 	cBufLen := C.sysconf(C._SC_GETPW_R_SIZE_MAX)
@@ -173,37 +172,32 @@ func GetUser(username string) (*User, error) {
 		bufLen = uint64(cBufLen)
 	}
 
+	buf := (*C.char)(C.malloc(C.ulong(bufLen)))
+	defer C.free(unsafe.Pointer(buf))
 
-    buf := (*C.char)(C.malloc(C.ulong(bufLen)))
-    defer C.free(unsafe.Pointer(buf))
-
-
-    ret, err := C.getpwnam_r(cname, cpasswd, buf, C.ulong(bufLen), &cpasswd)
+	ret, err := C.getpwnam_r(cname, cpasswd, buf, C.ulong(bufLen), &cpasswd)
 
 	if int(ret) != 0 {
 		return nil, syscall.Errno(ret)
 	}
 
-    if unsafe.Pointer(cpasswd) == unsafe.Pointer(uintptr(0)) {
-        if err == nil {
-            err = util.UserNotFound{Username: name}
-        }
+	if unsafe.Pointer(cpasswd) == unsafe.Pointer(uintptr(0)) {
+		if err == nil {
+			err = util.UserNotFound{Username: name}
+		}
 
-        return nil, err
-    }
-    s := User {
-        Username: C.GoString(cpasswd.pw_name),
-        Uid: uint64(cpasswd.pw_uid),
-        Gid: uint64(cpasswd.pw_gid),
-		Dir: C.GoString(cpasswd.pw_dir),
-		Shell: C.GoString(cpasswd.pw_shell),
-    }
+		return nil, err
+	}
+	s := User{
+		Username: C.GoString(cpasswd.pw_name),
+		Uid:      uint64(cpasswd.pw_uid),
+		Gid:      uint64(cpasswd.pw_gid),
+		Dir:      C.GoString(cpasswd.pw_dir),
+		Shell:    C.GoString(cpasswd.pw_shell),
+	}
 
-    return &s, nil
+	return &s, nil
 }
-
-
-
 
 func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader, loginShell bool, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
 	cmd := exec.Command(command, args...)
@@ -211,7 +205,7 @@ func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.R
 	cmd.Dir = u.Dir
 
 	if loginShell {
-		// from man bash: A  login shell is one whose first character of argument zero is a -, or 
+		// from man bash: A  login shell is one whose first character of argument zero is a -, or
 		// 				  one started with the --login option.
 		// We chose to start it with a preprended "-"
 		cmd.Args[0] = fmt.Sprintf("-%s", filepath.Base(cmd.Args[0]))
@@ -254,7 +248,7 @@ func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.R
 
 func (u *User) CreateCommandPipeOutput(addEnv string, loginShell bool, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
 	cmd := exec.Command(command, args...)
-	
+
 	cmd.Env = append(cmd.Env, addEnv)
 	cmd.Dir = u.Dir
 

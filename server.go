@@ -13,7 +13,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog/log"
 
-	"ssh3/util"
+	"github.com/francoismichel/ssh3/util"
 )
 
 type ServerConversationHandler func(authenticatedUsername string, conversation *Conversation) error
@@ -61,17 +61,17 @@ func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *
 		conversation, ok := conversationsManager.getConversation(conversationControlStreamID)
 		if !ok {
 			err := fmt.Errorf("could not find SSH3 conversation with control stream id %d for new channel %d", conversationControlStreamID,
-								uint64(stream.StreamID()))
+				uint64(stream.StreamID()))
 			log.Error().Msgf("%s", err)
 			return false, err
 		}
 
 		channelInfo := &ChannelInfo{
-			ConversationID: conversation.conversationID,
+			ConversationID:       conversation.conversationID,
 			ConversationStreamID: conversationControlStreamID,
-			ChannelID: uint64(stream.StreamID()),
-			ChannelType: channelType,
-			MaxPacketSize: maxPacketSize,
+			ChannelID:            uint64(stream.StreamID()),
+			ChannelType:          channelType,
+			MaxPacketSize:        maxPacketSize,
 		}
 
 		newChannel := NewChannel(channelInfo.ConversationStreamID, channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream},
@@ -130,7 +130,7 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) AuthenticatedHandlerFun
 
 	return func(authenticatedUsername string, newConv *Conversation, w http.ResponseWriter, r *http.Request) {
 		log.Info().Msgf("got request: method: %s, URL: %s", r.Method, r.URL.String())
-		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
+		if r.Method == http.MethodConnect && r.Proto == "github.com/francoismichel/ssh3" {
 			hijacker, ok := w.(http3.Hijacker)
 			if !ok { // should never happen, unless quic-go change their API
 				log.Error().Msg("failed to hijack HTTP conversation: is it an HTTP/3 conversation ?")

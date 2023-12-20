@@ -1,10 +1,9 @@
-module ssh3
+module github.com/francoismichel/ssh3
 
 require (
 	github.com/coreos/go-oidc/v3 v3.7.0
 	github.com/creack/pty v1.1.18
 	github.com/golang-jwt/jwt/v5 v5.0.0
-	github.com/google/go-github/v57 v57.0.0
 	github.com/kevinburke/ssh_config v1.2.0
 	github.com/onsi/ginkgo/v2 v2.13.0
 	github.com/onsi/gomega v1.29.0
@@ -22,7 +21,6 @@ require (
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect

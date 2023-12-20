@@ -1,43 +1,45 @@
-package ssh3
+package message
 
 import (
 	"errors"
 	"io"
-	"ssh3/util"
+
+	"github.com/francoismichel/ssh3/util"
 )
 
 // ssh messages type
-const SSH_MSG_DISCONNECT                  =     1
-const SSH_MSG_IGNORE                      =     2
-const SSH_MSG_UNIMPLEMENTED               =     3
-const SSH_MSG_DEBUG                       =     4
-const SSH_MSG_SERVICE_REQUEST             =     5
-const SSH_MSG_SERVICE_ACCEPT              =     6
-const SSH_MSG_KEXINIT                     =    20
-const SSH_MSG_NEWKEYS                     =    21
-const SSH_MSG_USERAUTH_REQUEST            =    50
-const SSH_MSG_USERAUTH_FAILURE            =    51
-const SSH_MSG_USERAUTH_SUCCESS            =    52
-const SSH_MSG_USERAUTH_BANNER             =    53
-const SSH_MSG_GLOBAL_REQUEST              =    80
-const SSH_MSG_REQUEST_SUCCESS             =    81
-const SSH_MSG_REQUEST_FAILURE             =    82
-const SSH_MSG_CHANNEL_OPEN                =    90
-const SSH_MSG_CHANNEL_OPEN_CONFIRMATION   =    91
-const SSH_MSG_CHANNEL_OPEN_FAILURE        =    92
-const SSH_MSG_CHANNEL_WINDOW_ADJUST       =    93
-const SSH_MSG_CHANNEL_DATA                =    94
-const SSH_MSG_CHANNEL_EXTENDED_DATA       =    95
-const SSH_MSG_CHANNEL_EOF                 =    96
-const SSH_MSG_CHANNEL_CLOSE               =    97
-const SSH_MSG_CHANNEL_REQUEST             =    98
-const SSH_MSG_CHANNEL_SUCCESS             =    99
-const SSH_MSG_CHANNEL_FAILURE             =   100
+const SSH_MSG_DISCONNECT = 1
+const SSH_MSG_IGNORE = 2
+const SSH_MSG_UNIMPLEMENTED = 3
+const SSH_MSG_DEBUG = 4
+const SSH_MSG_SERVICE_REQUEST = 5
+const SSH_MSG_SERVICE_ACCEPT = 6
+const SSH_MSG_KEXINIT = 20
+const SSH_MSG_NEWKEYS = 21
+const SSH_MSG_USERAUTH_REQUEST = 50
+const SSH_MSG_USERAUTH_FAILURE = 51
+const SSH_MSG_USERAUTH_SUCCESS = 52
+const SSH_MSG_USERAUTH_BANNER = 53
+const SSH_MSG_GLOBAL_REQUEST = 80
+const SSH_MSG_REQUEST_SUCCESS = 81
+const SSH_MSG_REQUEST_FAILURE = 82
+const SSH_MSG_CHANNEL_OPEN = 90
+const SSH_MSG_CHANNEL_OPEN_CONFIRMATION = 91
+const SSH_MSG_CHANNEL_OPEN_FAILURE = 92
+const SSH_MSG_CHANNEL_WINDOW_ADJUST = 93
+const SSH_MSG_CHANNEL_DATA = 94
+const SSH_MSG_CHANNEL_EXTENDED_DATA = 95
+const SSH_MSG_CHANNEL_EOF = 96
+const SSH_MSG_CHANNEL_CLOSE = 97
+const SSH_MSG_CHANNEL_REQUEST = 98
+const SSH_MSG_CHANNEL_SUCCESS = 99
+const SSH_MSG_CHANNEL_FAILURE = 100
 
 type SSHDataType uint64
+
 const (
-	SSH_EXTENDED_DATA_NONE SSHDataType = 0
-    SSH_EXTENDED_DATA_STDERR SSHDataType = 1
+	SSH_EXTENDED_DATA_NONE   SSHDataType = 0
+	SSH_EXTENDED_DATA_STDERR SSHDataType = 1
 )
 
 type Message interface {
@@ -74,11 +76,10 @@ func (m *ChannelOpenConfirmationMessage) Length() int {
 	return int(messageTypeLen) + int(maxPacketSizeLen)
 }
 
-
 type ChannelOpenFailureMessage struct {
-	ReasonCode			 uint64
-	ErrorMessageUTF8     string
-	LanguageTag          string
+	ReasonCode       uint64
+	ErrorMessageUTF8 string
+	LanguageTag      string
 }
 
 var _ Message = &ChannelOpenFailureMessage{}
@@ -98,9 +99,9 @@ func ParseChannelOpenFailureMessage(buf util.Reader) (*ChannelOpenFailureMessage
 		return nil, err
 	}
 	return &ChannelOpenFailureMessage{
-		ReasonCode:		  reasonCode,
-		ErrorMessageUTF8:     errorMessageUTF8,
-		LanguageTag:          languageTag,
+		ReasonCode:       reasonCode,
+		ErrorMessageUTF8: errorMessageUTF8,
+		LanguageTag:      languageTag,
 	}, nil
 }
 
@@ -134,10 +135,9 @@ func (m *ChannelOpenFailureMessage) Write(buf []byte) (consumed int, err error) 
 	return consumed, nil
 }
 
-
 type DataOrExtendedDataMessage struct {
 	DataType SSHDataType
-	Data string
+	Data     string
 }
 
 var _ Message = &DataOrExtendedDataMessage{}
@@ -149,7 +149,7 @@ func ParseDataMessage(buf util.Reader) (*DataOrExtendedDataMessage, error) {
 	}
 	return &DataOrExtendedDataMessage{
 		DataType: SSH_EXTENDED_DATA_NONE,
-		Data: data,
+		Data:     data,
 	}, nil
 }
 
@@ -191,7 +191,7 @@ func ParseExtendedDataMessage(buf util.Reader) (*DataOrExtendedDataMessage, erro
 	}
 	return &DataOrExtendedDataMessage{
 		DataType: SSHDataType(dataType),
-		Data: data,
+		Data:     data,
 	}, err
 }
 
@@ -201,19 +201,19 @@ func ParseMessage(r util.Reader) (Message, error) {
 		return nil, err
 	}
 	switch typeId {
-		case SSH_MSG_CHANNEL_REQUEST:
-			return ParseRequestMessage(r)
-		case SSH_MSG_CHANNEL_OPEN_CONFIRMATION:
-			return ParseChannelOpenConfirmationMessage(r)
-		case SSH_MSG_CHANNEL_OPEN_FAILURE:
-			return ParseChannelOpenFailureMessage(r)
-		case SSH_MSG_CHANNEL_DATA, SSH_MSG_CHANNEL_EXTENDED_DATA:
-			if typeId == SSH_MSG_CHANNEL_DATA {
-				return ParseDataMessage(r)
-			} else {
-				return ParseExtendedDataMessage(r)
-			}
-		default:
-			panic("not implemented")
+	case SSH_MSG_CHANNEL_REQUEST:
+		return ParseRequestMessage(r)
+	case SSH_MSG_CHANNEL_OPEN_CONFIRMATION:
+		return ParseChannelOpenConfirmationMessage(r)
+	case SSH_MSG_CHANNEL_OPEN_FAILURE:
+		return ParseChannelOpenFailureMessage(r)
+	case SSH_MSG_CHANNEL_DATA, SSH_MSG_CHANNEL_EXTENDED_DATA:
+		if typeId == SSH_MSG_CHANNEL_DATA {
+			return ParseDataMessage(r)
+		} else {
+			return ParseExtendedDataMessage(r)
+		}
+	default:
+		panic("not implemented")
 	}
 }

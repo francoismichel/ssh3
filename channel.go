@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net"
-	ssh3 "ssh3/message"
-	"ssh3/util"
+
+	ssh3 "github.com/francoismichel/ssh3/message"
+	"github.com/francoismichel/ssh3/util"
 
 	"github.com/quic-go/quic-go"
 )
@@ -62,11 +63,11 @@ type channelCloseListener interface {
 }
 
 type ChannelInfo struct {
-	MaxPacketSize  uint64
-	ConversationStreamID uint64 
-	ConversationID ConversationID 
-	ChannelID      uint64
-	ChannelType    string
+	MaxPacketSize        uint64
+	ConversationStreamID uint64
+	ConversationID       ConversationID
+	ChannelID            uint64
+	ChannelType          string
 }
 
 type Channel interface {
@@ -211,7 +212,7 @@ func parseUDPForwardingHeader(channelID uint64, buf util.Reader) (*net.UDPAddr, 
 		return nil, err
 	}
 	return &net.UDPAddr{
-		IP: address,
+		IP:   address,
 		Port: int(port),
 	}, nil
 }
@@ -222,7 +223,7 @@ func parseTCPForwardingHeader(channelID uint64, buf util.Reader) (*net.TCPAddr, 
 		return nil, err
 	}
 	return &net.TCPAddr{
-		IP: address,
+		IP:   address,
 		Port: int(port),
 	}, nil
 }
@@ -236,11 +237,11 @@ func NewChannel(conversationStreamID uint64, conversationID ConversationID, chan
 	}
 	return &channelImpl{
 		ChannelInfo: ChannelInfo{
-			MaxPacketSize:  maxPacketSize,
+			MaxPacketSize:        maxPacketSize,
 			ConversationStreamID: conversationStreamID,
-			ConversationID: conversationID,
-			ChannelID:      channelID,
-			ChannelType:    channelType,
+			ConversationID:       conversationID,
+			ChannelID:            channelID,
+			ChannelType:          channelType,
 		},
 		recv:                 recv,
 		send:                 send,

@@ -5,9 +5,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	"ssh3"
-	"ssh3/util/linux_util"
 	"strings"
+
+	"github.com/francoismichel/ssh3"
+	"github.com/francoismichel/ssh3/util/linux_util"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"

@@ -22,7 +22,6 @@ const (
 	maxVarInt8 = 4611686018427387903
 )
 
-
 // Reader implements both the io.ByteReader and io.Reader interfaces.
 type Reader interface {
 	io.ByteReader
@@ -212,7 +211,7 @@ func ParseSSHString(buf Reader) (string, error) {
 	if n != int(length) {
 		return "", InvalidSSHString{fmt.Errorf("expected length %d, read length %d", length, n)}
 	}
-	if err != nil && err != io.EOF{
+	if err != nil && err != io.EOF {
 		return "", err
 	}
 	return string(out[:n]), err
