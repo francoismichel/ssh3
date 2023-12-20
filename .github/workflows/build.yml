@@ -91,7 +91,7 @@ jobs:
       # No Build Server on MacOS right now as the server currently does no build on MacOS
       - name: Build Binaries
         run:
-          make -e build
+          make -e client
         env:
           GOOS: ${{matrix.goos}}
           GOARCH: ${{matrix.archparams.goarch}}
