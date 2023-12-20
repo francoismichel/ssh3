@@ -1,7 +1,8 @@
 GOOS?=linux
 BUILDFLAGS ?=-ldflags "-X main.version=$(shell git describe --tags --always --dirty) -X main.buildDate=$(shell date +%Y-%m-%d)"
 
-GO_OPTS?=CGO_ENABLED=1
+GO_OPTS?=CGO_ENABLED=1 GOOS=$(GOOS)
+TEST_OPTS?=-v GOOS=$(GOOS) GOARCH=$(GOARCH)
 
 lint:
 	go fmt ./...
@@ -9,8 +10,8 @@ lint:
 	# go vet ./...
 
 test:
-	go test ./...
-	go run github.com/onsi/ginkgo/v2/ginkgo -r
+	$(TEST_OPTS) go test ./...
+	$(TEST_OPTS) go run github.com/onsi/ginkgo/v2/ginkgo -r
 
 integration-tests:
 	CERT_PEM=$(CERT_PEM) \
@@ -21,6 +22,7 @@ integration-tests:
 		TESTUSER_USERNAME=$(TESTUSER_USERNAME) \
 		CC=$(CC) \
 		CGO_ENABLED=1 \
+		GOOS=$(GOOS) \
 		SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED=1 \
 		go run github.com/onsi/ginkgo/v2/ginkgo ./integration_tests
 
