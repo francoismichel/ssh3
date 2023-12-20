@@ -298,7 +298,7 @@ func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, usern
 		"iss":       username,
 		"iat":       jwt.NewNumericDate(time.Now()),
 		"exp":       jwt.NewNumericDate(time.Now().Add(10 * time.Second)),
-		"sub":       "github.com/francoismichel/ssh3",
+		"sub":       "ssh3",
 		"aud":       "unused",
 		"client_id": fmt.Sprintf("ssh3-%s", username),
 		"jti":       b64ConvID,
