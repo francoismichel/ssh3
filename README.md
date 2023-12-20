@@ -73,7 +73,7 @@ or generate these binaries yourself by compiling the code from source.
 
 ### Installing ssh3 and ssh3-server
 ```bash
-git install https://github.com/francoismichel/ssh3/cmd/...@latest
+go install https://github.com/francoismichel/ssh3/cmd/...@latest
 ```
 
 
