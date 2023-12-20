@@ -49,14 +49,14 @@ func fileExists(path string) bool {
 
 var _ = BeforeSuite(func() {
 	var err error
-	ssh3Path, err = Build("../cli/client/main.go")
+	ssh3Path, err = Build("../cmd/ssh3/main.go")
 	Expect(err).ToNot(HaveOccurred())
 	if os.Getenv("SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED") == "1" {
 		// Tests implying a server will only work on Linux
 		// (the server currently only builds on Linux)
 		// and the server needs root priviledges, so we only
 		// run them is they are enabled explicitly.
-		ssh3ServerPath, err = Build("../cli/server/main.go")
+		ssh3ServerPath, err = Build("../cmd/ssh3-server/main.go")
 		Expect(err).ToNot(HaveOccurred())
 		serverCommand = exec.Command(ssh3ServerPath,
 			"-bind", serverBind,
