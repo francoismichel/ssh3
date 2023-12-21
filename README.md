@@ -65,13 +65,13 @@ This SSH3 implementation already provides many of the popular features of OpenSS
 
 ## Installing SSH3
 You can either download the last [release binaries](https://github.com/francoismichel/ssh3/releases),
-[install it using `go install`](#installing-ssh3-and-ssh3-server) or generate these binaries yourself by compiling the code from source.
+[install it using `go install`](#installing-ssh3-and-ssh3-server-using-go-install) or generate these binaries yourself by compiling the code from source.
 
 > [!TIP]
 > SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
 > [secret path](#-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL.
 
-### Installing ssh3 and ssh3-server
+### Installing ssh3 and ssh3-server using Go install
 ```bash
 go install github.com/francoismichel/ssh3/cmd/...@latest
 ```
