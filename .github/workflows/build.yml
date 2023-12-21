@@ -45,16 +45,8 @@ jobs:
         run: sudo ssh-keygen -t ed25519 -f /testuser_id_ed25519 -q -N ""
       - name: Generate attacker's SSH key
         run: sudo ssh-keygen -b 4096 -t rsa -f /attacker_id_rsa -q -N ""
-      - name: Install Go dependencies
-        run: go get ./...
-      - name: Fmt code
-        run: |
-          go fmt ./...
-          git diff --exit-code
-      - name: Build Client
-        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v cli/client/main.go
-      - name: Build Server
-        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go build -v cli/server/main.go
+      - name: Install
+        run: make install
       - name: Add test user
         run: sudo useradd -s /bin/bash -m ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
       - name: Ensure there are no existing .profile or similar files for testuser
@@ -67,10 +59,20 @@ jobs:
         run: cat /testuser_id_rsa.pub /testuser_id_ed25519.pub | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: log authorized_identities
         run: cat ${{matrix.testuserhome}}/.ssh3/authorized_identities
-      - name: Classical unit tests
-        run: env CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo -r
       - name: Integration tests
-        run: sudo env CERT_PEM=/cert.pem CERT_PRIV_KEY=/priv.key ATTACKER_PRIVKEY=/attacker_id_rsa TESTUSER_PRIVKEY=/testuser_id_rsa TESTUSER_ED25519_PRIVKEY=/testuser_id_ed25519 TESTUSER_USERNAME=${{matrix.testuser}} CC=${{matrix.archparams.cc}} CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.archparams.goarch}} SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED=1 go run github.com/onsi/ginkgo/v2/ginkgo ./integration_tests
+        run: sudo -E make -e integration-tests
+        env:
+          CERT_PEM: /cert.pem
+          CERT_PRIV_KEY: /priv.key
+          ATTACKER_PRIVKEY: /attacker_id_rsa
+          TESTUSER_PRIVKEY: /testuser_id_rsa
+          TESTUSER_ED25519_PRIVKEY: /testuser_id_ed25519
+          TESTUSER_USERNAME: ${{matrix.testuser}}
+          CC: ${{matrix.archparams.cc}}
+          CGO_ENABLED: "1"
+          GOOS: ${{matrix.goos}}
+          GOARCH: ${{matrix.archparams.goarch}}
+          SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED: "1"
   build-macos:
     strategy:
       matrix:
@@ -87,8 +89,15 @@ jobs:
       - name: Install dependencies
         run: go get ./...
       # No Build Server on MacOS right now as the server currently does no build on MacOS
-      - name: Build Client
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go build -v cli/client/main.go
+      - name: Build Binaries
+        run:
+          make -e client
+        env:
+          GOOS: ${{matrix.goos}}
+          GOARCH: ${{matrix.archparams.goarch}}
       - name: Classical unit tests
         if: ${{ matrix.goarch == 'amd64' }} # only actually run the test suite with the architecture of the host
-        run: env CGO_ENABLED=1 GOOS=${{matrix.goos}} GOARCH=${{matrix.goarch}} go run github.com/onsi/ginkgo/v2/ginkgo
+        run: make -e test
+        env:
+          GOOS: ${{matrix.goos}}
+          GOARCH: ${{matrix.archparams.goarch}}

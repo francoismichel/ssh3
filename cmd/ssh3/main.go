@@ -31,7 +31,7 @@ import (
 
 	"github.com/francoismichel/ssh3"
 	"github.com/francoismichel/ssh3/auth"
-	"github.com/francoismichel/ssh3/cli/client/winsize"
+	"github.com/francoismichel/ssh3/cmd/ssh3/winsize"
 	ssh3Messages "github.com/francoismichel/ssh3/message"
 	"github.com/francoismichel/ssh3/util"
 
