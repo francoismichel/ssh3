@@ -1,4 +1,4 @@
-//go:build unix && (!linux || (!amd64 && !arm64))
+//go:build unix && !cgo
 
 package unix_util
 
