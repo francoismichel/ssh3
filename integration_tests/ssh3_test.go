@@ -56,7 +56,7 @@ var _ = BeforeSuite(func() {
 		// (the server currently only builds on Linux)
 		// and the server needs root priviledges, so we only
 		// run them is they are enabled explicitly.
-		ssh3ServerPath, err = Build("../cmd/ssh3-server/main.go")
+		ssh3ServerPath, err = BuildWithEnvironment("../cmd/ssh3-server/main.go", []string{fmt.Sprintf("CGO_ENABLED=%s", os.Getenv("CGO_ENABLED"))})
 		Expect(err).ToNot(HaveOccurred())
 		serverCommand = exec.Command(ssh3ServerPath,
 			"-bind", serverBind,

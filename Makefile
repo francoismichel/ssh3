@@ -1,7 +1,8 @@
 GOOS?=linux
 BUILDFLAGS ?=-ldflags "-X main.version=$(shell git describe --tags --always --dirty) -X main.buildDate=$(shell date +%Y-%m-%d)"
 
-GO_OPTS?=CGO_ENABLED=1 GOOS=$(GOOS)
+GO_OPTS?=CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS)
+GO_TAGS?=
 TEST_OPTS?=-v GOOS=$(GOOS) GOARCH=$(GOARCH)
 
 lint:
@@ -33,7 +34,7 @@ install:
 build: client server
 
 client:
-	$(GO_OPTS) go build $(BUILD_FLAGS) -o bin/client ./cmd/ssh3/
+	$(GO_OPTS) go build -tags "$(GO_TAGS)" $(BUILD_FLAGS) -o bin/client ./cmd/ssh3/
 
 server:
-	$(GO_OPTS) go build $(BUILD_FLAGS) -o bin/server ./cmd/ssh3-server/
+	$(GO_OPTS) go build -tags "$(GO_TAGS)" $(BUILD_FLAGS) -o bin/server ./cmd/ssh3-server/

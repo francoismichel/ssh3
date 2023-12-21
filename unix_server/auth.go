@@ -1,21 +1,25 @@
-package linux_server
+package unix_server
 
 import (
 	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strings"
 
 	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/util/linux_util"
+	"github.com/francoismichel/ssh3/util/unix_util"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog/log"
 )
 
-func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacketSize uint64, handlerFunc ssh3.AuthenticatedHandlerFunc) http.HandlerFunc {
+func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacketSize uint64, handlerFunc ssh3.AuthenticatedHandlerFunc) (http.HandlerFunc, error) {
+	if runtime.GOOS != "linux" && enablePasswordLogin {
+		return nil, fmt.Errorf("password login not supported on %s/%s systems", runtime.GOOS, runtime.GOARCH)
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer w.(http.Flusher).Flush()
 		w.Header().Set("Server", ssh3.GetCurrentVersion())
@@ -67,7 +71,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 		} else {
 			w.WriteHeader(http.StatusUnauthorized)
 		}
-	}
+	}, nil
 }
 
 func HandleBasicAuth(handlerFunc ssh3.AuthenticatedHandlerFunc, conv *ssh3.Conversation) http.HandlerFunc {
@@ -78,8 +82,11 @@ func HandleBasicAuth(handlerFunc ssh3.AuthenticatedHandlerFunc, conv *ssh3.Conve
 			return
 		}
 
-		ok, err := linux_util.UserPasswordAuthentication(username, password)
+		ok, err := unix_util.UserPasswordAuthentication(username, password)
 		if err != nil || !ok {
+			if err != nil {
+				log.Error().Msgf("user authentication failed: %s", err)
+			}
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}

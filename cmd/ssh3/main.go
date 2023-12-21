@@ -545,6 +545,7 @@ func mainWithStatusCode() int {
 	if err != nil {
 		if transportErr, ok := err.(*quic.TransportError); ok {
 			if transportErr.ErrorCode.IsCryptoError() {
+				log.Debug().Msgf("received QUIC crypto error on first connection attempt: %s", err)
 				if tty == nil {
 					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
 					return -1

@@ -1,29 +1,8 @@
-//  Copyright 2018 Google LLC
-//  Licensed under the Apache License, Version 2.0 (the "License");
-//  you may not use this file except in compliance with the License.
-//  You may obtain a copy of the License at
-
-//        https://www.apache.org/licenses/LICENSE-2.0
-
-//  Unless required by applicable law or agreed to in writing, software
-//  distributed under the License is distributed on an "AS IS" BASIS,
-//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//  See the License for the specific language governing permissions and
-//	limitations under the License.
-
-/*
-Package passwd implements a minion that looks for simple issues within
-/etc/passwd and /etc/shadow files.
-
-It contains functions that allow one to check if users can login without
-passwords, use weak hashes or are not root, but their uid is 0.
-
-It also checks whether those files have insecure UNIX permissions.
-*/
+//go:build linux && !disable_password_auth
 
 // partially copied from https://github.com/google/minions/blob/v0.1.0/src/go/minions/passwd/minion.go
 
-package linux_util
+package unix_util
 
 /*
 #cgo LDFLAGS: -lcrypt
@@ -40,9 +19,6 @@ int get_errno() { return errno; }
 import "C"
 import (
 	"fmt"
-	"io"
-	"os/exec"
-	"path/filepath"
 	"syscall"
 	"unsafe"
 
@@ -136,7 +112,7 @@ func ComparePasswordWithHashedPassword(candidatePassword string, hashedPassword 
  *  Returns a boolean stating whether the user is correctly authenticated on this
  *  server. May return a UserNotFound error when the user does not exist.
  */
-func UserPasswordAuthentication(username, password string) (bool, error) {
+func userPasswordAuthentication(username, password string) (bool, error) {
 	shadowEntry, err := Getspnam(username)
 	if err != nil {
 		return false, nil
@@ -144,15 +120,7 @@ func UserPasswordAuthentication(username, password string) (bool, error) {
 	return ComparePasswordWithHashedPassword(password, shadowEntry.Password)
 }
 
-type User struct {
-	Username string
-	Uid      uint64
-	Gid      uint64
-	Dir      string
-	Shell    string
-}
-
-func GetUser(username string) (*User, error) {
+func getUser(username string) (*User, error) {
 	return getpwnam(username)
 }
 
@@ -188,6 +156,7 @@ func getpwnam(name string) (*User, error) {
 
 		return nil, err
 	}
+
 	s := User{
 		Username: C.GoString(cpasswd.pw_name),
 		Uid:      uint64(cpasswd.pw_uid),
@@ -199,61 +168,6 @@ func getpwnam(name string) (*User, error) {
 	return &s, nil
 }
 
-func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader, loginShell bool, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
-	cmd := exec.Command(command, args...)
-	cmd.Env = append(cmd.Env, addEnv)
-	cmd.Dir = u.Dir
-
-	if loginShell {
-		// from man bash: A  login shell is one whose first character of argument zero is a -, or
-		// 				  one started with the --login option.
-		// We chose to start it with a preprended "-"
-		cmd.Args[0] = fmt.Sprintf("-%s", filepath.Base(cmd.Args[0]))
-	}
-
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(u.Uid), Gid: uint32(u.Gid)}
-
-	var err error
-	var stdoutR, stderrR io.Reader
-	var stdinW io.Writer
-
-	if stdout == nil {
-		stdoutR, err = cmd.StdoutPipe()
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-	} else {
-		cmd.Stdout = stdout
-	}
-	if stderr == nil {
-		stderrR, err = cmd.StderrPipe()
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-	} else {
-		cmd.Stderr = stderr
-	}
-	if stdin == nil {
-		stdinW, err = cmd.StdinPipe()
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-	} else {
-		cmd.Stdin = stdin
-	}
-
-	return cmd, stdoutR, stderrR, stdinW, err
-}
-
-func (u *User) CreateCommandPipeOutput(addEnv string, loginShell bool, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
-	cmd := exec.Command(command, args...)
-
-	cmd.Env = append(cmd.Env, addEnv)
-	cmd.Dir = u.Dir
-
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(u.Uid), Gid: uint32(u.Gid)}
-
-	return u.CreateCommand(addEnv, nil, nil, nil, loginShell, command, args...)
+func passwordAuthAvailable() bool {
+	return true
 }
