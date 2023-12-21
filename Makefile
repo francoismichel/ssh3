@@ -1,7 +1,7 @@
 GOOS?=linux
 BUILDFLAGS ?=-ldflags "-X main.version=$(shell git describe --tags --always --dirty) -X main.buildDate=$(shell date +%Y-%m-%d)"
 
-GO_OPTS?=CGO_ENABLED=1 GOOS=$(GOOS)
+GO_OPTS?=CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS)
 TEST_OPTS?=-v GOOS=$(GOOS) GOARCH=$(GOARCH)
 
 lint:
