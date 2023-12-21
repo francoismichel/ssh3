@@ -73,7 +73,7 @@ You can either download the last [release binaries](https://github.com/francoism
 
 ### Installing ssh3 and ssh3-server using Go install
 ```bash
-go install github.com/francoismichel/ssh3/cmd/...@latest
+go install github.com/francoismichel/ssh3/cmd/...@v0.1.5-rc1
 ```
 
 
