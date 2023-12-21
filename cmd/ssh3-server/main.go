@@ -671,16 +671,19 @@ func fileExists(path string) bool {
 func main() {
 	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
-	enablePasswordLogin := flag.Bool("enable-password-login", false, "if set, enable password authentication (disabled by default)")
 	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
 	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key "+
 		"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
 	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
 	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
+	enablePasswordLogin := false
+	if unix_util.PasswordAuthAvailable() {
+		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
+	}
 	flag.Parse()
 
-	if !*enablePasswordLogin {
-		fmt.Fprintln(os.Stderr, "password login is currently disabled")
+	if !enablePasswordLogin {
+		fmt.Fprintln(os.Stderr, "password login is disabled")
 	}
 
 	certPathExists := fileExists(*certPath)
@@ -847,7 +850,7 @@ func main() {
 			}
 		})
 		ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
-		handler, err := unix_server.HandleAuths(context.Background(), *enablePasswordLogin, 30000, ssh3Handler)
+		handler, err := unix_server.HandleAuths(context.Background(), enablePasswordLogin, 30000, ssh3Handler)
 		if err != nil {
 			log.Error().Msgf("Could not get authentication handlers: %s", err)
 			return

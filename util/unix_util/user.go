@@ -86,3 +86,7 @@ func (u *User) CreateCommandPipeOutput(addEnv string, loginShell bool, command s
 func UserPasswordAuthentication(username, password string) (bool, error) {
 	return userPasswordAuthentication(username, password)
 }
+
+func PasswordAuthAvailable() bool {
+	return passwordAuthAvailable()
+}

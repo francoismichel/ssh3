@@ -167,3 +167,7 @@ func getpwnam(name string) (*User, error) {
 
 	return &s, nil
 }
+
+func passwordAuthAvailable() bool {
+	return true
+}

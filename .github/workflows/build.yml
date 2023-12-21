@@ -116,3 +116,4 @@ jobs:
         env:
           GOOS: ${{matrix.goos}}
           GOARCH: ${{matrix.goarch}}
+          GO_TAGS: disable_password_auth

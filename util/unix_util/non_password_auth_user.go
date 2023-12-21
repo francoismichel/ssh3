@@ -45,3 +45,7 @@ func getUser(username string) (*User, error) {
 func userPasswordAuthentication(username, password string) (bool, error) {
 	return false, fmt.Errorf("password-based authentication is not implemented on %s/%s systems", runtime.GOOS, runtime.GOARCH)
 }
+
+func passwordAuthAvailable() bool {
+	return false
+}
