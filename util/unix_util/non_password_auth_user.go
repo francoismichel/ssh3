@@ -1,4 +1,4 @@
-//go:build unix && !cgo
+//go:build unix && (!linux || disable_password_auth)
 
 package unix_util
 

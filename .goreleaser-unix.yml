@@ -60,6 +60,7 @@ builds:
       - osusergo
       - netgo
       - static_build
+      - disable_password_auth
 archives:
   - format: tar.gz
     # this name template makes the OS and Arch compatible with the results of `uname`.

@@ -1,4 +1,4 @@
-//go:build linux && cgo && (amd64 || arm64)
+//go:build linux && !disable_password_auth
 
 // partially copied from https://github.com/google/minions/blob/v0.1.0/src/go/minions/passwd/minion.go
 
