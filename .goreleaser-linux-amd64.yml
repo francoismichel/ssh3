@@ -18,7 +18,7 @@ before:
 builds:
   - 
     id: "ssh3"
-    main: ./cli/client/main.go
+    main: ./cmd/ssh3/main.go
     binary: ssh3
     goos:
       - linux
@@ -31,7 +31,7 @@ builds:
       - feature
   - 
     id: "ssh3-server"
-    main: ./cli/server/main.go
+    main: ./cmd/ssh3-server/main.go
     binary: ssh3-server
     env:
       - CGO_ENABLED=1
