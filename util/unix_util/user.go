@@ -4,12 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	osuser "os/user"
 	"path/filepath"
-	"strconv"
 	"syscall"
-
-	"github.com/rs/zerolog/log"
 )
 
 type User struct {
@@ -21,29 +17,7 @@ type User struct {
 }
 
 func GetUser(username string) (*User, error) {
-	u, err := osuser.Lookup(username)
-	if err != nil {
-		return nil, err
-	}
-
-	uid, err := strconv.Atoi(u.Uid)
-	if err != nil {
-		log.Error().Msgf("could not convert uid %s into an int", u.Uid)
-		return nil, err
-	}
-	gid, err := strconv.Atoi(u.Uid)
-	if err != nil {
-		log.Error().Msgf("could not convert gid %s into an int", u.Uid)
-		return nil, err
-	}
-
-	return &User{
-		Username: u.Username,
-		Uid:      uint64(uid),
-		Gid:      uint64(gid),
-		Dir:      u.HomeDir,
-		Shell:    "/bin/sh",
-	}, nil
+	return getUser(username)
 }
 
 func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader, loginShell bool, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
