@@ -64,8 +64,8 @@ This SSH3 implementation already provides many of the popular features of OpenSS
 - Direct TCP port forwarding (reverse port forwarding will be implemented in the future)
 
 ## Installing SSH3
-You can either download the last [release binaries](https://github.com/francoismichel/ssh3/releases)
-or generate these binaries yourself by compiling the code from source.
+You can either download the last [release binaries](https://github.com/francoismichel/ssh3/releases),
+[install it using `go install`](#installing-ssh3-and-ssh3-server) or generate these binaries yourself by compiling the code from source.
 
 > [!TIP]
 > SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
@@ -73,7 +73,7 @@ or generate these binaries yourself by compiling the code from source.
 
 ### Installing ssh3 and ssh3-server
 ```bash
-go install https://github.com/francoismichel/ssh3/cmd/...@latest
+go install github.com/francoismichel/ssh3/cmd/...@latest
 ```
 
 
