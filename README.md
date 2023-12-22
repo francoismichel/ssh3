@@ -37,7 +37,7 @@ It also supports new authentication methods
 such as OAuth 2.0 and allows logging in to your servers using your Google/Microsoft/Github accounts.
 
 ## 🥷 Your SSH3 public server can be hidden
-Using SSH3, you can avoid the usual stress of scanning and dictionnary attacks against your SSH server. Similarly to your secret Google Drive documents, your SSH3 server can be hidden behind a secret link and only answer to authentication attempts that made an HTTP request to this specific link, like the following:
+Using SSH3, you can avoid the usual stress of scanning and dictionary attacks against your SSH server. Similarly to your secret Google Drive documents, your SSH3 server can be hidden behind a secret link and only answer to authentication attempts that made an HTTP request to this specific link, like the following:
 
     ssh3-server -bind 192.0.2.0:443 -url-path <my-long-secret>
 
@@ -49,7 +49,7 @@ SSH3 provides new feature that could not be provided by the SSHv2 protocol.
 ### Brand new features
 - **UDP port forwarding**: you can now access your QUIC, DNS, RTP or any UDP-based server that are only reachable from your SSH3 host.
 UDP packets are forwarded using QUIC datagrams.
-- **X.509 certificates**: you can now use your classical HTTPS cerificates to authenticate your SSH3 server. This mechanism is more secure than the classical SSHv2 host key mechanism. Certificates can be obtained easily using LetsEncrypt for instance.
+- **X.509 certificates**: you can now use your classical HTTPS certificates to authenticate your SSH3 server. This mechanism is more secure than the classical SSHv2 host key mechanism. Certificates can be obtained easily using LetsEncrypt for instance.
 - **Hiding** your server behind a secret link.
 - **Keyless** secure user authentication using **OpenID Connect**. You can connect to your SSH3 server using the SSO of your company or your Google/Github account, and you don't need to copy the public keys of your users anymore.
 
@@ -89,7 +89,7 @@ go build -o ssh3 cmd/ssh3/main.go                        # build the client
 CGO_ENABLED=1 go build -o ssh3-server cmd/ssh3-server/main.go   # build the server, requires having gcc installed
 ```
 
-If you have root/sudo priviledges and you want to make ssh3 accessible to all you users,
+If you have root/sudo privileges and you want to make ssh3 accessible to all you users,
 you can then directly copy the binaries to `/usr/bin`:
 
 ```bash
