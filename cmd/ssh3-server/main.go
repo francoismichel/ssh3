@@ -672,13 +672,13 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
-type zeroSSLCertificates []string
+type autogenCertificates []string
 
-func (i *zeroSSLCertificates) String() string {
+func (i *autogenCertificates) String() string {
     return fmt.Sprint(*i)
 }
 
-func (i *zeroSSLCertificates) Set(value string) error {
+func (i *autogenCertificates) Set(value string) error {
     *i = append(*i, value)
     return nil
 }
@@ -692,9 +692,10 @@ func main() {
 		"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
 	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
 	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
-	var zeroSSLCertificates zeroSSLCertificates
-	flag.Var(&zeroSSLCertificates, "generate-zerossl-certificates", "Provides domain names or IP addresses for which ZeroSSL certificates "+
-								   "will be generated automatically. The flag can be used severa times to generate several certificates.")
+	var autogenCertificates autogenCertificates
+	flag.Var(&autogenCertificates, "generate-public-certificates", "Provides domain names or IP addresses for which public certificates "+
+								   "will be generated automatically. The flag can be used severa times to generate several certificates."+
+								   "IP certificates can ony be done using ZeroSSL.")
 	enablePasswordLogin := false
 	if unix_util.PasswordAuthAvailable() {
 		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
@@ -716,7 +717,7 @@ func main() {
 	// handle bad case where one of the cert or key path is valid but not the other
 	badCertificatesConf :=  (certPathExists && !keyPathExists) ||
 							(!certPathExists && keyPathExists) ||
-							(!certPathExists && !keyPathExists && !*generateSelfSignedCert && len(zeroSSLCertificates) == 0) // no certificate available whatsoever
+							(!certPathExists && !keyPathExists && !*generateSelfSignedCert && len(autogenCertificates) == 0) // no certificate available whatsoever
 
 
 	if badCertificatesConf {
@@ -763,9 +764,9 @@ func main() {
 	}
 
 	tlsConfig := &tls.Config{}
-	if len(zeroSSLCertificates) > 0 {
+	if len(autogenCertificates) > 0 {
 		var err error
-		tlsConfig, err = certmagic.TLS(zeroSSLCertificates)
+		tlsConfig, err = certmagic.TLS(autogenCertificates)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not generate ZeroSSL certificates: %s\n", err)
 			os.Exit(-1)
