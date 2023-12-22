@@ -707,7 +707,7 @@ func main() {
 	}
 
 	if !enablePasswordLogin {
-		fmt.Fprintln(os.Stderr, "password login is disabled\n")
+		fmt.Fprintln(os.Stderr, "password login is disabled")
 	}
 
 	certPathExists := fileExists(*certPath)
@@ -731,7 +731,7 @@ func main() {
 			"you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
 		fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
 		os.Exit(-1)
-	} else {
+	} else if *generateSelfSignedCert {
 		if certPathExists {
 			fmt.Fprintf(os.Stderr, "asked for generating a certificate but the \"%s\" file already exists\n", *certPath)
 		}
