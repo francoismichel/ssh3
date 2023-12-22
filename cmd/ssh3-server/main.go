@@ -4,6 +4,7 @@ import (
 	// "bufio"
 	// "context"
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/creack/pty"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -670,6 +672,17 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
+type zeroSSLCertificates []string
+
+func (i *zeroSSLCertificates) String() string {
+    return fmt.Sprint(*i)
+}
+
+func (i *zeroSSLCertificates) Set(value string) error {
+    *i = append(*i, value)
+    return nil
+}
+
 func main() {
 	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
@@ -679,6 +692,9 @@ func main() {
 		"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
 	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
 	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
+	var zeroSSLCertificates zeroSSLCertificates
+	flag.Var(&zeroSSLCertificates, "generate-zerossl-certificates", "Provides domain names or IP addresses for which ZeroSSL certificates "+
+								   "will be generated automatically. The flag can be used severa times to generate several certificates.")
 	enablePasswordLogin := false
 	if unix_util.PasswordAuthAvailable() {
 		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
@@ -691,25 +707,30 @@ func main() {
 	}
 
 	if !enablePasswordLogin {
-		fmt.Fprintln(os.Stderr, "password login is disabled")
+		fmt.Fprintln(os.Stderr, "password login is disabled\n")
 	}
 
 	certPathExists := fileExists(*certPath)
 	keyPathExists := fileExists(*keyPath)
 
-	if !*generateSelfSignedCert {
+	// handle bad case where one of the cert or key path is valid but not the other
+	badCertificatesConf :=  (certPathExists && !keyPathExists) ||
+							(!certPathExists && keyPathExists) ||
+							(!certPathExists && !keyPathExists && !*generateSelfSignedCert && len(zeroSSLCertificates) == 0) // no certificate available whatsoever
+
+
+	if badCertificatesConf {
 		if !certPathExists {
 			fmt.Fprintf(os.Stderr, "the \"%s\" certificate file does not exist\n", *certPath)
 		}
 		if !keyPathExists {
 			fmt.Fprintf(os.Stderr, "the \"%s\" certificate private key file does not exist\n", *keyPath)
 		}
-		if !certPathExists || !keyPathExists {
-			fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
-				"you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
-			fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
-			os.Exit(-1)
-		}
+		fmt.Fprintln(os.Stderr, "No certificate available for the QUIC connection.")
+		fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
+			"you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
+		fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
+		os.Exit(-1)
 	} else {
 		if certPathExists {
 			fmt.Fprintf(os.Stderr, "asked for generating a certificate but the \"%s\" file already exists\n", *certPath)
@@ -737,6 +758,27 @@ func main() {
 			os.Exit(-1)
 		}
 
+		certPathExists = true
+		keyPathExists = true
+	}
+
+	tlsConfig := &tls.Config{}
+	if len(zeroSSLCertificates) > 0 {
+		var err error
+		tlsConfig, err = certmagic.TLS(zeroSSLCertificates)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not generate ZeroSSL certificates: %s\n", err)
+			os.Exit(-1)
+		}
+	}
+
+	if certPathExists && keyPathExists {
+		certificate, err := tls.LoadX509KeyPair(*certPath, *keyPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not load -cert and -key pair: %s\n", err)
+			os.Exit(-1)
+		}
+		tlsConfig.Certificates = append(tlsConfig.Certificates, certificate)
 	}
 
 	if *verbose {
@@ -870,6 +912,7 @@ func main() {
 		outputMessage := fmt.Sprintf("Server started, listening on %s%s", *bindAddr, *urlPath)
 		fmt.Fprintln(os.Stderr, outputMessage)
 		log.Info().Msg(outputMessage)
+		certmagic.TLS([]string{})
 		err = server.ListenAndServeTLS(*certPath, *keyPath)
 
 		if err != nil {
