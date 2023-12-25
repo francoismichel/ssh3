@@ -222,7 +222,7 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 	remotePort, err = strconv.Atoi(array[1])
 	if err != nil {
 		return 0, nil, 0, fmt.Errorf("could not convert %s to int: %s", array[1], err)
-	} else if localPort > 0xFFFF {
+	} else if remotePort > 0xFFFF {
 		return 0, nil, 0, fmt.Errorf("UDP port too large %d", remotePort)
 	}
 	return localPort, remoteIP, remotePort, err
