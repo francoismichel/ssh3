@@ -372,7 +372,7 @@ func mainWithStatusCode() int {
 			return -1
 		}
 
-		log.Trace().Msg("done setting up UDP forwarding")
+		log.Debug().Msg("done setting up UDP forwarding")
 	}
 
 	if *forwardTCP != "" {
@@ -427,7 +427,7 @@ func mainWithStatusCode() int {
 			return -1
 		}
 
-		log.Trace().Msg("done setting up TCP forwarding")
+		log.Debug().Msg("done setting up TCP forwarding")
 	}
 
 	var sshConfig *ssh_config.Config
@@ -678,7 +678,7 @@ func mainWithStatusCode() int {
 			agentKeys = append(agentKeys, key)
 		}
 	}
-	log.Trace().Msg("done reading SSH agent")
+	log.Debug().Msg("done reading SSH agent")
 
 	log.Debug().Msgf("dialing QUIC host at %s", fmt.Sprintf("%s:%d", hostname, port))
 
@@ -697,16 +697,16 @@ func mainWithStatusCode() int {
 		&qconf)
 	log.Debug().Err(err).Str("Hostname", hostname).Int("Port", port).Msg("QUIC early address dial")
 	if err != nil {
-		log.Trace().Err(err).Msg("QUIC dial ended with an error")
+		log.Debug().Err(err).Msg("QUIC dial ended with an error")
 		if transportErr, ok := err.(*quic.TransportError); ok {
-			log.Trace().Err(err).Msg("error is a QUIC transport error")
+			log.Debug().Err(err).Msg("error is a QUIC transport error")
 			if transportErr.ErrorCode.IsCryptoError() {
-				log.Trace().Err(err).Msg("QUIC transport error is a crypto error")
+				log.Debug().Err(err).Msg("QUIC transport error is a crypto error")
 				if tty == nil {
 					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
 					return -1
 				}
-				log.Trace().Msg("checking known hosts")
+				log.Debug().Msg("checking known hosts")
 				if _, ok = knownHosts[hostname]; ok {
 					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. "+
 						"If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
@@ -715,7 +715,7 @@ func mainWithStatusCode() int {
 					return -1
 				}
 				// bad certificates, let's mimic the OpenSSH's behaviour similar to host keys
-				log.Trace().Msg("simulating OpenSSH host keys behaviour")
+				log.Debug().Msg("simulating OpenSSH host keys behaviour")
 				tlsConf.InsecureSkipVerify = true
 				var peerCertificate *x509.Certificate
 				certError := fmt.Errorf("we don't want to start a totally insecure connection")
@@ -758,7 +758,7 @@ func mainWithStatusCode() int {
 					answer, _ = reader.ReadString('\n')
 					answer = strings.TrimSpace(answer)
 					_, _ = tty.WriteString("\r") // always ensure a carriage return
-					log.Trace().Str("KnownHostFileAddAnswer", answer).Msg("parsed answer")
+					log.Debug().Str("KnownHostFileAddAnswer", answer).Msg("parsed answer")
 					if answer == "yes" || answer == "no" {
 						break
 					}
