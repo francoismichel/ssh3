@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"ssh3/auth"
-	"ssh3/util"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/util"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/kevinburke/ssh_config"
@@ -20,11 +21,10 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-
 type PasswordAuthMethod struct{}
 type OidcAuthMethod struct {
-	doPKCE    bool
-	config    *auth.OIDCConfig
+	doPKCE bool
+	config *auth.OIDCConfig
 }
 
 func (m *OidcAuthMethod) OIDCConfig() *auth.OIDCConfig {
@@ -48,8 +48,8 @@ func (m *PasswordAuthMethod) IntoIdentity(password string) Identity {
 
 func NewOidcAuthMethod(doPKCE bool, config *auth.OIDCConfig) *OidcAuthMethod {
 	return &OidcAuthMethod{
-		doPKCE:    doPKCE,
-		config:    config,
+		doPKCE: doPKCE,
+		config: config,
 	}
 }
 
@@ -82,11 +82,11 @@ func (m *PrivkeyFileAuthMethod) IntoIdentityPassphrase(passphrase string) (Ident
 }
 
 func (m *PrivkeyFileAuthMethod) intoIdentity(passphrase *string) (Identity, error) {
-	
+
 	filename := m.filename
 	if strings.HasPrefix(filename, "~/") {
 		dirname, _ := os.UserHomeDir()
-		filename = path.Join(dirname, filename[2:])	
+		filename = path.Join(dirname, filename[2:])
 	}
 	pemBytes, err := os.ReadFile(filename)
 	if err != nil {
@@ -240,7 +240,6 @@ func (i passwordIdentity) AuthHint() string {
 func (i passwordIdentity) String() string {
 	return "password-identity"
 }
-
 
 type rawBearerTokenIdentity string
 

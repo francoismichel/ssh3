@@ -29,11 +29,11 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
-	"ssh3"
-	"ssh3/auth"
-	"ssh3/cli/client/winsize"
-	ssh3Messages "ssh3/message"
-	"ssh3/util"
+	"github.com/francoismichel/ssh3"
+	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/cmd/ssh3/winsize"
+	ssh3Messages "github.com/francoismichel/ssh3/message"
+	"github.com/francoismichel/ssh3/util"
 
 	"github.com/kevinburke/ssh_config"
 	"github.com/quic-go/quic-go"
@@ -709,7 +709,7 @@ func mainWithStatusCode() int {
 		if transportErr, ok := err.(*quic.TransportError); ok {
 			log.Debug().Err(err).Msg("error is a QUIC transport error")
 			if transportErr.ErrorCode.IsCryptoError() {
-				log.Debug().Err(err).Msg("QUIC transport error is a crypto error")
+				log.Debug().Msgf("received QUIC crypto error on first connection attempt: %s", err)
 				if tty == nil {
 					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
 					return -1

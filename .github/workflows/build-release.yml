@@ -17,7 +17,7 @@ jobs:
   gorelease:
     strategy:
         matrix:
-          variant: [ { imgname: ubuntu-latest, releaserfile: linux-amd64 }, { imgname: ubuntu-latest, releaserfile: linux-arm64 }, { imgname: ubuntu-latest, releaserfile: client-only-all } ]
+          variant: [ { imgname: ubuntu-latest, releaserfile: linux-amd64 }, { imgname: ubuntu-latest, releaserfile: linux-arm64 }, { imgname: ubuntu-latest, releaserfile: unix }, { imgname: ubuntu-latest, releaserfile: client-only-windows } ]
     runs-on: ${{ matrix.variant.imgname }}
     steps:
       - name: Checkout

@@ -19,7 +19,7 @@ Among others, SSH3 allows the following improvements:
 > [!TIP]
 > Quickly want to get started ? Checkout how to [install SSH3](#installing-ssh3). You will learn to [setup an SSH3 server](#deploying-an-ssh3-server) and [use the SSH3 client](#using-the-ssh3-client).
 
-*SSH3* stands for the concatenation of *SSH* and *H3*. 
+*SSH3* stands for the concatenation of *SSH* and *H3*.
 
 ## ⚡ SSH3 is faster
 Faster for session establishment, not throughput ! SSH3 offers a significantly faster session establishment than SSHv2. Establishing a new session with SSHv2 can take 5 to 7 network round-trip times, which can easily be noticed by the user. SSH3 only needs 3 round-trip times. The keystroke latency in a running session is unchanged.
@@ -33,11 +33,11 @@ Faster for session establishment, not throughput ! SSH3 offers a significantly f
 While SSHv2 defines its own protocols for user authentication and secure channel establishment, SSH3 relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP. These protocols are already extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
 
 SSH3 already implements the common password-based and public-key (RSA and EdDSA/ed25519) authentication methods.
-It also supports new authentication methods 
+It also supports new authentication methods
 such as OAuth 2.0 and allows logging in to your servers using your Google/Microsoft/Github accounts.
 
 ## 🥷 Your SSH3 public server can be hidden
-Using SSH3, you can avoid the usual stress of scanning and dictionnary attacks against your SSH server. Similarly to your secret Google Drive documents, your SSH3 server can be hidden behind a secret link and only answer to authentication attempts that made an HTTP request to this specific link, like the following:
+Using SSH3, you can avoid the usual stress of scanning and dictionary attacks against your SSH server. Similarly to your secret Google Drive documents, your SSH3 server can be hidden behind a secret link and only answer to authentication attempts that made an HTTP request to this specific link, like the following:
 
     ssh3-server -bind 192.0.2.0:443 -url-path <my-long-secret>
 
@@ -49,7 +49,7 @@ SSH3 provides new feature that could not be provided by the SSHv2 protocol.
 ### Brand new features
 - **UDP port forwarding**: you can now access your QUIC, DNS, RTP or any UDP-based server that are only reachable from your SSH3 host.
 UDP packets are forwarded using QUIC datagrams.
-- **X.509 certificates**: you can now use your classical HTTPS cerificates to authenticate your SSH3 server. This mechanism is more secure than the classical SSHv2 host key mechanism. Certificates can be obtained easily using LetsEncrypt for instance.
+- **X.509 certificates**: you can now use your classical HTTPS certificates to authenticate your SSH3 server. This mechanism is more secure than the classical SSHv2 host key mechanism. Certificates can be obtained easily using LetsEncrypt for instance.
 - **Hiding** your server behind a secret link.
 - **Keyless** secure user authentication using **OpenID Connect**. You can connect to your SSH3 server using the SSO of your company or your Google/Github account, and you don't need to copy the public keys of your users anymore.
 
@@ -64,12 +64,18 @@ This SSH3 implementation already provides many of the popular features of OpenSS
 - Direct TCP port forwarding (reverse port forwarding will be implemented in the future)
 
 ## Installing SSH3
-You can either download the last [release binaries](https://github.com/francoismichel/ssh3/releases) 
-or generate these binaries yourself by compiling the code from source.
+You can either download the last [release binaries](https://github.com/francoismichel/ssh3/releases),
+[install it using `go install`](#installing-ssh3-and-ssh3-server-using-go-install) or generate these binaries yourself by compiling the code from source.
 
 > [!TIP]
 > SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
-> [secret path](#-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL. 
+> [secret path](#-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL.
+
+### Installing ssh3 and ssh3-server using Go install
+```bash
+go install github.com/francoismichel/ssh3/cmd/...@v0.1.5-rc2
+```
+
 
 
 ### Compiling SSH3 from source
@@ -79,16 +85,16 @@ Downloading the source code and compiling the binaries can be done with the foll
 ```bash
 git clone https://github.com/francoismichel/ssh3    # clone the repo
 cd ssh3
-go build -o ssh3 cli/client/main.go                        # build the client
-CGO_ENABLED=1 go build -o ssh3-server cli/server/main.go   # build the server, requires having gcc installed
+go build -o ssh3 cmd/ssh3/main.go                        # build the client
+CGO_ENABLED=1 go build -o ssh3-server cmd/ssh3-server/main.go   # build the server, requires having gcc installed
 ```
 
-If you have root/sudo priviledges and you want to make ssh3 accessible to all you users,
+If you have root/sudo privileges and you want to make ssh3 accessible to all you users,
 you can then directly copy the binaries to `/usr/bin`:
 
 ```bash
 cp ssh3 /usr/bin/ && cp ssh3-server /usr/bin
-``` 
+```
 
 Otherwise, you can simply add the executables to your `PATH` environment variable by adding
 the following line at the end of your `.bashrc` or equivalent:
@@ -103,7 +109,7 @@ no SSH3 daemon, so right now, you will have to run the `ssh3-server` executable 
 using `screen` or a similar utility.
 
 
-> [!NOTE]  
+> [!NOTE]
 > As SSH3 runs on top of HTTP/3, a server needs an X.509 certificate and its corresponding private key. If you do not want to generate a certificate signed by a real certificate authority, you can generate a self-signed one using the `generate_openssl_selfsigned_certificate.sh` script. This provides you with similar security guarantees to SSHv2's host keys mechanism, with the same security issue: you may be vulnerable to machine-in-the-middle attacks during your first connection to your server. Using real certificates signed by public certificate authorities such as Let's Encrypt avoids this issue.
 
 
@@ -227,7 +233,7 @@ and can contain several identity providers configurations.
 [
     {
         "issuer_url": "https://accounts.google.com",
-        "client_id": "<your_client_id>", 
+        "client_id": "<your_client_id>",
         "client_secret": "<your_client_secret>"
     }
 ]

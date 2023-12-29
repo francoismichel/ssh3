@@ -25,14 +25,11 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	// "github.com/quic-go/quic-go/logging"
-	// "github.com/quic-go/quic-go/qlog"
-
-	ssh3 "ssh3"
-	"ssh3/linux_server"
-	ssh3Messages "ssh3/message"
-	util "ssh3/util"
-	"ssh3/util/linux_util"
+	ssh3 "github.com/francoismichel/ssh3"
+	ssh3Messages "github.com/francoismichel/ssh3/message"
+	"github.com/francoismichel/ssh3/unix_server"
+	util "github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/ssh3/util/unix_util"
 )
 
 var signals = map[string]os.Signal{
@@ -108,13 +105,12 @@ func setWinsize(f *os.File, charWidth, charHeight, pixWidth, pixHeight uint64) {
 		uintptr(unsafe.Pointer(&struct{ h, w, x, y uint16 }{uint16(charHeight), uint16(charWidth), uint16(pixWidth), uint16(pixHeight)})))
 }
 
-
 // Size is needed by the /demo/upload handler to determine the size of the uploaded file
 type Size interface {
 	Size() int64
 }
 
-func setupEnv(user *linux_util.User, runningCommand *runningCommand, authAgentSocketPath string) {
+func setupEnv(user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string) {
 	// TODO: set the environment like in do_setup_env of https://github.com/openssh/openssh-portable/blob/master/session.c
 	runningCommand.Cmd.Env = append(runningCommand.Cmd.Env,
 		fmt.Sprintf("HOME=%s", user.Dir),
@@ -249,10 +245,10 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 }
 
-func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *linux_util.User, runningCommand *runningCommand, authAgentSocketPath string) error {
+func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string) error {
 	setupEnv(user, runningCommand, authAgentSocketPath)
 	if openPty != nil {
-		err := linux_util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
+		err := unix_util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
 		if err != nil {
 			return err
 		}
@@ -377,7 +373,7 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *linux_uti
 	return nil
 }
 
-func newPtyReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
+func newPtyReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
 	var session *runningSession
 	session, ok := runningSessions[channel]
 	if !ok {
@@ -409,11 +405,11 @@ func newPtyReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messages
 	return nil
 }
 
-func newX11Req(user *linux_util.User, channel ssh3.Channel, request ssh3Messages.X11Request, wantReply bool) error {
+func newX11Req(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.X11Request, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newCommand(user *linux_util.User, channel ssh3.Channel, command string, args ...string) error {
+func newCommand(user *unix_util.User, channel ssh3.Channel, loginShell bool, command string, args ...string) error {
 	var session *runningSession
 	session, ok := runningSessions[channel]
 	if !ok {
@@ -442,7 +438,7 @@ func newCommand(user *linux_util.User, channel ssh3.Channel, command string, arg
 		stdoutR = session.pty.pty
 		stderrR = nil
 		stdinW = session.pty.pty
-		cmd, _, _, _, err = user.CreateCommand(env, stdoutW, stderrW, stdinR, command, args...)
+		cmd, _, _, _, err = user.CreateCommand(env, stdoutW, stderrW, stdinR, loginShell, command, args...)
 	} else {
 		stdoutR, stdoutW, err = os.Pipe()
 		if err != nil {
@@ -456,7 +452,7 @@ func newCommand(user *linux_util.User, channel ssh3.Channel, command string, arg
 		if err != nil {
 			return err
 		}
-		cmd, stdoutR, stderrR, stdinW, err = user.CreateCommandPipeOutput(env, command, args...)
+		cmd, stdoutR, stderrR, stdinW, err = user.CreateCommandPipeOutput(env, loginShell, command, args...)
 	}
 
 	if err != nil {
@@ -477,24 +473,24 @@ func newCommand(user *linux_util.User, channel ssh3.Channel, command string, arg
 	return execCmdInBackground(channel, session.pty, user, session.runningCmd, session.authAgentSocketPath)
 }
 
-func newShellReq(user *linux_util.User, channel ssh3.Channel, wantReply bool) error {
-	return newCommand(user, channel, user.Shell)
+func newShellReq(user *unix_util.User, channel ssh3.Channel, wantReply bool) error {
+	return newCommand(user, channel, true, user.Shell)
 }
 
 // similar behaviour to OpenSSH; exec requests are just pasted in the user's shell
-func newCommandInShellReq(user *linux_util.User, channel ssh3.Channel, wantReply bool, command string) error {
-	return newCommand(user, channel, user.Shell, "-c", command)
+func newCommandInShellReq(user *unix_util.User, channel ssh3.Channel, wantReply bool, command string) error {
+	return newCommand(user, channel, false, user.Shell, "-c", command)
 }
 
-func newSubsystemReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
+func newSubsystemReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newWindowChangeReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messages.WindowChangeRequest, wantReply bool) error {
+func newWindowChangeReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.WindowChangeRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newSignalReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
+func newSignalReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
 	runningSession, ok := runningSessions[channel]
 	if !ok {
 		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID(), channel.ConversationID())
@@ -520,15 +516,15 @@ func newSignalReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messa
 	return nil
 }
 
-func newExitStatusReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messages.ExitStatusRequest, wantReply bool) error {
+func newExitStatusReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.ExitStatusRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newExitSignalReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messages.ExitSignalRequest, wantReply bool) error {
+func newExitSignalReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.ExitSignalRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func handleUDPForwardingChannel(ctx context.Context, user *linux_util.User, conv *ssh3.Conversation, channel *ssh3.UDPForwardingChannelImpl) error {
+func handleUDPForwardingChannel(ctx context.Context, user *unix_util.User, conv *ssh3.Conversation, channel *ssh3.UDPForwardingChannelImpl) error {
 	// TODO: currently, the rights for socket creation are not checked. The socket is opened with the process's uid and gid
 	// Not sure how to handled that in go since we cannot temporarily change the uid/gid without potentially impacting every
 	// other goroutine
@@ -540,7 +536,7 @@ func handleUDPForwardingChannel(ctx context.Context, user *linux_util.User, conv
 	return nil
 }
 
-func handleTCPForwardingChannel(ctx context.Context, user *linux_util.User, conv *ssh3.Conversation, channel *ssh3.TCPForwardingChannelImpl) error {
+func handleTCPForwardingChannel(ctx context.Context, user *unix_util.User, conv *ssh3.Conversation, channel *ssh3.TCPForwardingChannelImpl) error {
 	// TODO: currently, the rights for socket creation are not checked. The socket is opened with the process's uid and gid
 	// Not sure how to handled that in go since we cannot temporarily change the uid/gid without potentially impacting every
 	// other goroutine
@@ -552,7 +548,7 @@ func handleTCPForwardingChannel(ctx context.Context, user *linux_util.User, conv
 	return nil
 }
 
-func newDataReq(user *linux_util.User, channel ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
+func newDataReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
 	runningSession, ok := runningSessions[channel]
 	if !ok {
 		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID(), channel.ConversationID())
@@ -637,9 +633,9 @@ func listenAndAcceptAuthSockets(cancel context.CancelCauseFunc, conversation *ss
 	}
 }
 
-func openAgentSocketAndForwardAgent(parent context.Context, conv *ssh3.Conversation, user *linux_util.User) (string, error) {
+func openAgentSocketAndForwardAgent(parent context.Context, conv *ssh3.Conversation, user *unix_util.User) (string, error) {
 	ctx, cancel := context.WithCancelCause(parent)
-	sockPath, err := linux_util.NewUnixSocketPath()
+	sockPath, err := unix_util.NewUnixSocketPath()
 	if err != nil {
 		return "", err
 	}
@@ -675,16 +671,19 @@ func fileExists(path string) bool {
 func main() {
 	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
-	enablePasswordLogin := flag.Bool("enable-password-login", false, "if set, enable password authentication (disabled by default)")
 	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
-	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key " +
-										"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
+	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key "+
+		"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
 	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
 	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
+	enablePasswordLogin := false
+	if unix_util.PasswordAuthAvailable() {
+		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
+	}
 	flag.Parse()
 
-	if !*enablePasswordLogin {
-		fmt.Fprintln(os.Stderr, "password login is currently disabled")
+	if !enablePasswordLogin {
+		fmt.Fprintln(os.Stderr, "password login is disabled")
 	}
 
 	certPathExists := fileExists(*certPath)
@@ -699,7 +698,7 @@ func main() {
 		}
 		if !certPathExists || !keyPathExists {
 			fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
-									 "you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
+				"you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
 			fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
 			os.Exit(-1)
 		}
@@ -731,7 +730,6 @@ func main() {
 		}
 
 	}
-
 
 	if *verbose {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -769,7 +767,7 @@ func main() {
 
 		mux := http.NewServeMux()
 		ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
-			authenticatedUser, err := linux_util.GetUser(authenticatedUsername)
+			authenticatedUser, err := unix_util.GetUser(authenticatedUsername)
 			if err != nil {
 				return err
 			}
@@ -852,7 +850,12 @@ func main() {
 			}
 		})
 		ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
-		mux.HandleFunc(*urlPath, linux_server.HandleAuths(context.Background(), *enablePasswordLogin, 30000, ssh3Handler))
+		handler, err := unix_server.HandleAuths(context.Background(), enablePasswordLogin, 30000, ssh3Handler)
+		if err != nil {
+			log.Error().Msgf("Could not get authentication handlers: %s", err)
+			return
+		}
+		mux.HandleFunc(*urlPath, handler)
 		server.Handler = mux
 		outputMessage := fmt.Sprintf("Server started, listening on %s%s", *bindAddr, *urlPath)
 		fmt.Fprintln(os.Stderr, outputMessage)

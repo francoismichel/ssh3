@@ -1,0 +1,44 @@
+name: Go
+on:
+  pull_request:
+    paths-ignore:
+      - '**/README.md'
+jobs:
+  build-linux:
+    strategy:
+        matrix:
+          go-version: [ '1.20.x', '1.21.x' ]
+          goos: [linux]
+          testuser: [ssh3-testuser]
+          testpasswd: [ssh3-testpasswd]
+          testuserhome: [/home/ssh3-testuser]
+          archparams: [{goarch: amd64, cc: gcc}] #,{goarch: arm64, cc: aarch64-linux-gnu-gcc}]
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+      # Right now, compilation for linux-arm64 is disable as it is a pain.
+      # ARM actions might come soon on GitHub anyway
+      # - name: Add ARM repos to sources.list
+      #   run: |
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-security main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-backports main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      #     echo "deb [arch=arm64] http://ports.ubuntu.com/ jammy-updates main multiverse universe" | sudo tee -a /etc/apt/sources.list
+      # - name: Add ARM architecture and update
+      #   run: sudo dpkg --add-architecture arm64 && sudo apt-get -y update || true
+      # - name: Install toolchain for compiling ARM
+      #   run:  sudo apt-get -y install gcc-aarch64-linux-gnu
+      # - name: Install lcrypt for arm64
+      #   run:  sudo apt-get -y install libc6:arm64 libcrypt-dev:arm64
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '${{matrix.go-version}}'
+      - name: Lint and vet code
+        run: |
+          make lint
+          git diff --exit-code
+      - name: Test
+        run: |
+          make test

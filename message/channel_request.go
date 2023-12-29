@@ -1,4 +1,4 @@
-package ssh3
+package message
 
 import (
 	"bufio"
@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net"
-	util "ssh3/util"
+
+	util "github.com/francoismichel/ssh3/util"
 )
 
 var ChannelRequestParseFuncs = map[string]func(util.Reader) (ChannelRequest, error){

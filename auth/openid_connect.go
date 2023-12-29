@@ -17,8 +17,8 @@ import (
 
 type OIDCIssuerConfig = []*OIDCConfig
 type OIDCConfig struct {
-	IssuerUrl string `json:"issuer_url"`
-	ClientID string  `json:"client_id"`
+	IssuerUrl    string `json:"issuer_url"`
+	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 }
 
@@ -28,15 +28,15 @@ type OIDCConfig struct {
  *  opens a browser window towards the authorization endpoint. A local webserver is temporarily
  *  started at a random port to retrieve the issued authorization token.
  *	This token is then returned as an http url-encoded string.
-*/
+ */
 func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPKCE bool) (rawIDTokey string, err error) {
 	provider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
 		return "", err
-	} 	
+	}
 
 	providerEndpoint := provider.Endpoint()
-	
+
 	randomSecretUrlBytes := [64]byte{}
 	_, err = rand.Read(randomSecretUrlBytes[:])
 	if err != nil {
@@ -45,17 +45,17 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPK
 
 	randomSecretUrl := hex.EncodeToString(randomSecretUrlBytes[:])
 
- 	listener, err := net.Listen("tcp", ":0")
- 	if err != nil {
-		 panic(err)	
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		panic(err)
 	}
-	 
+
 	path := fmt.Sprintf("/ssh/%s", randomSecretUrl)
 	listeningPort := listener.Addr().(*net.TCPAddr).Port
-	 
+
 	secretUrl := fmt.Sprintf("http://localhost:%d%s", listeningPort, path)
 
-		// Configure an OpenID Connect aware OAuth2 client.
+	// Configure an OpenID Connect aware OAuth2 client.
 	oauthConfig := oauth2.Config{
 		ClientID:     oidcConfig.ClientID,
 		ClientSecret: oidcConfig.ClientSecret,
@@ -79,13 +79,13 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPK
 	tokenChannel := make(chan string)
 	mux := http.NewServeMux()
 	mux.Handle(path, getOAuth2Callback(ctx, provider, oidcConfig.ClientID, &oauthConfig, tokenChannel, verifier, doPKCE))
-	server := http.Server{ Handler: mux }
+	server := http.Server{Handler: mux}
 	go server.Serve(listener)
 	var cmd string
 	var args []string
 	switch runtime.GOOS {
 	case "windows":
-	 	cmd = "cmd"
+		cmd = "cmd"
 		args = []string{"/c", "start"}
 	case "darwin":
 		cmd = "open"
@@ -108,16 +108,15 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPK
 		return "", err
 	}
 
-	
 	rawIDToken := <-tokenChannel
 	log.Debug().Msgf("got token: %s", rawIDToken)
 	server.Close()
-	 // todo: trigger a browser on localhost on the listeningPort and fetch the token, and then close the http server
+	// todo: trigger a browser on localhost on the listeningPort and fetch the token, and then close the http server
 	return rawIDToken, nil
 }
 
 func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID string, oauth2Config *oauth2.Config,
-					   tokenChannel chan string, challengeVerifier string, doPKCE bool) http.HandlerFunc {
+	tokenChannel chan string, challengeVerifier string, doPKCE bool) http.HandlerFunc {
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
 
@@ -159,7 +158,7 @@ func getOAuth2Callback(ctx context.Context, provider *oidc.Provider, clientID st
 			return
 		}
 
-		w.Write([]byte("you can now close this tab"))	// status 200 is implicit
+		w.Write([]byte("you can now close this tab")) // status 200 is implicit
 		tokenChannel <- rawIDToken
 	}
 }
@@ -168,8 +167,7 @@ func VerifyRawToken(ctx context.Context, clientID string, issuerURL string, rawI
 	provider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
 		return nil, err
-	} 	
-
+	}
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
 	// Parse and verify ID Token payload.

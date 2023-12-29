@@ -1,15 +1,15 @@
-package linux_server
+package unix_server
 
 import (
 	"net/http"
 	"os"
-	"ssh3"
-	"ssh3/util"
-	"ssh3/util/linux_util"
+
+	"github.com/francoismichel/ssh3"
+	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/ssh3/util/unix_util"
 
 	"github.com/rs/zerolog/log"
 )
-
 
 // BearerAuth returns the bearer token
 // Authorization header, if the request uses HTTP Basic Authentication.
@@ -48,7 +48,7 @@ func HandleBearerAuth(username string, base64ConversationID string, handlerFunc 
 // currently only supports RS256 and EdDSA signing algorithms
 func HandleJWTAuth(username string, newConv *ssh3.Conversation, handlerFunc ssh3.AuthenticatedHandlerFunc) ssh3.UnauthenticatedBearerFunc {
 	return func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request) {
-		user, err := linux_util.GetUser(username)
+		user, err := unix_util.GetUser(username)
 		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			return

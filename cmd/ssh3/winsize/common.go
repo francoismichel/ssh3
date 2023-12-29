@@ -1,4 +1,5 @@
 package winsize
+
 type WindowSize struct {
 	NRows       uint16
 	NCols       uint16

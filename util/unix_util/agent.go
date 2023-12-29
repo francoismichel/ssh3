@@ -1,4 +1,4 @@
-package linux_util
+package unix_util
 
 import (
 	"fmt"

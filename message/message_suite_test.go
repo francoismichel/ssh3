@@ -1,4 +1,4 @@
-package ssh3_test
+package message
 
 import (
 	"testing"
