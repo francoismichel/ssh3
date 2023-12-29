@@ -806,16 +806,25 @@ func mainWithStatusCode() int {
 	}
 	req.Proto = "ssh3"
 	req.Header.Set("User-Agent", ssh3.GetCurrentVersion())
+	log.
+		Debug().
+		Str("Protocol", req.Proto).
+		Strs("UserAgent", req.Header["User-Agent"]).
+		Msg("Patched request")
 
 	var authMethods []interface{}
 
 	// Only do privkey and agent auth if OIDC is not asked explicitly
+	log.Debug().Bool("OIDC", useOIDC).Msg("Checking for explicit OIDC use")
 	if !useOIDC {
+		log.Debug().Bool("OIDC", useOIDC).Msg("Not using OIDC explicitly")
 		if *privKeyFile != "" {
+			log.Debug().Str("PrivateKeyFile", *privKeyFile).Msg("Adding private key file to authentication methods")
 			authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
 		}
 
 		if *pubkeyForAgent != "" {
+			log.Debug().Str("AgentPublicKeyFiles", *pubkeyForAgent).Msg("Checking for keys in agent")
 			if agentClient == nil {
 				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
 			} else {
@@ -842,15 +851,31 @@ func mainWithStatusCode() int {
 			}
 		}
 
+		log.Debug().Bool("PasswordAuthentication", *passwordAuthentication).Msg("Checking for password authentication")
 		if *passwordAuthentication {
+			log.
+				Debug().
+				Bool("PasswordAuthentication", *passwordAuthentication).
+				Msg("Adding password authentication")
 			authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
 		}
 
 	} else {
 		// for now, only perform OIDC if it was explicitly asked by the user
+		log.Debug().Bool("OIDC", useOIDC).Msg("Only using OIDC")
 		if *issuerUrl != "" {
 			for _, issuerConfig := range oidcConfig {
+				log.
+					Debug().
+					Str("OIDCIssuerURL", issuerConfig.IssuerUrl).
+					Str("OIDCClientID", issuerConfig.ClientID).
+					Msg("Got OIDC issuer")
 				if *issuerUrl == issuerConfig.IssuerUrl {
+					log.
+						Debug().
+						Str("OIDCIssuerURL", issuerConfig.IssuerUrl).
+						Str("OIDCClientID", issuerConfig.ClientID).
+						Msg("OIDC Issuer matches wanted one")
 					authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
 				}
 			}
@@ -860,10 +885,16 @@ func mainWithStatusCode() int {
 		}
 	}
 
+	log.Debug().Msg("Adding authentication methods from config")
 	authMethods = append(authMethods, configAuthMethods...)
 
 	if *issuerUrl == "" {
 		for _, issuerConfig := range oidcConfig {
+			log.
+				Debug().
+				Str("OIDCIssuerURL", issuerConfig.IssuerUrl).
+				Str("OIDCClientID", issuerConfig.ClientID).
+				Msg("Adding OIDC issuer")
 			authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
 		}
 	}
