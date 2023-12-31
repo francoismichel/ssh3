@@ -19,7 +19,7 @@ Among others, H3SH allows the following improvements:
 > [!TIP]
 > Quickly want to get started ? Checkout how to [install H3SH](#installing-h3sh). You will learn to [setup an H3SH server](#deploying-an-h3sh-server) and [use the H3SH client](#using-the-h3sh-client).
 
-*H3SH* stands for the concatenation of *SSH* and *H3*.
+*H3SH* stands for *HTTP/3* and *shell*.
 
 ## ⚡ H3SH is faster
 Faster for session establishment, not throughput ! H3SH offers a significantly faster session establishment than SSHv2. Establishing a new session with SSHv2 can take 5 to 7 network round-trip times, which can easily be noticed by the user. H3SH only needs 3 round-trip times. The keystroke latency in a running session is unchanged.
