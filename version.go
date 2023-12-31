@@ -1,4 +1,4 @@
-package ssh3
+package h3sh
 
 import (
 	"fmt"
@@ -29,7 +29,7 @@ func (e UnsupportedSSHVersion) Error() string {
 }
 
 func GetCurrentVersion() string {
-	return fmt.Sprintf("SSH 3.0 francoismichel/ssh3 %d.%d.%d", MAJOR, MINOR, PATCH)
+	return fmt.Sprintf("SSH 3.0 francoismichel/h3sh %d.%d.%d", MAJOR, MINOR, PATCH)
 }
 
 func ParseVersion(version string) (major int, minor int, patch int, err error) {

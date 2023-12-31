@@ -1,4 +1,4 @@
-package ssh3
+package h3sh
 
 import (
 	"crypto"
@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/francoismichel/ssh3/auth"
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/h3sh/auth"
+	"github.com/francoismichel/h3sh/util"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/kevinburke/ssh_config"
@@ -67,7 +67,7 @@ func (m *PrivkeyFileAuthMethod) Filename() string {
 	return m.filename
 }
 
-// IntoIdentityWithoutPassphrase returns an SSH3 identity stored on the provided path.
+// IntoIdentityWithoutPassphrase returns an H3SH identity stored on the provided path.
 // It supports the same keys as ssh.ParsePrivateKey
 // If the private key is encrypted, it returns an ssh.PassphraseMissingError.
 func (m *PrivkeyFileAuthMethod) IntoIdentityWithoutPassphrase() (Identity, error) {
@@ -132,7 +132,7 @@ func (m *AgentAuthMethod) IntoIdentity(agent agent.ExtendedAgent) Identity {
 	}
 }
 
-// a generic way to generate SSH3 identities to populate the HTTP Authorization header
+// a generic way to generate H3SH identities to populate the HTTP Authorization header
 type Identity interface {
 	SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error
 	// provides an authentication name that can be used as a hint for the server in the url query params
@@ -298,9 +298,9 @@ func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, usern
 		"iss":       username,
 		"iat":       jwt.NewNumericDate(time.Now()),
 		"exp":       jwt.NewNumericDate(time.Now().Add(10 * time.Second)),
-		"sub":       "ssh3",
+		"sub":       "h3sh",
 		"aud":       "unused",
-		"client_id": fmt.Sprintf("ssh3-%s", username),
+		"client_id": fmt.Sprintf("h3sh-%s", username),
 		"jti":       b64ConvID,
 	})
 

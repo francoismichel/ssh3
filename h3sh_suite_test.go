@@ -1,4 +1,4 @@
-package ssh3_test
+package h3sh_test
 
 import (
 	"testing"

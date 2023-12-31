@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/util"
-	"github.com/francoismichel/ssh3/util/unix_util"
+	"github.com/francoismichel/h3sh"
+	"github.com/francoismichel/h3sh/util"
+	"github.com/francoismichel/h3sh/util/unix_util"
 
 	"github.com/rs/zerolog/log"
 )
@@ -34,7 +34,7 @@ func parseBearerAuth(auth string) (bearer string, ok bool) {
 	return string(auth[len(prefix):]), true
 }
 
-func HandleBearerAuth(username string, base64ConversationID string, handlerFunc ssh3.UnauthenticatedBearerFunc) http.HandlerFunc {
+func HandleBearerAuth(username string, base64ConversationID string, handlerFunc h3sh.UnauthenticatedBearerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		bearerString, ok := BearerAuth(r)
 		if !ok {
@@ -46,7 +46,7 @@ func HandleBearerAuth(username string, base64ConversationID string, handlerFunc 
 }
 
 // currently only supports RS256 and EdDSA signing algorithms
-func HandleJWTAuth(username string, newConv *ssh3.Conversation, handlerFunc ssh3.AuthenticatedHandlerFunc) ssh3.UnauthenticatedBearerFunc {
+func HandleJWTAuth(username string, newConv *h3sh.Conversation, handlerFunc h3sh.AuthenticatedHandlerFunc) h3sh.UnauthenticatedBearerFunc {
 	return func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request) {
 		user, err := unix_util.GetUser(username)
 		if err != nil {
