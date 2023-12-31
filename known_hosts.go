@@ -1,4 +1,4 @@
-package ssh3
+package h3sh
 
 import (
 	"bufio"

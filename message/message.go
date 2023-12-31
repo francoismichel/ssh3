@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/h3sh/util"
 )
 
 // ssh messages type

@@ -1,9 +1,9 @@
-package ssh3
+package h3sh
 
 import (
 	"sync"
 
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/h3sh/util"
 	"github.com/quic-go/quic-go/http3"
 )
 

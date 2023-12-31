@@ -29,11 +29,11 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
-	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/auth"
-	"github.com/francoismichel/ssh3/cmd/ssh3/winsize"
-	ssh3Messages "github.com/francoismichel/ssh3/message"
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/h3sh"
+	"github.com/francoismichel/h3sh/auth"
+	"github.com/francoismichel/h3sh/cmd/h3sh/winsize"
+	h3shMessages "github.com/francoismichel/h3sh/message"
+	"github.com/francoismichel/h3sh/util"
 
 	"github.com/kevinburke/ssh_config"
 	"github.com/quic-go/quic-go"
@@ -51,7 +51,7 @@ func homedir() string {
 	}
 }
 
-func forwardAgent(parent context.Context, channel ssh3.Channel) error {
+func forwardAgent(parent context.Context, channel h3sh.Channel) error {
 	sockPath := os.Getenv("SSH_AUTH_SOCK")
 	if sockPath == "" {
 		return fmt.Errorf("no auth socket in SSH_AUTH_SOCK env var")
@@ -64,7 +64,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	ctx, cancel := context.WithCancelCause(parent)
 	go func() {
 		var err error = nil
-		var genericMessage ssh3Messages.Message
+		var genericMessage h3shMessages.Message
 		for {
 			select {
 			case <-ctx.Done():
@@ -84,7 +84,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 					return
 				}
 				switch message := genericMessage.(type) {
-				case *ssh3Messages.DataOrExtendedDataMessage:
+				case *h3shMessages.DataOrExtendedDataMessage:
 					_, err = c.Write([]byte(message.Data))
 					if err != nil {
 						err = fmt.Errorf("error when writing on unix socker for agent forwarding channel %d: %s", channel.ChannelID(), err.Error())
@@ -119,7 +119,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 				log.Error().Msgf("could not read on unix socket: %s", err.Error())
 				return err
 			}
-			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			_, err = channel.WriteData(buf[:n], h3shMessages.SSH_EXTENDED_DATA_NONE)
 			if err != nil {
 				cancel(err)
 				log.Error().Msgf("could not write on ssh channel: %s", err.Error())
@@ -129,7 +129,7 @@ func forwardAgent(parent context.Context, channel ssh3.Channel) error {
 	}
 }
 
-func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
+func forwardTCPInBackground(ctx context.Context, channel h3sh.Channel, conn *net.TCPConn) {
 	go func() {
 		defer conn.CloseWrite()
 		for {
@@ -152,8 +152,8 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 			}
 
 			switch message := genericMessage.(type) {
-			case *ssh3Messages.DataOrExtendedDataMessage:
-				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
+			case *h3shMessages.DataOrExtendedDataMessage:
+				if message.DataType == h3shMessages.SSH_EXTENDED_DATA_NONE {
 					_, err := conn.Write([]byte(message.Data))
 					if err != nil {
 						log.Error().Msgf("could not write data on TCP socket: %s", err)
@@ -185,7 +185,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				log.Error().Msgf("could read data on TCP socket: %s", err)
 				return
 			}
-			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			_, errWrite := channel.WriteData(buf[:n], h3shMessages.SSH_EXTENDED_DATA_NONE)
 			if errWrite != nil {
 				switch quicErr := errWrite.(type) {
 				case *quic.StreamError:
@@ -249,18 +249,18 @@ func mainWithStatusCode() int {
 
 	useOIDC := *issuerUrl != ""
 
-	ssh3Dir := path.Join(homedir(), ".ssh3")
-	os.MkdirAll(ssh3Dir, 0700)
+	h3shDir := path.Join(homedir(), ".h3sh")
+	os.MkdirAll(h3shDir, 0700)
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	if *verbose {
 		util.ConfigureLogger("debug")
 	} else {
-		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+		util.ConfigureLogger(os.Getenv("H3SH_LOG_LEVEL"))
 	}
 
-	knownHostsPath := path.Join(ssh3Dir, "known_hosts")
-	knownHosts, skippedLines, err := ssh3.ParseKnownHosts(knownHostsPath)
+	knownHostsPath := path.Join(h3shDir, "known_hosts")
+	knownHosts, skippedLines, err := h3sh.ParseKnownHosts(knownHostsPath)
 	if len(skippedLines) != 0 {
 		stringSkippedLines := []string{}
 		for _, lineNumber := range skippedLines {
@@ -355,7 +355,7 @@ func mainWithStatusCode() int {
 	var oidcConfig auth.OIDCIssuerConfig = nil
 	var oidcConfigFile *os.File = nil
 	if *oidcConfigFileName == "" {
-		defaultFileName := path.Join(ssh3Dir, "oidc_config.json")
+		defaultFileName := path.Join(h3shDir, "oidc_config.json")
 		oidcConfigFile, err = os.Open(defaultFileName)
 		if err != nil && !os.IsNotExist(err) {
 			log.Warn().Msgf("could not open %s: %s", defaultFileName, err.Error())
@@ -399,7 +399,7 @@ func mainWithStatusCode() int {
 
 	urlHostname, urlPort := parsedUrl.Hostname(), parsedUrl.Port()
 
-	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	configHostname, configPort, configUser, configAuthMethods, err := h3sh.GetConfigForHost(urlHostname, sshConfig)
 	if err != nil {
 		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
 		return -1
@@ -471,21 +471,21 @@ func mainWithStatusCode() int {
 	}
 
 	if certs, ok := knownHosts[hostname]; ok {
-		foundSelfsignedSSH3 := false
+		foundSelfsignedH3SH := false
 
 		for _, cert := range certs {
 			pool.AddCert(cert)
-			if cert.VerifyHostname("selfsigned.ssh3") == nil {
-				foundSelfsignedSSH3 = true
+			if cert.VerifyHostname("selfsigned.h3sh") == nil {
+				foundSelfsignedH3SH = true
 			}
 		}
 
-		// If no IP SAN was in the cert, then assume the self-signed cert at least matches the .ssh3 TLD
-		if foundSelfsignedSSH3 {
-			// Put "ssh3" as ServerName so that the TLS verification can succeed
+		// If no IP SAN was in the cert, then assume the self-signed cert at least matches the .h3sh TLD
+		if foundSelfsignedH3SH {
+			// Put "h3sh" as ServerName so that the TLS verification can succeed
 			// Otherwise, TLS refuses to validate a certificate without IP SANs
 			// if the hostname is an IP address.
-			tlsConf.ServerName = "selfsigned.ssh3"
+			tlsConf.ServerName = "selfsigned.h3sh"
 		}
 	}
 
@@ -586,7 +586,7 @@ func mainWithStatusCode() int {
 					"This session is vulnerable a machine-in-the-middle attack.\n\r" +
 					"Certificate fingerprint: " +
 					"SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
-					"Do you want to add this certificate to ~/.ssh3/known_hosts (yes/no)? ")
+					"Do you want to add this certificate to ~/.h3sh/known_hosts (yes/no)? ")
 				if err != nil {
 					log.Error().Msgf("cound not write on /dev/tty: %s", err)
 					return -1
@@ -607,7 +607,7 @@ func mainWithStatusCode() int {
 					log.Info().Msg("Connection aborted")
 					return 0
 				}
-				if err := ssh3.AppendKnownHost(knownHostsPath, hostname, peerCertificate); err != nil {
+				if err := h3sh.AppendKnownHost(knownHostsPath, hostname, peerCertificate); err != nil {
 					log.Error().Msgf("could not append known host to %s: %s", knownHostsPath, err)
 					return -1
 				}
@@ -632,7 +632,7 @@ func mainWithStatusCode() int {
 	log.Debug().Msgf("QUIC handshake complete")
 	// Now, we're 1-RTT, we can get the TLS exporter and create the conversation
 	tls := qClient.ConnectionState().TLS
-	conv, err := ssh3.NewClientConversation(30000, 10, &tls)
+	conv, err := h3sh.NewClientConversation(30000, 10, &tls)
 	if err != nil {
 		log.Error().Msgf("could not create new client conversation: %s", err)
 		return -1
@@ -643,15 +643,15 @@ func mainWithStatusCode() int {
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
-	req.Proto = "ssh3"
-	req.Header.Set("User-Agent", ssh3.GetCurrentVersion())
+	req.Proto = "h3sh"
+	req.Header.Set("User-Agent", h3sh.GetCurrentVersion())
 
 	var authMethods []interface{}
 
 	// Only do privkey and agent auth if OIDC is not asked explicitly
 	if !useOIDC {
 		if *privKeyFile != "" {
-			authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
+			authMethods = append(authMethods, h3sh.NewPrivkeyFileAuthMethod(*privKeyFile))
 		}
 
 		if *pubkeyForAgent != "" {
@@ -675,14 +675,14 @@ func mainWithStatusCode() int {
 				for _, candidateKey := range agentKeys {
 					if pubkey == nil || bytes.Equal(candidateKey.Marshal(), pubkey.Marshal()) {
 						log.Debug().Msgf("found key in agent: %s", candidateKey)
-						authMethods = append(authMethods, ssh3.NewAgentAuthMethod(candidateKey))
+						authMethods = append(authMethods, h3sh.NewAgentAuthMethod(candidateKey))
 					}
 				}
 			}
 		}
 
 		if *passwordAuthentication {
-			authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
+			authMethods = append(authMethods, h3sh.NewPasswordAuthMethod())
 		}
 
 	} else {
@@ -690,7 +690,7 @@ func mainWithStatusCode() int {
 		if *issuerUrl != "" {
 			for _, issuerConfig := range oidcConfig {
 				if *issuerUrl == issuerConfig.IssuerUrl {
-					authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+					authMethods = append(authMethods, h3sh.NewOidcAuthMethod(*doPKCE, issuerConfig))
 				}
 			}
 		} else {
@@ -703,14 +703,14 @@ func mainWithStatusCode() int {
 
 	if *issuerUrl == "" {
 		for _, issuerConfig := range oidcConfig {
-			authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+			authMethods = append(authMethods, h3sh.NewOidcAuthMethod(*doPKCE, issuerConfig))
 		}
 	}
 
-	var identity ssh3.Identity
+	var identity h3sh.Identity
 	for _, method := range authMethods {
 		switch m := method.(type) {
-		case *ssh3.PasswordAuthMethod:
+		case *h3sh.PasswordAuthMethod:
 			fmt.Printf("password for %s:", parsedUrl.String())
 			password, err := term.ReadPassword(int(syscall.Stdin))
 			fmt.Println()
@@ -719,7 +719,7 @@ func mainWithStatusCode() int {
 				return -1
 			}
 			identity = m.IntoIdentity(string(password))
-		case *ssh3.PrivkeyFileAuthMethod:
+		case *h3sh.PrivkeyFileAuthMethod:
 			identity, err = m.IntoIdentityWithoutPassphrase()
 			// could not identify without passphrase, try agent authentication by using the key's public key
 			if passphraseErr, ok := err.(*ssh.PassphraseMissingError); ok {
@@ -742,7 +742,7 @@ func mainWithStatusCode() int {
 					for _, agentKey := range agentKeys {
 						if bytes.Equal(agentKey.Marshal(), pubkey.Marshal()) {
 							log.Debug().Msgf("found key in agent: %s", agentKey)
-							identity = ssh3.NewAgentAuthMethod(pubkey).IntoIdentity(agentClient)
+							identity = h3sh.NewAgentAuthMethod(pubkey).IntoIdentity(agentClient)
 							foundAgentKey = true
 							break
 						}
@@ -769,9 +769,9 @@ func mainWithStatusCode() int {
 			} else if err != nil {
 				log.Warn().Msgf("Could not load private key: %s", err)
 			}
-		case *ssh3.AgentAuthMethod:
+		case *h3sh.AgentAuthMethod:
 			identity = m.IntoIdentity(agentClient)
-		case *ssh3.OidcAuthMethod:
+		case *h3sh.OidcAuthMethod:
 			token, err := auth.Connect(context.Background(), m.OIDCConfig(), m.OIDCConfig().IssuerUrl, *doPKCE)
 			if err != nil {
 				log.Error().Msgf("could not get token: %s", err)
@@ -816,7 +816,7 @@ func mainWithStatusCode() int {
 	log.Debug().Msgf("opened new session channel")
 
 	if *forwardSSHAgent {
-		_, err := channel.WriteData([]byte("forward-agent"), ssh3Messages.SSH_EXTENDED_DATA_NONE)
+		_, err := channel.WriteData([]byte("forward-agent"), h3shMessages.SSH_EXTENDED_DATA_NONE)
 		if err != nil {
 			log.Error().Msgf("could not forward agent: %s", err.Error())
 			return -1
@@ -856,9 +856,9 @@ func mainWithStatusCode() int {
 				os.Exit(-1)
 			}
 			err = channel.SendRequest(
-				&ssh3Messages.ChannelRequestMessage{
+				&h3shMessages.ChannelRequestMessage{
 					WantReply: true,
-					ChannelRequest: &ssh3Messages.PtyRequest{
+					ChannelRequest: &h3shMessages.PtyRequest{
 						Term:        os.Getenv("TERM"),
 						CharWidth:   uint64(windowSize.NCols),
 						CharHeight:  uint64(windowSize.NRows),
@@ -876,9 +876,9 @@ func mainWithStatusCode() int {
 		}
 
 		err = channel.SendRequest(
-			&ssh3Messages.ChannelRequestMessage{
+			&h3shMessages.ChannelRequestMessage{
 				WantReply:      true,
-				ChannelRequest: &ssh3Messages.ShellRequest{},
+				ChannelRequest: &h3shMessages.ShellRequest{},
 			},
 		)
 		log.Debug().Msgf("sent shell request")
@@ -894,9 +894,9 @@ func mainWithStatusCode() int {
 		}
 	} else {
 		channel.SendRequest(
-			&ssh3Messages.ChannelRequestMessage{
+			&h3shMessages.ChannelRequestMessage{
 				WantReply: true,
-				ChannelRequest: &ssh3Messages.ExecRequest{
+				ChannelRequest: &h3shMessages.ExecRequest{
 					Command: strings.Join(command, " "),
 				},
 			},
@@ -914,7 +914,7 @@ func mainWithStatusCode() int {
 		for {
 			n, err := os.Stdin.Read(buf)
 			if n > 0 {
-				_, err2 := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+				_, err2 := channel.WriteData(buf[:n], h3shMessages.SSH_EXTENDED_DATA_NONE)
 				if err2 != nil {
 					fmt.Fprintf(os.Stderr, "could not write data on channel: %+v", err2)
 					return
@@ -934,7 +934,7 @@ func mainWithStatusCode() int {
 			log.Error().Msgf("could listen on UDP socket: %s", err)
 			return -1
 		}
-		forwardings := make(map[string]ssh3.Channel)
+		forwardings := make(map[string]h3sh.Channel)
 		go func() {
 			buf := make([]byte, 1500)
 			for {
@@ -1010,40 +1010,40 @@ func mainWithStatusCode() int {
 			os.Exit(-1)
 		}
 		switch message := genericMessage.(type) {
-		case *ssh3Messages.ChannelRequestMessage:
+		case *h3shMessages.ChannelRequestMessage:
 			switch requestMessage := message.ChannelRequest.(type) {
-			case *ssh3Messages.PtyRequest:
+			case *h3shMessages.PtyRequest:
 				fmt.Fprintf(os.Stderr, "receiving a pty request on the client is not implemented\n")
-			case *ssh3Messages.X11Request:
+			case *h3shMessages.X11Request:
 				fmt.Fprintf(os.Stderr, "receiving a x11 request on the client is not implemented\n")
-			case *ssh3Messages.ShellRequest:
+			case *h3shMessages.ShellRequest:
 				fmt.Fprintf(os.Stderr, "receiving a shell request on the client is not implemented\n")
-			case *ssh3Messages.ExecRequest:
+			case *h3shMessages.ExecRequest:
 				fmt.Fprintf(os.Stderr, "receiving a exec request on the client is not implemented\n")
-			case *ssh3Messages.SubsystemRequest:
+			case *h3shMessages.SubsystemRequest:
 				fmt.Fprintf(os.Stderr, "receiving a subsystem request on the client is not implemented\n")
-			case *ssh3Messages.WindowChangeRequest:
+			case *h3shMessages.WindowChangeRequest:
 				fmt.Fprintf(os.Stderr, "receiving a windowchange request on the client is not implemented\n")
-			case *ssh3Messages.SignalRequest:
+			case *h3shMessages.SignalRequest:
 				fmt.Fprintf(os.Stderr, "receiving a signal request on the client is not implemented\n")
-			case *ssh3Messages.ExitStatusRequest:
-				log.Info().Msgf("ssh3: process exited with status: %d\n", requestMessage.ExitStatus)
+			case *h3shMessages.ExitStatusRequest:
+				log.Info().Msgf("h3sh: process exited with status: %d\n", requestMessage.ExitStatus)
 				// forward the process' status code to the user
 				return int(requestMessage.ExitStatus)
-			case *ssh3Messages.ExitSignalRequest:
-				log.Info().Msgf("ssh3: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
+			case *h3shMessages.ExitSignalRequest:
+				log.Info().Msgf("h3sh: process exited with signal: %s: %s\n", requestMessage.SignalNameWithoutSig, requestMessage.ErrorMessageUTF8)
 				return -1
 			}
-		case *ssh3Messages.DataOrExtendedDataMessage:
+		case *h3shMessages.DataOrExtendedDataMessage:
 			switch message.DataType {
-			case ssh3Messages.SSH_EXTENDED_DATA_NONE:
+			case h3shMessages.SSH_EXTENDED_DATA_NONE:
 				_, err = os.Stdout.Write([]byte(message.Data))
 				if err != nil {
 					log.Fatal().Msgf("%s", err)
 				}
 
 				log.Debug().Msgf("received data %s", message.Data)
-			case ssh3Messages.SSH_EXTENDED_DATA_STDERR:
+			case h3shMessages.SSH_EXTENDED_DATA_STDERR:
 				_, err = os.Stderr.Write([]byte(message.Data))
 				if err != nil {
 					log.Fatal().Msgf("%s", err)
