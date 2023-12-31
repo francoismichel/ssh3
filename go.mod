@@ -1,4 +1,4 @@
-module github.com/francoismichel/ssh3
+module github.com/francoismichel/h3sh
 
 require (
 	github.com/coreos/go-oidc/v3 v3.7.0

@@ -61,8 +61,8 @@ type BytesReadCloser struct {
 
 func (b *BytesReadCloser) Close() error { return nil }
 
-// sends an ssh3 datagram. The function must know the ID of the channel
-type SSH3DatagramSenderFunc func(p []byte) error
+// sends an h3sh datagram. The function must know the ID of the channel
+type H3SHDatagramSenderFunc func(p []byte) error
 
 type MessageSender interface {
 	SendMessage(p []byte) error
