@@ -749,7 +749,7 @@ func mainWithStatusCode() int {
 					for _, agentKey := range agentKeys {
 						if bytes.Equal(agentKey.Marshal(), pubkey.Marshal()) {
 							log.Debug().Msgf("found key in agent: %s", agentKey)
-							identity = ssh3.NewAgentAuthMethod(pubkey).IntoIdentity(agentClient)
+							identity = ssh3.NewAgentAuthMethod(pubkey).IntoIdentity(agentClient, expiration, *allowProxies)
 							foundAgentKey = true
 							break
 						}
@@ -777,7 +777,7 @@ func mainWithStatusCode() int {
 				log.Warn().Msgf("Could not load private key: %s", err)
 			}
 		case *ssh3.AgentAuthMethod:
-			identity = m.IntoIdentity(agentClient)
+			identity = m.IntoIdentity(agentClient, expiration, *allowProxies)
 		case *ssh3.OidcAuthMethod:
 			token, err := auth.Connect(context.Background(), m.OIDCConfig(), m.OIDCConfig().IssuerUrl, *doPKCE)
 			if err != nil {

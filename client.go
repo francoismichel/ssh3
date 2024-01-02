@@ -114,6 +114,8 @@ func (m *PrivkeyFileAuthMethod) intoIdentity(passphrase *string, expiration time
 	return &privkeyFileIdentity{
 		privkey:       cryptoSigner,
 		signingMethod: signingMethod,
+		expiration:    expiration,
+		allowProxies:  allowProxies,
 	}, nil
 }
 
@@ -125,10 +127,12 @@ func NewAgentAuthMethod(pubkey ssh.PublicKey) *AgentAuthMethod {
 
 // A prerequisite of calling this methiod is that the provided pubkey is explicitly listed by the agent
 // This can be verified beforehand by calling agent.List()
-func (m *AgentAuthMethod) IntoIdentity(agent agent.ExtendedAgent) Identity {
+func (m *AgentAuthMethod) IntoIdentity(agent agent.ExtendedAgent, expiration time.Duration, allowProxies bool) Identity {
 	return &agentBasedIdentity{
-		pubkey: m.pubkey,
-		agent:  agent,
+		pubkey:       m.pubkey,
+		agent:        agent,
+		expiration:   expiration,
+		allowProxies: allowProxies,
 	}
 }
 
