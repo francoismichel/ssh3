@@ -69,7 +69,9 @@ func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64Conversation
 			if clientId, ok := claims["client_id"]; !ok || clientId != fmt.Sprintf("ssh3-%s", i.username) {
 				return false
 			}
-			if jti, ok := claims["jti"]; !ok || jti != base64ConversationID {
+
+			// if a JTI is specifically set, use it. If absent, then rely on expiration for replay protection
+			if jti, ok := claims["jti"]; ok && jti != base64ConversationID {
 				log.Error().Msgf("rsa verification failed: the jti claim does not contain the base64-encoded conversation ID")
 				return false
 			}
