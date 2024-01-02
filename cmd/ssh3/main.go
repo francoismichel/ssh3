@@ -243,11 +243,18 @@ func mainWithStatusCode() int {
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
+	allowProxies := flag.Bool("allow-mitm-proxies", false, "if set, allow the use of HTTP proxies as intermediates. Be careful that these proxies must be trusted as they manipulate unencrypted user authentication material")
 	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	args := flag.Args()
 
 	useOIDC := *issuerUrl != ""
+
+	// if proxies are enabled, increase the bearer token expiration time at it may take longer to go through proxies
+	expiration := 10 * time.Second
+	if *allowProxies {
+		expiration = 1 * time.Minute
+	}
 
 	ssh3Dir := path.Join(homedir(), ".ssh3")
 	os.MkdirAll(ssh3Dir, 0700)
@@ -720,7 +727,7 @@ func mainWithStatusCode() int {
 			}
 			identity = m.IntoIdentity(string(password))
 		case *ssh3.PrivkeyFileAuthMethod:
-			identity, err = m.IntoIdentityWithoutPassphrase()
+			identity, err = m.IntoIdentityWithoutPassphrase(expiration, *allowProxies)
 			// could not identify without passphrase, try agent authentication by using the key's public key
 			if passphraseErr, ok := err.(*ssh.PassphraseMissingError); ok {
 				// the pubkey may be contained in the privkey file
@@ -760,7 +767,7 @@ func mainWithStatusCode() int {
 						return -1
 					}
 					passphrase := string(passphraseBytes)
-					identity, err = m.IntoIdentityPassphrase(passphrase)
+					identity, err = m.IntoIdentityPassphrase(passphrase, expiration, *allowProxies)
 					if err != nil {
 						log.Error().Msgf("could not load private key: %s", err)
 						return -1

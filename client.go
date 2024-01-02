@@ -70,18 +70,18 @@ func (m *PrivkeyFileAuthMethod) Filename() string {
 // IntoIdentityWithoutPassphrase returns an SSH3 identity stored on the provided path.
 // It supports the same keys as ssh.ParsePrivateKey
 // If the private key is encrypted, it returns an ssh.PassphraseMissingError.
-func (m *PrivkeyFileAuthMethod) IntoIdentityWithoutPassphrase() (Identity, error) {
-	return m.intoIdentity(nil)
+func (m *PrivkeyFileAuthMethod) IntoIdentityWithoutPassphrase(expiration time.Duration, allowProxies bool) (Identity, error) {
+	return m.intoIdentity(nil, expiration, allowProxies)
 }
 
 // IntoIdentityPassphrase returns a passphrase-protected private key stored on the provided path.
 // It supports the same keys as ssh.ParsePrivateKey
 // If the passphrase is wrong, it returns an x509.IncorrectPasswordError.
-func (m *PrivkeyFileAuthMethod) IntoIdentityPassphrase(passphrase string) (Identity, error) {
-	return m.intoIdentity(&passphrase)
+func (m *PrivkeyFileAuthMethod) IntoIdentityPassphrase(passphrase string, expiration time.Duration, allowProxies bool) (Identity, error) {
+	return m.intoIdentity(&passphrase, expiration, allowProxies)
 }
 
-func (m *PrivkeyFileAuthMethod) intoIdentity(passphrase *string) (Identity, error) {
+func (m *PrivkeyFileAuthMethod) intoIdentity(passphrase *string, expiration time.Duration, allowProxies bool) (Identity, error) {
 
 	filename := m.filename
 	if strings.HasPrefix(filename, "~/") {
@@ -144,10 +144,12 @@ type Identity interface {
 type privkeyFileIdentity struct {
 	privkey       crypto.Signer
 	signingMethod jwt.SigningMethod
+	expiration    time.Duration
+	allowProxies  bool
 }
 
 func (i *privkeyFileIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
-	bearerToken, err := buildJWTBearerToken(i.signingMethod, i.privkey, username, conversation)
+	bearerToken, err := buildJWTBearerToken(i.signingMethod, i.privkey, username, conversation, i.expiration, i.allowProxies)
 	if err != nil {
 		return err
 	}
@@ -196,8 +198,10 @@ func (m *agentSigningMethod) Alg() string {
 
 // represents an identity using a running SSH agent
 type agentBasedIdentity struct {
-	pubkey ssh.PublicKey
-	agent  agent.ExtendedAgent
+	pubkey       ssh.PublicKey
+	agent        agent.ExtendedAgent
+	expiration   time.Duration
+	allowProxies bool
 }
 
 func (i *agentBasedIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
@@ -206,7 +210,7 @@ func (i *agentBasedIdentity) SetAuthorizationHeader(req *http.Request, username 
 		Key:   i.pubkey,
 	}
 
-	bearerToken, err := buildJWTBearerToken(signingMethod, i.pubkey, username, conversation)
+	bearerToken, err := buildJWTBearerToken(signingMethod, i.pubkey, username, conversation, i.expiration, i.allowProxies)
 	if err != nil {
 		return err
 	}
@@ -291,18 +295,22 @@ func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, 
 	return hostname, port, user, authMethodsToTry, nil
 }
 
-func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation) (string, error) {
-	convID := conversation.ConversationID()
-	b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
-	token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
+func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation, expiration time.Duration, allowProxies bool) (string, error) {
+	mapClaims := jwt.MapClaims{
 		"iss":       username,
 		"iat":       jwt.NewNumericDate(time.Now()),
-		"exp":       jwt.NewNumericDate(time.Now().Add(10 * time.Second)),
+		"exp":       jwt.NewNumericDate(time.Now().Add(expiration)),
 		"sub":       "ssh3",
 		"aud":       "unused",
 		"client_id": fmt.Sprintf("ssh3-%s", username),
-		"jti":       b64ConvID,
-	})
+	}
+	// if specified, enforce full end-to-end communication
+	if !allowProxies {
+		convID := conversation.ConversationID()
+		b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
+		mapClaims["jti"] = b64ConvID
+	}
+	token := jwt.NewWithClaims(signingMethod, mapClaims)
 
 	// the jwt lib handles "any kind" of crypto signer
 	signedString, err := token.SignedString(key)
