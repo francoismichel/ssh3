@@ -10,6 +10,16 @@ import (
 	"syscall"
 )
 
+type KnownHosts map[string][]*x509.Certificate
+
+func (kh KnownHosts) Knows(hostname string) bool {
+	if len(kh) == 0 {
+		return false
+	}
+	_, ok := kh[hostname]
+	return ok
+}
+
 type InvalidKnownHost struct {
 	line string
 }
@@ -18,7 +28,7 @@ func (e InvalidKnownHost) Error() string {
 	return fmt.Sprintf("invalid known host line: %s", e.line)
 }
 
-func ParseKnownHosts(filename string) (knownHosts map[string][]*x509.Certificate, invalidLines []int, err error) {
+func ParseKnownHosts(filename string) (knownHosts KnownHosts, invalidLines []int, err error) {
 	knownHosts = make(map[string][]*x509.Certificate)
 	file, err := os.Open(filename)
 	if os.IsNotExist(err) {

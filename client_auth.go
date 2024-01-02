@@ -32,6 +32,10 @@ func (m *OidcAuthMethod) OIDCConfig() *auth.OIDCConfig {
 	return m.config
 }
 
+func (m *OidcAuthMethod) DoPKCE() bool {
+	return m.doPKCE
+}
+
 type PrivkeyFileAuthMethod struct {
 	filename string
 }

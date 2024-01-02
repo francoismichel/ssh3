@@ -1,21 +1,32 @@
 package main
 
 import (
+	"bufio"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	osuser "os/user"
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/francoismichel/ssh3"
 	"github.com/francoismichel/ssh3/auth"
 	"github.com/francoismichel/ssh3/client"
 	"github.com/francoismichel/ssh3/util"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/kevinburke/ssh_config"
 	"github.com/rs/zerolog"
@@ -29,6 +40,152 @@ func homedir() string {
 	} else {
 		return os.Getenv("HOME")
 	}
+}
+
+// If non-nil, use udpConn as transport (can be used for proxy jump)
+// Otherwise, create a UDPConn from udp://host:port
+func setupQUICConnection(ctx context.Context, insecure bool, keylog io.Writer, ssh3Dir string, certPool *x509.CertPool, knownHostsPath string, knownHosts ssh3.KnownHosts,
+				   oidcConfig []*auth.OIDCConfig, hostname string, port int, udpConn *net.UDPConn, tty *os.File) (quic.EarlyConnection, int) {
+
+	hostnameIsAnIP := net.ParseIP(hostname) != nil
+	if hostnameIsAnIP {
+		ip := net.ParseIP(hostname)
+		if ip.To4() == nil && ip.To16() != nil {
+			// enforce the square-bracketed notation for ipv6 UDP addresses
+			hostname = fmt.Sprintf("[%s]", hostname)
+		}
+	}
+	remoteAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", hostname, port))
+	if err != nil {
+		log.Error().Msgf("could not resolve UDP address: %s", err)
+		return nil, -1
+	}
+	if udpConn == nil {
+		udpConn, err = net.ListenUDP("udp", nil)
+		if err != nil {
+			log.Error().Msgf("could not create UDP connection: %s", err)
+			return nil, -1
+		}
+	}
+
+	tlsConf := &tls.Config{
+		RootCAs:            certPool,
+		InsecureSkipVerify: insecure,
+		NextProtos:         []string{http3.NextProtoH3},
+		KeyLogWriter: keylog,
+	}
+
+	var qconf quic.Config
+
+	qconf.MaxIncomingStreams = 10
+	qconf.Allow0RTT = true
+	qconf.EnableDatagrams = true
+	qconf.KeepAlivePeriod = 1 * time.Second
+
+
+	if certs, ok := knownHosts[hostname]; ok {
+		foundSelfsignedSSH3 := false
+
+		for _, cert := range certs {
+			certPool.AddCert(cert)
+			if cert.VerifyHostname("selfsigned.ssh3") == nil {
+				foundSelfsignedSSH3 = true
+			}
+		}
+
+		// If no IP SAN was in the cert, then assume the self-signed cert at least matches the .ssh3 TLD
+		if foundSelfsignedSSH3 {
+			// Put "ssh3" as ServerName so that the TLS verification can succeed
+			// Otherwise, TLS refuses to validate a certificate without IP SANs
+			// if the hostname is an IP address.
+			tlsConf.ServerName = "selfsigned.ssh3"
+		}
+	}
+
+	log.Debug().Msgf("dialing QUIC host at %s", remoteAddr)
+	qClient, err := quic.DialEarly(ctx,
+		udpConn,
+		remoteAddr,
+		tlsConf,
+		&qconf)
+	if err != nil {
+		if transportErr, ok := err.(*quic.TransportError); ok {
+			if transportErr.ErrorCode.IsCryptoError() {
+				log.Debug().Msgf("received QUIC crypto error on first connection attempt: %s", err)
+				if tty == nil {
+					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
+					return nil, -1
+				}
+				if _, ok := knownHosts[hostname]; ok {
+					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. "+
+						"If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
+						"TLS error: %s", knownHostsPath, err)
+					log.Error().Msgf("Aborting.")
+					return nil, -1
+				}
+				// bad certificates, let's mimic the OpenSSH's behaviour similar to host keys
+				tlsConf.InsecureSkipVerify = true
+				var peerCertificate *x509.Certificate
+				certError := fmt.Errorf("we don't want to start a totally insecure connection")
+				tlsConf.VerifyConnection = func(ctx tls.ConnectionState) error {
+					peerCertificate = ctx.PeerCertificates[0]
+					return certError
+				}
+
+				_, err := quic.DialAddrEarly(ctx,
+					fmt.Sprintf("%s:%d", hostname, port),
+					tlsConf,
+					&qconf)
+				if !errors.Is(err, certError) {
+					log.Error().Msgf("could not create client QUIC connection: %s", err)
+					return nil, -1
+				}
+				// let's first check that the certificate is self-signed
+				if err := peerCertificate.CheckSignatureFrom(peerCertificate); err != nil {
+					log.Error().Msgf("the peer provided an unknown, insecure certificate, that is not self-signed: %s", err)
+					return nil, -1
+				}
+				// first, carriage return
+				_, _ = tty.WriteString("\r")
+				_, err = tty.WriteString("Received an unknown self-signed certificate from the server.\n\r" +
+					"We recommend not using self-signed certificates.\n\r" +
+					"This session is vulnerable a machine-in-the-middle attack.\n\r" +
+					"Certificate fingerprint: " +
+					"SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
+					"Do you want to add this certificate to ~/.ssh3/known_hosts (yes/no)? ")
+				if err != nil {
+					log.Error().Msgf("cound not write on /dev/tty: %s", err)
+					return nil, -1
+				}
+
+				answer := ""
+				reader := bufio.NewReader(tty)
+				for {
+					answer, _ = reader.ReadString('\n')
+					answer = strings.TrimSpace(answer)
+					_, _ = tty.WriteString("\r") // always ensure a carriage return
+					if answer == "yes" || answer == "no" {
+						break
+					}
+					tty.WriteString("Invalid answer, answer \"yes\" or \"no\" ")
+				}
+				if answer == "no" {
+					log.Info().Msg("Connection aborted")
+					return nil, 0
+				}
+				if err := ssh3.AppendKnownHost(knownHostsPath, hostname, peerCertificate); err != nil {
+					log.Error().Msgf("could not append known host to %s: %s", knownHostsPath, err)
+					return nil, -1
+				}
+				tty.WriteString(fmt.Sprintf("Successfully added the certificate to %s, please rerun the command\n\r", knownHostsPath))
+				return nil, 0
+			}
+		}
+		log.Error().Msgf("could not establish client QUIC connection: %s", err)
+		return nil, -1
+	}
+
+	return qClient, 0
 }
 
 func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort int, err error) {
@@ -53,6 +210,62 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 	return localPort, remoteIP, remotePort, err
 }
 
+func applyConfig(hostUrl *url.URL, sshConfig *ssh_config.Config) (username string, hostname string, port int, configAuthMethods []interface{}, err error) {
+	urlHostname, urlPort := hostUrl.Hostname(), hostUrl.Port()
+
+	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	if err != nil {
+		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
+		return "", "", 0, nil, err
+	}
+
+	hostname = configHostname
+	if hostname == "" {
+		hostname = urlHostname
+	}
+
+	if urlPort != "" {
+		if parsedPort, err := strconv.Atoi(urlPort); err == nil && parsedPort < 0xffff {
+			// There is a port in the CLI and the port is valid. Use the CLI port.
+			port = parsedPort
+		} else {
+			// There is a port in the CLI but it is not valid.
+			// use WithLevel(zerolog.FatalLevel) to log a fatal level, but let us handle
+			// program termination. log.Fatal() exits with os.Exit(1).
+			log.WithLevel(zerolog.FatalLevel).Str("Port", urlPort).Err(err).Msg("cli contains an invalid port")
+			fmt.Fprintf(os.Stderr, "Bad port '%s'\n", urlPort)
+			return "", "", 0, nil, err
+		}
+	} else if configPort != -1 {
+		// There is no port in the CLI, but one in a config file. Use the config port.
+		port = configPort
+	} else {
+		// There is no port specified, neither in the CLI, nor in the configuration.
+		port = 443
+	}
+
+	username = hostUrl.User.Username()
+	if username == "" {
+		username = hostUrl.Query().Get("user")
+	}
+	if username == "" {
+		username = configUser
+	}
+	if username == "" {
+		u, err := osuser.Current()
+		if err == nil {
+			username = u.Username
+		} else {
+			log.Error().Msgf("could not get current username: %s", err)
+		}
+	}
+	if username == "" {
+		return "", "", 0, nil, fmt.Errorf("no username could be found")
+	}
+	return
+}
+
+
 func mainWithStatusCode() int {
 	// verbose := flag.Bool("v", false, "verbose")
 	// quiet := flag.Bool("q", false, "don't print the data")
@@ -68,7 +281,6 @@ func mainWithStatusCode() int {
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
-	// enableQlog := flag.Bool("qlog", false, "output a qlog (in the same directory)")
 	flag.Parse()
 	args := flag.Args()
 
@@ -205,6 +417,7 @@ func mainWithStatusCode() int {
 		}
 	}
 
+
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	var keyLog io.Writer
@@ -217,7 +430,145 @@ func mainWithStatusCode() int {
 		keyLog = f
 	}
 
-	return client.Run(urlFromParam, sshConfig, *insecure, ssh3Dir, knownHosts, keyLog, tty, useOIDC, *privKeyFile, *pubkeyForAgent, *passwordAuthentication, *issuerUrl, *doPKCE, oidcConfig, *forwardSSHAgent, command, localUDPAddr, remoteUDPAddr, localTCPAddr, remoteTCPAddr)
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		log.Fatal().Msgf("%s", err)
+	}
+
+
+	parsedUrl, err := url.Parse(urlFromParam)
+	if err != nil {
+		log.Error().Msgf("could not parse URL: %s", err)
+		return -1
+	}
+	username, hostname, port, configAuthMethods, err := applyConfig(parsedUrl, sshConfig)
+	if err != nil {
+		log.Error().Msgf("Could not apply config to %s: %s", parsedUrl, err)
+		return -1
+	}
+
+	var agentClient agent.ExtendedAgent
+	socketPath := os.Getenv("SSH_AUTH_SOCK")
+	if socketPath != "" {
+		conn, err := net.Dial("unix", socketPath)
+		if err != nil {
+			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
+			return -1
+		}
+		agentClient = agent.NewClient(conn)
+	}
+
+	var authMethods []interface{}
+	// Only do privkey and agent auth if OIDC is not asked explicitly
+	if !useOIDC {
+		if *privKeyFile != "" {
+			authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
+		}
+
+		if *pubkeyForAgent != "" {
+			if agentClient == nil {
+				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
+			} else {
+				var pubkey ssh.PublicKey = nil
+				if *pubkeyForAgent != "" {
+					pubKeyBytes, err := os.ReadFile(*pubkeyForAgent)
+					if err != nil {
+						log.Error().Msgf("could not load public key file: %s", err)
+						return -1
+					}
+					pubkey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
+					if err != nil {
+						log.Error().Msgf("could not parse public key: %s", err)
+						return -1
+					}
+					authMethods = append(authMethods, ssh3.NewAgentAuthMethod(pubkey))
+				}
+			}
+		}
+
+		if *passwordAuthentication {
+			authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
+		}
+
+	} else {
+		// for now, only perform OIDC if it was explicitly asked by the user
+		if *issuerUrl != "" {
+			for _, issuerConfig := range oidcConfig {
+				if *issuerUrl == issuerConfig.IssuerUrl {
+					authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+				}
+			}
+		} else {
+			log.Error().Msgf("OIDC was asked explicitly but did not find suitable issuer URL")
+			return -1
+		}
+	}
+
+	authMethods = append(authMethods, configAuthMethods...)
+
+	if *issuerUrl == "" {
+		for _, issuerConfig := range oidcConfig {
+			authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+		}
+	}
+
+	ctx := context.Background()
+
+	qconn, status := setupQUICConnection(ctx, *insecure, keyLog, ssh3Dir, pool, knownHostsPath, knownHosts, oidcConfig, hostname, port, nil, tty)
+
+	if qconn == nil {
+		if status != 0 {
+			log.Error().Msgf("could not setup transport for client: %s", err)
+		}
+		return status
+	}
+
+
+	options, err := client.NewOptions(!*insecure, knownHosts, oidcConfig, authMethods)
+	if err != nil {
+		log.Error().Msgf("could not load ssh3 client options: %s", err)
+	}
+
+	roundTripper := &http3.RoundTripper{
+		EnableDatagrams: true,
+	}
+
+	c, err := client.Dial(ctx, username, hostname, port, parsedUrl.Path, options, qconn, roundTripper, agentClient)
+	if err != nil {
+		log.Error().Msgf("could not establish SSH3 conversation: %s", err)
+		return -1
+	}
+	if localTCPAddr != nil && remoteTCPAddr != nil {
+		err := c.ForwardTCP(ctx, localTCPAddr, remoteTCPAddr)
+		if err != nil {
+			log.Error().Msgf("could not forward UDP: %s", err)
+			return -1
+		}
+	}
+	if localUDPAddr != nil && remoteUDPAddr != nil {
+		err := c.ForwardUDP(ctx, localUDPAddr, remoteUDPAddr)
+		if err != nil {
+			log.Error().Msgf("could not forward UDP: %s", err)
+			return -1
+		}
+	}
+
+	err = c.RunSession(tty, *forwardSSHAgent, command...)
+	switch sessionError := err.(type) {
+	case client.ExitStatus:
+		if sessionError.StatusCode == 0 {
+			log.Info().Msgf("the process exited normally")
+		} else {
+			log.Error().Msgf("the process exited with status %d", sessionError.StatusCode)
+		}
+		return sessionError.StatusCode
+	case client.ExitSignal:
+		log.Error().Msgf("the process exited with signal %s: %s", sessionError.Signal, sessionError.ErrorMessageUTF8)
+		return -1
+	default:
+		log.Error().Msgf("an error was encountered when running the session: %s", sessionError)
+		return -1
+	}
 }
 
 func main() {
