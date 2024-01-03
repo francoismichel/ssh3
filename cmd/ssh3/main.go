@@ -258,6 +258,33 @@ func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.O
 	return client.NewOptions(username, hostname, port, hostUrl.Path, configAuthMethods)
 }
 
+func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config, cliAuthMethods []interface{}) (agent.ExtendedAgent, *client.Options, error) {
+	configOptions, err := getConfigOptions(hostUrl, sshConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not apply config to %s: %s", hostUrl, err)
+	}
+
+	var agentClient agent.ExtendedAgent
+	socketPath := os.Getenv("SSH_AUTH_SOCK")
+	if socketPath != "" {
+		conn, err := net.Dial("unix", socketPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("cailed to open SSH_AUTH_SOCK: %s", err)
+		}
+		agentClient = agent.NewClient(conn)
+	}
+
+	var authMethods []interface{}
+	authMethods = append(authMethods, cliAuthMethods...)
+	authMethods = append(authMethods, configOptions.AuthMethods()...)
+
+	options, err := client.NewOptions(configOptions.Username(), configOptions.Hostname(), configOptions.Port(), configOptions.UrlPath(), authMethods)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not instantiate invalid options: %s", err)
+	}
+	return agentClient, options, nil
+}
+
 func mainWithStatusCode() int {
 	keyLogFile := flag.String("keylog", "", "Write QUIC TLS keys and master secret in the specified keylog file: only for debugging purpose")
 	privKeyFile := flag.String("privkey", "", "private key file")
@@ -433,42 +460,15 @@ func mainWithStatusCode() int {
 		keyLog = f
 	}
 
-	pool, err := x509.SystemCertPool()
-	if err != nil {
-		log.Fatal().Msgf("%s", err)
-	}
-
-	parsedUrl, err := url.Parse(urlFromParam)
-	if err != nil {
-		log.Error().Msgf("could not parse URL: %s", err)
-		return -1
-	}
-	configOptions, err := getConfigOptions(parsedUrl, sshConfig)
-	if err != nil {
-		log.Error().Msgf("Could not apply config to %s: %s", parsedUrl, err)
-		return -1
-	}
-
-	var agentClient agent.ExtendedAgent
-	socketPath := os.Getenv("SSH_AUTH_SOCK")
-	if socketPath != "" {
-		conn, err := net.Dial("unix", socketPath)
-		if err != nil {
-			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
-			return -1
-		}
-		agentClient = agent.NewClient(conn)
-	}
-
-	var authMethods []interface{}
+	var cliAuthMethods []interface{}
 	// Only do privkey and agent auth if OIDC is not asked explicitly
 	if !useOIDC {
 		if *privKeyFile != "" {
-			authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
+			cliAuthMethods = append(cliAuthMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
 		}
 
 		if *pubkeyForAgent != "" {
-			if agentClient == nil {
+			if os.Getenv("SSH_AUTH_SOCK") == "" {
 				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
 			} else {
 				var pubkey ssh.PublicKey = nil
@@ -483,13 +483,13 @@ func mainWithStatusCode() int {
 						log.Error().Msgf("could not parse public key: %s", err)
 						return -1
 					}
-					authMethods = append(authMethods, ssh3.NewAgentAuthMethod(pubkey))
+					cliAuthMethods = append(cliAuthMethods, ssh3.NewAgentAuthMethod(pubkey))
 				}
 			}
 		}
 
 		if *passwordAuthentication {
-			authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
+			cliAuthMethods = append(cliAuthMethods, ssh3.NewPasswordAuthMethod())
 		}
 
 	} else {
@@ -497,7 +497,7 @@ func mainWithStatusCode() int {
 		if *issuerUrl != "" {
 			for _, issuerConfig := range oidcConfig {
 				if *issuerUrl == issuerConfig.IssuerUrl {
-					authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+					cliAuthMethods = append(cliAuthMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
 				}
 			}
 		} else {
@@ -506,16 +506,24 @@ func mainWithStatusCode() int {
 		}
 	}
 
-	authMethods = append(authMethods, configOptions.AuthMethods()...)
-
-	options, err := client.NewOptions(configOptions.Username(), configOptions.Hostname(), configOptions.Port(), configOptions.UrlPath(), authMethods)
+	parsedUrl, err := url.Parse(urlFromParam)
 	if err != nil {
-		log.Error().Msgf("could not instantiate invalid options: %s", err)
+		log.Error().Msgf("could not parse URL: %s", err)
 		return -1
 	}
 
 	ctx := context.Background()
 
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		log.Fatal().Msgf("%s", err)
+	}
+
+	agentClient, options, err := getConnectionMaterialFromURL(parsedUrl, sshConfig, cliAuthMethods)
+	if err != nil {
+		log.Error().Msgf("Could not get connection material for %s: %s", parsedUrl, err)
+		return -1
+	}
 	qconn, status := setupQUICConnection(ctx, *insecure, keyLog, ssh3Dir, pool, knownHostsPath, knownHosts, oidcConfig, options, nil, tty)
 
 	if qconn == nil {
