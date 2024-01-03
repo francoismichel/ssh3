@@ -212,16 +212,16 @@ type Client struct {
 	*ssh3.Conversation
 }
 
-func Dial(ctx context.Context, username string, hostname string, port int, path string, options *Options, qconn quic.EarlyConnection,
+func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	roundTripper *http3.RoundTripper,
 	sshAgent agent.ExtendedAgent) (*Client, error) {
 
 	hostUrl := url.URL{}
 	hostUrl.Scheme = "https"
-	hostUrl.Host = fmt.Sprintf("%s:%d", hostname, port)
-	hostUrl.Path = path
+	hostUrl.Host = options.URLHostnamePort()
+	hostUrl.Path = options.UrlPath()
 	urlQuery := hostUrl.Query()
-	urlQuery.Set("user", username)
+	urlQuery.Set("user", options.Username())
 	hostUrl.RawQuery = urlQuery.Encode()
 	requestUrl := hostUrl.String()
 
@@ -352,7 +352,7 @@ func Dial(ctx context.Context, username string, hostname string, port int, path 
 	}
 
 	log.Debug().Msgf("try the following Identity: %s", identity)
-	err = identity.SetAuthorizationHeader(req, username, conv)
+	err = identity.SetAuthorizationHeader(req, options.Username(), conv)
 	if err != nil {
 		log.Error().Msgf("could not set authorization header in HTTP request: %s", err)
 		return nil, err

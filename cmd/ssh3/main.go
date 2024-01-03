@@ -46,17 +46,9 @@ func homedir() string {
 // If non-nil, use udpConn as transport (can be used for proxy jump)
 // Otherwise, create a UDPConn from udp://host:port
 func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog io.Writer, ssh3Dir string, certPool *x509.CertPool, knownHostsPath string, knownHosts ssh3.KnownHosts,
-	oidcConfig []*auth.OIDCConfig, hostname string, port int, udpConn *net.UDPConn, tty *os.File) (quic.EarlyConnection, int) {
+	oidcConfig []*auth.OIDCConfig, options *client.Options, udpConn *net.UDPConn, tty *os.File) (quic.EarlyConnection, int) {
 
-	hostnameIsAnIP := net.ParseIP(hostname) != nil
-	if hostnameIsAnIP {
-		ip := net.ParseIP(hostname)
-		if ip.To4() == nil && ip.To16() != nil {
-			// enforce the square-bracketed notation for ipv6 UDP addresses
-			hostname = fmt.Sprintf("[%s]", hostname)
-		}
-	}
-	remoteAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", hostname, port))
+	remoteAddr, err := net.ResolveUDPAddr("udp", options.URLHostnamePort())
 	if err != nil {
 		log.Error().Msgf("could not resolve UDP address: %s", err)
 		return nil, -1
@@ -83,7 +75,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 	qconf.EnableDatagrams = true
 	qconf.KeepAlivePeriod = 1 * time.Second
 
-	if certs, ok := knownHosts[hostname]; ok {
+	if certs, ok := knownHosts[options.Hostname()]; ok {
 		foundSelfsignedSSH3 := false
 
 		for _, cert := range certs {
@@ -116,7 +108,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
 					return nil, -1
 				}
-				if _, ok := knownHosts[hostname]; ok {
+				if _, ok := knownHosts[options.CaonicalHostFormat()]; ok {
 					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. "+
 						"If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
 						"TLS error: %s", knownHostsPath, err)
@@ -132,8 +124,9 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					return certError
 				}
 
-				_, err := quic.DialAddrEarly(ctx,
-					fmt.Sprintf("%s:%d", hostname, port),
+				_, err := quic.DialEarly(ctx,
+					udpConn,
+					remoteAddr,
 					tlsConf,
 					&qconf)
 				if !errors.Is(err, certError) {
@@ -173,7 +166,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					log.Info().Msg("Connection aborted")
 					return nil, 0
 				}
-				if err := ssh3.AppendKnownHost(knownHostsPath, hostname, peerCertificate); err != nil {
+				if err := ssh3.AppendKnownHost(knownHostsPath, options.CaonicalHostFormat(), peerCertificate); err != nil {
 					log.Error().Msgf("could not append known host to %s: %s", knownHostsPath, err)
 					return nil, -1
 				}
@@ -210,20 +203,21 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 	return localPort, remoteIP, remotePort, err
 }
 
-func applyConfig(hostUrl *url.URL, sshConfig *ssh_config.Config) (username string, hostname string, port int, configAuthMethods []interface{}, err error) {
+func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.Options, error) {
 	urlHostname, urlPort := hostUrl.Hostname(), hostUrl.Port()
 
 	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
 	if err != nil {
 		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
-		return "", "", 0, nil, err
+		return nil, err
 	}
 
-	hostname = configHostname
+	hostname := configHostname
 	if hostname == "" {
 		hostname = urlHostname
 	}
 
+	port := 443
 	if urlPort != "" {
 		if parsedPort, err := strconv.Atoi(urlPort); err == nil && parsedPort < 0xffff {
 			// There is a port in the CLI and the port is valid. Use the CLI port.
@@ -234,17 +228,14 @@ func applyConfig(hostUrl *url.URL, sshConfig *ssh_config.Config) (username strin
 			// program termination. log.Fatal() exits with os.Exit(1).
 			log.WithLevel(zerolog.FatalLevel).Str("Port", urlPort).Err(err).Msg("cli contains an invalid port")
 			fmt.Fprintf(os.Stderr, "Bad port '%s'\n", urlPort)
-			return "", "", 0, nil, err
+			return nil, err
 		}
 	} else if configPort != -1 {
 		// There is no port in the CLI, but one in a config file. Use the config port.
 		port = configPort
-	} else {
-		// There is no port specified, neither in the CLI, nor in the configuration.
-		port = 443
 	}
 
-	username = hostUrl.User.Username()
+	username := hostUrl.User.Username()
 	if username == "" {
 		username = hostUrl.Query().Get("user")
 	}
@@ -260,9 +251,9 @@ func applyConfig(hostUrl *url.URL, sshConfig *ssh_config.Config) (username strin
 		}
 	}
 	if username == "" {
-		return "", "", 0, nil, fmt.Errorf("no username could be found")
+		return nil, fmt.Errorf("no username could be found")
 	}
-	return
+	return	client.NewOptions(username, hostname, port, hostUrl.Path, configAuthMethods)
 }
 
 func mainWithStatusCode() int {
@@ -436,7 +427,7 @@ func mainWithStatusCode() int {
 		log.Error().Msgf("could not parse URL: %s", err)
 		return -1
 	}
-	username, hostname, port, configAuthMethods, err := applyConfig(parsedUrl, sshConfig)
+	configOptions, err := getConfigOptions(parsedUrl, sshConfig)
 	if err != nil {
 		log.Error().Msgf("Could not apply config to %s: %s", parsedUrl, err)
 		return -1
@@ -499,7 +490,7 @@ func mainWithStatusCode() int {
 		}
 	}
 
-	authMethods = append(authMethods, configAuthMethods...)
+	authMethods = append(authMethods, configOptions.AuthMethods()...)
 
 	if *issuerUrl == "" {
 		for _, issuerConfig := range oidcConfig {
@@ -507,9 +498,15 @@ func mainWithStatusCode() int {
 		}
 	}
 
+	options, err := client.NewOptions(configOptions.Username(), configOptions.Hostname(), configOptions.Port(), configOptions.UrlPath(), authMethods)
+	if err != nil {
+		log.Error().Msgf("could not instantiate invalid options: %s", err)
+		return -1
+	}
+
 	ctx := context.Background()
 
-	qconn, status := setupQUICConnection(ctx, *insecure, keyLog, ssh3Dir, pool, knownHostsPath, knownHosts, oidcConfig, hostname, port, nil, tty)
+	qconn, status := setupQUICConnection(ctx, *insecure, keyLog, ssh3Dir, pool, knownHostsPath, knownHosts, oidcConfig, options, nil, tty)
 
 	if qconn == nil {
 		if status != 0 {
@@ -518,16 +515,11 @@ func mainWithStatusCode() int {
 		return status
 	}
 
-	options, err := client.NewOptions(knownHosts, oidcConfig, authMethods)
-	if err != nil {
-		log.Error().Msgf("could not load ssh3 client options: %s", err)
-	}
-
 	roundTripper := &http3.RoundTripper{
 		EnableDatagrams: true,
 	}
 
-	c, err := client.Dial(ctx, username, hostname, port, parsedUrl.Path, options, qconn, roundTripper, agentClient)
+	c, err := client.Dial(ctx, options, qconn, roundTripper, agentClient)
 	if err != nil {
 		log.Error().Msgf("could not establish SSH3 conversation: %s", err)
 		return -1
