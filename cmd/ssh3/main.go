@@ -267,8 +267,6 @@ func applyConfig(hostUrl *url.URL, sshConfig *ssh_config.Config) (username strin
 
 
 func mainWithStatusCode() int {
-	// verbose := flag.Bool("v", false, "verbose")
-	// quiet := flag.Bool("q", false, "don't print the data")
 	keyLogFile := flag.String("keylog", "", "Write QUIC TLS keys and master secret in the specified keylog file: only for debugging purpose")
 	privKeyFile := flag.String("privkey", "", "private key file")
 	pubkeyForAgent := flag.String("pubkey-for-agent", "", "if set, use an agent key whose public key matches the one in the specified path")
@@ -524,7 +522,7 @@ func mainWithStatusCode() int {
 	}
 
 
-	options, err := client.NewOptions(!*insecure, knownHosts, oidcConfig, authMethods)
+	options, err := client.NewOptions(knownHosts, oidcConfig, authMethods)
 	if err != nil {
 		log.Error().Msgf("could not load ssh3 client options: %s", err)
 	}
