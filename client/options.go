@@ -5,12 +5,11 @@ import (
 	"net"
 )
 
-
 type Options struct {
-	username 	string
-	hostname	string
-	port		int
-	urlPath		string
+	username    string
+	hostname    string
+	port        int
+	urlPath     string
 	authMethods []interface{}
 }
 
@@ -19,10 +18,10 @@ func NewOptions(username string, hostname string, port int, urlPath string, auth
 		urlPath = "/" + urlPath
 	}
 	return &Options{
-		username: username,
-		hostname: hostname,
-		port: port,
-		urlPath: urlPath,
+		username:    username,
+		hostname:    hostname,
+		port:        port,
+		urlPath:     urlPath,
 		authMethods: authMethods,
 	}, nil
 }

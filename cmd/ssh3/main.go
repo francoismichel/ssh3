@@ -253,7 +253,7 @@ func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.O
 	if username == "" {
 		return nil, fmt.Errorf("no username could be found")
 	}
-	return	client.NewOptions(username, hostname, port, hostUrl.Path, configAuthMethods)
+	return client.NewOptions(username, hostname, port, hostUrl.Path, configAuthMethods)
 }
 
 func mainWithStatusCode() int {
