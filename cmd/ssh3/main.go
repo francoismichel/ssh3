@@ -259,11 +259,39 @@ func mainWithStatusCode() int {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
 	}
 
+	log.
+		Debug().
+		Str("KeylogFile", *keyLogFile).
+		Str("PrivateKeyFile", *privKeyFile).
+		Str("AgentPublicKey", *pubkeyForAgent).
+		Bool("PasswordAuth", *passwordAuthentication).
+		Bool("InsecureConn", *insecure).
+		Str("OIDCIssuerURL", *issuerUrl).
+		Str("OIDCConfigFile", *oidcConfigFileName).
+		Bool("Verbose", *verbose).
+		Bool("OIDCWithPKCE", *doPKCE).
+		Bool("SSHAgentForwarding", *forwardSSHAgent).
+		Str("UdPForwarding", *forwardUDP).
+		Str("TCPForwarding", *forwardTCP).
+		Msg("parsed CLI flags")
+
+	log.Debug().Msg("parsing user known hosts")
+
 	knownHostsPath := path.Join(ssh3Dir, "known_hosts")
 	knownHosts, skippedLines, err := ssh3.ParseKnownHosts(knownHostsPath)
+	log.
+		Debug().
+		Int("InvalidLines", len(skippedLines)).
+		Int("Certificates", len(knownHosts)).
+		Err(err).
+		Msg("parsed known hosts")
 	if len(skippedLines) != 0 {
 		stringSkippedLines := []string{}
 		for _, lineNumber := range skippedLines {
+			log.
+				Warn().
+				Int("LineNumber", lineNumber).
+				Msg("invalid line")
 			stringSkippedLines = append(stringSkippedLines, fmt.Sprintf("%d", lineNumber))
 		}
 		log.Warn().Msgf("the following lines in %s are invalid: %s", knownHostsPath, strings.Join(stringSkippedLines, ", "))
@@ -273,75 +301,148 @@ func mainWithStatusCode() int {
 	}
 
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	log.Debug().Err(err).Msg("opened tty")
 	if err != nil {
 		tty = nil
+		log.Debug().Msg("error while opening tty: falling back and set to nil")
 	}
 
 	urlFromParam := args[0]
+	log.Debug().Str("ConnectionURL", urlFromParam).Msg("got url")
 	if !strings.HasPrefix(urlFromParam, "https://") {
+		log.Debug().Str("ConnectionURL", urlFromParam).Msg("url has no prefix, adding")
 		urlFromParam = fmt.Sprintf("https://%s", urlFromParam)
 	}
 	command := args[1:]
+	log.Debug().Str("Command", strings.Join(command, " ")).Msg("got command")
 
 	var localUDPAddr *net.UDPAddr = nil
 	var remoteUDPAddr *net.UDPAddr = nil
 	var localTCPAddr *net.TCPAddr = nil
 	var remoteTCPAddr *net.TCPAddr = nil
 	if *forwardUDP != "" {
+		log.Debug().Str("UDPForwarding", *forwardUDP).Msg("setting up UDP forwarding")
+
 		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardUDP)
+		log.
+			Debug().
+			Str("UDPForwarding", *forwardUDP).
+			Int("LocalPort", localPort).
+			IPAddr("RemoteIP", remoteIP).
+			Int("RemotePort", remotePort).
+			Err(err).
+			Msg("parsed UDP forwarding address")
 		if err != nil {
 			log.Error().Msgf("UDP forwarding parsing error %s", err)
 		}
+
 		remoteUDPAddr = &net.UDPAddr{
 			IP:   remoteIP,
 			Port: remotePort,
 		}
+
 		if remoteIP.To4() != nil {
 			localUDPAddr = &net.UDPAddr{
 				IP:   net.IPv4(127, 0, 0, 1),
 				Port: localPort,
 			}
+			log.
+				Debug().
+				Any("RemoteUDPAddress", remoteUDPAddr).
+				Any("LocalUDPAddress", localUDPAddr).
+				Msg("remote UDP address is an IPv4 address")
 		} else if remoteIP.To16() != nil {
 			localUDPAddr = &net.UDPAddr{
 				IP:   net.IPv6loopback,
 				Port: localPort,
 			}
+			log.
+				Debug().
+				Any("RemoteUDPAddress", remoteUDPAddr).
+				Any("LocalUDPAddress", localUDPAddr).
+				Msg("remote UDP address is an IPv6 address")
 		} else {
-			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+			log.
+				Error().
+				Err(err).
+				Any("RemoteUDPAddress", remoteUDPAddr).
+				IPAddr("RemoteIP", remoteIP).
+				Int("RemotePort", remotePort).
+				Msgf("Unrecognized IP length %d", len(remoteIP))
 			return -1
 		}
+
+		log.Debug().Msg("done setting up UDP forwarding")
 	}
+
 	if *forwardTCP != "" {
+		log.Debug().Str("TCPForwarding", *forwardTCP).Msg("setting up TCP forwarding")
+
 		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardTCP)
+		log.
+			Debug().
+			Str("TCPForwarding", *forwardTCP).
+			Int("LocalPort", localPort).
+			IPAddr("RemoteIP", remoteIP).
+			Int("RemotePort", remotePort).
+			Err(err).
+			Msg("parsed TCP forwarding address")
 		if err != nil {
-			log.Error().Msgf("UDP forwarding parsing error %s", err)
+			log.Error().Msgf("TCP forwarding parsing error %s", err)
 		}
+
 		remoteTCPAddr = &net.TCPAddr{
 			IP:   remoteIP,
 			Port: remotePort,
 		}
+
 		if remoteIP.To4() != nil {
 			localTCPAddr = &net.TCPAddr{
 				IP:   net.IPv4(127, 0, 0, 1),
 				Port: localPort,
 			}
+			log.
+				Debug().
+				Any("RemoteTCPAddress", remoteTCPAddr).
+				Any("LocalTCPAddress", localTCPAddr).
+				Msg("remote TCP address is an IPv4 address")
 		} else if remoteIP.To16() != nil {
 			localTCPAddr = &net.TCPAddr{
 				IP:   net.IPv6loopback,
 				Port: localPort,
 			}
+			log.
+				Debug().
+				Any("RemoteTCPAddress", remoteTCPAddr).
+				Any("LocalTCPAddress", localTCPAddr).
+				Msg("remote TCP address is an IPv6 address")
 		} else {
-			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+			log.
+				Error().
+				Err(err).
+				Any("RemoteTCPAddress", remoteTCPAddr).
+				IPAddr("RemoteIP", remoteIP).
+				Int("RemotePort", remotePort).
+				Msgf("Unrecognized IP length %d", len(remoteIP))
 			return -1
 		}
+
+		log.Debug().Msg("done setting up TCP forwarding")
 	}
 
 	var sshConfig *ssh_config.Config
 	var configBytes []byte
 	configPath := path.Join(homedir(), ".ssh", "config")
 	configBytes, err = os.ReadFile(configPath)
+	log.
+		Debug().
+		Str("SSHConfigFilePath", configPath).
+		Int("ConfigBytes", len(configBytes)).
+		Err(err).
+		Msg("read SSH config file")
 	if err == nil {
 		sshConfig, err = ssh_config.DecodeBytes(configBytes)
+		log.Debug().Err(err).Msg("read SSH config")
 		if err != nil {
 			log.Warn().Msgf("could not parse %s: %s, ignoring config", configPath, err)
 			sshConfig = nil
@@ -357,11 +458,13 @@ func mainWithStatusCode() int {
 	if *oidcConfigFileName == "" {
 		defaultFileName := path.Join(ssh3Dir, "oidc_config.json")
 		oidcConfigFile, err = os.Open(defaultFileName)
+		log.Debug().Str("OIDCConfigFile", defaultFileName).Err(err).Msg("opened OIDC config")
 		if err != nil && !os.IsNotExist(err) {
 			log.Warn().Msgf("could not open %s: %s", defaultFileName, err.Error())
 		}
 	} else {
 		oidcConfigFile, err = os.Open(*oidcConfigFileName)
+		log.Debug().Str("OIDCConfigFile", *oidcConfigFileName).Err(err).Msg("opened OIDC config")
 		if err != nil {
 			log.Error().Msgf("could not open %s: %s", *oidcConfigFileName, err.Error())
 			return -1
@@ -370,6 +473,12 @@ func mainWithStatusCode() int {
 
 	if oidcConfigFile != nil {
 		data, err := io.ReadAll(oidcConfigFile)
+		log.
+			Debug().
+			Str("OIDCConfigFile", oidcConfigFile.Name()).
+			Int("OIDCConfigFileLenght", len(data)).
+			Err(err).
+			Msg("read OIDC config")
 		if err != nil {
 			log.Error().Msgf("could not read oidc config file: %s", err.Error())
 			return -1
@@ -380,11 +489,17 @@ func mainWithStatusCode() int {
 		}
 	}
 
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	// Duplicate logger set
+	// log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {
+		log.
+			Warn().
+			Str("KeyLogFile", *keyLogFile).
+			Msg("QUIC keylogging enabled. This is a debugging functionality ONLY!")
 		f, err := os.Create(*keyLogFile)
+		log.Debug().Str("KeyLogFile", *keyLogFile).Err(err).Msg("created keylog file")
 		if err != nil {
 			log.Fatal().Msgf("%s", err)
 		}
@@ -393,6 +508,7 @@ func mainWithStatusCode() int {
 	}
 
 	parsedUrl, err := url.Parse(urlFromParam)
+	log.Debug().Any("ParsedURL", parsedUrl).Msg("parsed URL")
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
@@ -400,6 +516,14 @@ func mainWithStatusCode() int {
 	urlHostname, urlPort := parsedUrl.Hostname(), parsedUrl.Port()
 
 	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	log.
+		Debug().
+		Str("Host", urlHostname).
+		Str("Port", urlPort).
+		Str("ConfigHost", configHostname).
+		Int("ConfigPort", configPort).
+		Str("ConfigUser", configUser).
+		Msg("fetched Host config")
 	if err != nil {
 		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
 		return -1
@@ -409,6 +533,12 @@ func mainWithStatusCode() int {
 	if hostname == "" {
 		hostname = urlHostname
 	}
+	log.
+		Debug().
+		Str("DialHostname", hostname).
+		Str("URLHostname", urlHostname).
+		Str("ConfigHostname", configHostname).
+		Msg("set hostname")
 
 	hostnameIsAnIP := net.ParseIP(hostname) != nil
 
@@ -432,16 +562,21 @@ func mainWithStatusCode() int {
 		// There is no port specified, neither in the CLI, nor in the configuration.
 		port = 443
 	}
+	log.Debug().Int("Port", port).Int("ConfigPort", configPort).Str("URLPort", urlPort).Msg("set port")
 
 	username := parsedUrl.User.Username()
+	log.Debug().Str("Username", username).Msg("fetching username from URL user")
 	if username == "" {
 		username = parsedUrl.Query().Get("user")
+		log.Debug().Str("Username", username).Msg("fetching username from URL query")
 	}
 	if username == "" {
 		username = configUser
+		log.Debug().Str("Username", username).Msg("fetching username from config")
 	}
 	if username == "" {
 		u, err := osuser.Current()
+		log.Debug().Str("Username", u.Username).Err(err).Msg("fetching username from OS")
 		if err == nil {
 			username = u.Username
 		} else {
@@ -457,8 +592,10 @@ func mainWithStatusCode() int {
 	urlQuery.Set("user", username)
 	parsedUrl.RawQuery = urlQuery.Encode()
 	requestUrl := parsedUrl.String()
+	log.Debug().Str("RequestURL", requestUrl).Msg("final request URL")
 
 	pool, err := x509.SystemCertPool()
+	log.Debug().Err(err).Msg("fetching system certificate trust pool")
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
@@ -469,6 +606,11 @@ func mainWithStatusCode() int {
 		KeyLogWriter:       keyLog,
 		NextProtos:         []string{http3.NextProtoH3},
 	}
+	log.
+		Debug().
+		Bool("InsecureSkipVerify", *insecure).
+		Str("KeyLogFile", *keyLogFile).
+		Msg("set client TLS configuration")
 
 	if certs, ok := knownHosts[hostname]; ok {
 		foundSelfsignedSSH3 := false
@@ -479,6 +621,7 @@ func mainWithStatusCode() int {
 				foundSelfsignedSSH3 = true
 			}
 		}
+		log.Debug().Bool("SSH3SelfSignedCertificate", foundSelfsignedSSH3).Msg("checking for selfsigned certificates")
 
 		// If no IP SAN was in the cert, then assume the self-signed cert at least matches the .ssh3 TLD
 		if foundSelfsignedSSH3 {
@@ -487,6 +630,8 @@ func mainWithStatusCode() int {
 			// if the hostname is an IP address.
 			tlsConf.ServerName = "selfsigned.ssh3"
 		}
+	} else {
+		log.Debug().Str("Hostname", hostname).Msg("no known host found")
 	}
 
 	var qconf quic.Config
@@ -502,23 +647,37 @@ func mainWithStatusCode() int {
 		EnableDatagrams: true,
 	}
 
+	log.Debug().Msg("created HTTP3 round tripper")
+
 	ctx, _ := context.WithCancelCause(context.Background())
 
 	defer roundTripper.Close()
 
 	// connect to SSH agent if it exists
+	log.Debug().Msg("attempting SSH agent connection")
 	var agentClient agent.ExtendedAgent
 	var agentKeys []ssh.PublicKey
 
 	socketPath := os.Getenv("SSH_AUTH_SOCK")
+	log.Debug().Str("SSHAgentSocketPath", socketPath).Msg("fetched socket path from env")
 	if socketPath != "" {
 		conn, err := net.Dial("unix", socketPath)
+		log.
+			Debug().
+			Err(err).
+			Str("LocalAddressNetwork", conn.LocalAddr().Network()).
+			Str("LocalAddressString", conn.LocalAddr().String()).
+			Str("RemoteAddressNetwork", conn.RemoteAddr().Network()).
+			Str("RemoteAddressString", conn.RemoteAddr().String()).
+			Msg("dialed socket path using unix network")
 		if err != nil {
 			log.Error().Msgf("Failed to open SSH_AUTH_SOCK: %s", err)
 			return -1
 		}
+
 		agentClient = agent.NewClient(conn)
 		keys, err := agentClient.List()
+		log.Debug().Any("SSHAgentKeys", keys).Err(err).Msg("list agent keys")
 		if err != nil {
 			log.Error().Msgf("Failed to list agent keys: %s", err)
 			return -1
@@ -527,6 +686,7 @@ func mainWithStatusCode() int {
 			agentKeys = append(agentKeys, key)
 		}
 	}
+	log.Debug().Msg("done reading SSH agent")
 
 	log.Debug().Msgf("dialing QUIC host at %s", fmt.Sprintf("%s:%d", hostname, port))
 
@@ -535,6 +695,7 @@ func mainWithStatusCode() int {
 		if ip.To4() == nil && ip.To16() != nil {
 			// enforce the square-bracketed notation for ipv6 UDP addresses
 			hostname = fmt.Sprintf("[%s]", hostname)
+			log.Debug().IPAddr("HostIP", ip).Str("Hostname", hostname).Msg("enforcing [IPv6] notation")
 		}
 	}
 
@@ -542,14 +703,18 @@ func mainWithStatusCode() int {
 		fmt.Sprintf("%s:%d", hostname, port),
 		tlsConf,
 		&qconf)
+	log.Debug().Err(err).Str("Hostname", hostname).Int("Port", port).Msg("QUIC early address dial")
 	if err != nil {
+		log.Debug().Err(err).Msg("QUIC dial ended with an error")
 		if transportErr, ok := err.(*quic.TransportError); ok {
+			log.Debug().Err(err).Msg("error is a QUIC transport error")
 			if transportErr.ErrorCode.IsCryptoError() {
 				log.Debug().Msgf("received QUIC crypto error on first connection attempt: %s", err)
 				if tty == nil {
 					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
 					return -1
 				}
+				log.Debug().Msg("checking known hosts")
 				if _, ok = knownHosts[hostname]; ok {
 					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. "+
 						"If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
@@ -558,6 +723,7 @@ func mainWithStatusCode() int {
 					return -1
 				}
 				// bad certificates, let's mimic the OpenSSH's behaviour similar to host keys
+				log.Debug().Msg("simulating OpenSSH host keys behaviour")
 				tlsConf.InsecureSkipVerify = true
 				var peerCertificate *x509.Certificate
 				certError := fmt.Errorf("we don't want to start a totally insecure connection")
@@ -570,6 +736,7 @@ func mainWithStatusCode() int {
 					fmt.Sprintf("%s:%d", hostname, port),
 					tlsConf,
 					&qconf)
+				log.Debug().Err(err).Msg("retrying early QUIC dial with host keys feature")
 				if !errors.Is(err, certError) {
 					log.Error().Msgf("could not create client QUIC connection: %s", err)
 					return -1
@@ -587,8 +754,9 @@ func mainWithStatusCode() int {
 					"Certificate fingerprint: " +
 					"SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
 					"Do you want to add this certificate to ~/.ssh3/known_hosts (yes/no)? ")
+				log.Debug().Err(err).Msg("asking for certificate addition to known hosts file")
 				if err != nil {
-					log.Error().Msgf("cound not write on /dev/tty: %s", err)
+					log.Error().Msgf("could not write on /dev/tty: %s", err)
 					return -1
 				}
 
@@ -598,6 +766,7 @@ func mainWithStatusCode() int {
 					answer, _ = reader.ReadString('\n')
 					answer = strings.TrimSpace(answer)
 					_, _ = tty.WriteString("\r") // always ensure a carriage return
+					log.Debug().Str("KnownHostFileAddAnswer", answer).Msg("parsed answer")
 					if answer == "yes" || answer == "no" {
 						break
 					}
@@ -645,16 +814,25 @@ func mainWithStatusCode() int {
 	}
 	req.Proto = "ssh3"
 	req.Header.Set("User-Agent", ssh3.GetCurrentVersion())
+	log.
+		Debug().
+		Str("Protocol", req.Proto).
+		Strs("UserAgent", req.Header["User-Agent"]).
+		Msg("Patched request")
 
 	var authMethods []interface{}
 
 	// Only do privkey and agent auth if OIDC is not asked explicitly
+	log.Debug().Bool("OIDC", useOIDC).Msg("Checking for explicit OIDC use")
 	if !useOIDC {
+		log.Debug().Bool("OIDC", useOIDC).Msg("Not using OIDC explicitly")
 		if *privKeyFile != "" {
+			log.Debug().Str("PrivateKeyFile", *privKeyFile).Msg("Adding private key file to authentication methods")
 			authMethods = append(authMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
 		}
 
 		if *pubkeyForAgent != "" {
+			log.Debug().Str("AgentPublicKeyFiles", *pubkeyForAgent).Msg("Checking for keys in agent")
 			if agentClient == nil {
 				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
 			} else {
@@ -681,15 +859,31 @@ func mainWithStatusCode() int {
 			}
 		}
 
+		log.Debug().Bool("PasswordAuthentication", *passwordAuthentication).Msg("Checking for password authentication")
 		if *passwordAuthentication {
+			log.
+				Debug().
+				Bool("PasswordAuthentication", *passwordAuthentication).
+				Msg("Adding password authentication")
 			authMethods = append(authMethods, ssh3.NewPasswordAuthMethod())
 		}
 
 	} else {
 		// for now, only perform OIDC if it was explicitly asked by the user
+		log.Debug().Bool("OIDC", useOIDC).Msg("Only using OIDC")
 		if *issuerUrl != "" {
 			for _, issuerConfig := range oidcConfig {
+				log.
+					Debug().
+					Str("OIDCIssuerURL", issuerConfig.IssuerUrl).
+					Str("OIDCClientID", issuerConfig.ClientID).
+					Msg("Got OIDC issuer")
 				if *issuerUrl == issuerConfig.IssuerUrl {
+					log.
+						Debug().
+						Str("OIDCIssuerURL", issuerConfig.IssuerUrl).
+						Str("OIDCClientID", issuerConfig.ClientID).
+						Msg("OIDC Issuer matches wanted one")
 					authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
 				}
 			}
@@ -699,10 +893,16 @@ func mainWithStatusCode() int {
 		}
 	}
 
+	log.Debug().Msg("Adding authentication methods from config")
 	authMethods = append(authMethods, configAuthMethods...)
 
 	if *issuerUrl == "" {
 		for _, issuerConfig := range oidcConfig {
+			log.
+				Debug().
+				Str("OIDCIssuerURL", issuerConfig.IssuerUrl).
+				Str("OIDCClientID", issuerConfig.ClientID).
+				Msg("Adding OIDC issuer")
 			authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
 		}
 	}
@@ -720,7 +920,10 @@ func mainWithStatusCode() int {
 			}
 			identity = m.IntoIdentity(string(password))
 		case *ssh3.PrivkeyFileAuthMethod:
+			log.Debug().Msg("attempting pk auth")
+
 			identity, err = m.IntoIdentityWithoutPassphrase()
+			log.Debug().Err(err).Msg("attempted loading key without password")
 			// could not identify without passphrase, try agent authentication by using the key's public key
 			if passphraseErr, ok := err.(*ssh.PassphraseMissingError); ok {
 				// the pubkey may be contained in the privkey file
