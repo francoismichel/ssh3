@@ -7,7 +7,7 @@ jobs:
   build-linux:
     strategy:
         matrix:
-          go-version: [ '1.20.x', '1.21.x' ]
+          go-version: [ '1.21.x', '1.22.0-rc.1' ]
           goos: [linux]
           testuser: [ssh3-testuser]
           testpasswd: [ssh3-testpasswd]
@@ -32,7 +32,7 @@ jobs:
       # - name: Install lcrypt for arm64
       #   run:  sudo apt-get -y install libc6:arm64 libcrypt-dev:arm64
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: '${{matrix.go-version}}'
       - name: Lint and vet code
