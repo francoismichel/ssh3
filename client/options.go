@@ -61,7 +61,7 @@ func (o *Options) UrlPath() string {
 // <urlhostnameport> is the host:port pair in the format returned by
 // URLHostnamePort()
 // <path> is the URL path, it always starts with a "/", it is therefore never empty.
-func (o *Options) CaonicalHostFormat() string {
+func (o *Options) CanonicalHostFormat() string {
 	return fmt.Sprintf("%s:%d%s", o.hostname, o.port, o.urlPath)
 }
 

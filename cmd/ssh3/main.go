@@ -76,7 +76,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 	qconf.EnableDatagrams = true
 	qconf.KeepAlivePeriod = 1 * time.Second
 
-	if certs, ok := knownHosts[options.CaonicalHostFormat()]; ok {
+	if certs, ok := knownHosts[options.CanonicalHostFormat()]; ok {
 		foundSelfsignedSSH3 := false
 
 		for _, cert := range certs {
@@ -109,7 +109,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					log.Error().Msgf("insecure server cert in non-terminal session, aborting")
 					return nil, -1
 				}
-				if _, ok := knownHosts[options.CaonicalHostFormat()]; ok {
+				if _, ok := knownHosts[options.CanonicalHostFormat()]; ok {
 					log.Error().Msgf("The server certificate cannot be verified using the one installed in %s. "+
 						"If you did not change the server certificate, it could be a machine-in-the-middle attack. "+
 						"TLS error: %s", knownHostsPath, err)
@@ -167,7 +167,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					log.Info().Msg("Connection aborted")
 					return nil, 0
 				}
-				if err := ssh3.AppendKnownHost(knownHostsPath, options.CaonicalHostFormat(), peerCertificate); err != nil {
+				if err := ssh3.AppendKnownHost(knownHostsPath, options.CanonicalHostFormat(), peerCertificate); err != nil {
 					log.Error().Msgf("could not append known host to %s: %s", knownHostsPath, err)
 					return nil, -1
 				}
