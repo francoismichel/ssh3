@@ -543,11 +543,7 @@ func mainWithStatusCode() int {
 	err = c.RunSession(tty, *forwardSSHAgent, command...)
 	switch sessionError := err.(type) {
 	case client.ExitStatus:
-		if sessionError.StatusCode == 0 {
-			log.Info().Msgf("the process exited normally")
-		} else {
-			log.Error().Msgf("the process exited with status %d", sessionError.StatusCode)
-		}
+		log.Info().Msgf("the process exited with status %d", sessionError.StatusCode)
 		return sessionError.StatusCode
 	case client.ExitSignal:
 		log.Error().Msgf("the process exited with signal %s: %s", sessionError.Signal, sessionError.ErrorMessageUTF8)
