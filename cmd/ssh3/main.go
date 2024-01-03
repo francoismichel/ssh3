@@ -42,10 +42,11 @@ func homedir() string {
 	}
 }
 
+// Prepares the QUIC connection that will be used by SSH3
 // If non-nil, use udpConn as transport (can be used for proxy jump)
 // Otherwise, create a UDPConn from udp://host:port
-func setupQUICConnection(ctx context.Context, insecure bool, keylog io.Writer, ssh3Dir string, certPool *x509.CertPool, knownHostsPath string, knownHosts ssh3.KnownHosts,
-				   oidcConfig []*auth.OIDCConfig, hostname string, port int, udpConn *net.UDPConn, tty *os.File) (quic.EarlyConnection, int) {
+func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog io.Writer, ssh3Dir string, certPool *x509.CertPool, knownHostsPath string, knownHosts ssh3.KnownHosts,
+	oidcConfig []*auth.OIDCConfig, hostname string, port int, udpConn *net.UDPConn, tty *os.File) (quic.EarlyConnection, int) {
 
 	hostnameIsAnIP := net.ParseIP(hostname) != nil
 	if hostnameIsAnIP {
@@ -70,9 +71,9 @@ func setupQUICConnection(ctx context.Context, insecure bool, keylog io.Writer, s
 
 	tlsConf := &tls.Config{
 		RootCAs:            certPool,
-		InsecureSkipVerify: insecure,
+		InsecureSkipVerify: skipHostVerification,
 		NextProtos:         []string{http3.NextProtoH3},
-		KeyLogWriter: keylog,
+		KeyLogWriter:       keylog,
 	}
 
 	var qconf quic.Config
@@ -81,7 +82,6 @@ func setupQUICConnection(ctx context.Context, insecure bool, keylog io.Writer, s
 	qconf.Allow0RTT = true
 	qconf.EnableDatagrams = true
 	qconf.KeepAlivePeriod = 1 * time.Second
-
 
 	if certs, ok := knownHosts[hostname]; ok {
 		foundSelfsignedSSH3 := false
@@ -265,7 +265,6 @@ func applyConfig(hostUrl *url.URL, sshConfig *ssh_config.Config) (username strin
 	return
 }
 
-
 func mainWithStatusCode() int {
 	keyLogFile := flag.String("keylog", "", "Write QUIC TLS keys and master secret in the specified keylog file: only for debugging purpose")
 	privKeyFile := flag.String("privkey", "", "private key file")
@@ -415,7 +414,6 @@ func mainWithStatusCode() int {
 		}
 	}
 
-
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	var keyLog io.Writer
@@ -432,7 +430,6 @@ func mainWithStatusCode() int {
 	if err != nil {
 		log.Fatal().Msgf("%s", err)
 	}
-
 
 	parsedUrl, err := url.Parse(urlFromParam)
 	if err != nil {
@@ -520,7 +517,6 @@ func mainWithStatusCode() int {
 		}
 		return status
 	}
-
 
 	options, err := client.NewOptions(knownHosts, oidcConfig, authMethods)
 	if err != nil {

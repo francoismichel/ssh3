@@ -5,17 +5,16 @@ import (
 	"github.com/francoismichel/ssh3/auth"
 )
 
-
 type Options struct {
-	knownHosts ssh3.KnownHosts
-	oidcConfig auth.OIDCIssuerConfig
+	knownHosts  ssh3.KnownHosts
+	oidcConfig  auth.OIDCIssuerConfig
 	authMethods []interface{}
 }
 
 func NewOptions(knownHosts ssh3.KnownHosts, oidcConfig auth.OIDCIssuerConfig, authMethods []interface{}) (*Options, error) {
 	return &Options{
-		knownHosts: knownHosts,
+		knownHosts:  knownHosts,
 		authMethods: authMethods,
-		oidcConfig: oidcConfig,
+		oidcConfig:  oidcConfig,
 	}, nil
 }
