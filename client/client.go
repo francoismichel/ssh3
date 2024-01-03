@@ -374,12 +374,12 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	}, nil
 }
 
-func (c *Client) ForwardUDP(ctx context.Context, localUDPAddr *net.UDPAddr, remoteUDPAddr *net.UDPAddr) error {
+func (c *Client) ForwardUDP(ctx context.Context, localUDPAddr *net.UDPAddr, remoteUDPAddr *net.UDPAddr) (*net.UDPAddr, error) {
 	log.Debug().Msgf("start UDP forwarding from %s to %s", localUDPAddr, remoteUDPAddr)
 	conn, err := net.ListenUDP("udp", localUDPAddr)
 	if err != nil {
 		log.Error().Msgf("could listen on UDP socket: %s", err)
-		return err
+		return nil, err
 	}
 	forwardings := make(map[string]ssh3.Channel)
 	go func() {
@@ -421,15 +421,15 @@ func (c *Client) ForwardUDP(ctx context.Context, localUDPAddr *net.UDPAddr, remo
 			}
 		}
 	}()
-	return nil
+	return conn.LocalAddr().(*net.UDPAddr), nil
 }
 
-func (c *Client) ForwardTCP(ctx context.Context, localTCPAddr *net.TCPAddr, remoteTCPAddr *net.TCPAddr) error {
+func (c *Client) ForwardTCP(ctx context.Context, localTCPAddr *net.TCPAddr, remoteTCPAddr *net.TCPAddr) (*net.TCPAddr, error) {
 	log.Debug().Msgf("start TCP forwarding from %s to %s", localTCPAddr, remoteTCPAddr)
 	conn, err := net.ListenTCP("tcp", localTCPAddr)
 	if err != nil {
 		log.Error().Msgf("could listen on TCP socket: %s", err)
-		return err
+		return nil, err
 	}
 	go func() {
 		for {
@@ -446,7 +446,7 @@ func (c *Client) ForwardTCP(ctx context.Context, localTCPAddr *net.TCPAddr, remo
 			forwardTCPInBackground(ctx, forwardingChannel, conn)
 		}
 	}()
-	return nil
+	return conn.Addr().(*net.TCPAddr), nil
 }
 
 func (c *Client) RunSession(tty *os.File, forwardSSHAgent bool, command ...string) error {

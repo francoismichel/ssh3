@@ -535,14 +535,14 @@ func mainWithStatusCode() int {
 		return -1
 	}
 	if localTCPAddr != nil && remoteTCPAddr != nil {
-		err := c.ForwardTCP(ctx, localTCPAddr, remoteTCPAddr)
+		_, err := c.ForwardTCP(ctx, localTCPAddr, remoteTCPAddr)
 		if err != nil {
 			log.Error().Msgf("could not forward UDP: %s", err)
 			return -1
 		}
 	}
 	if localUDPAddr != nil && remoteUDPAddr != nil {
-		err := c.ForwardUDP(ctx, localUDPAddr, remoteUDPAddr)
+		_, err := c.ForwardUDP(ctx, localUDPAddr, remoteUDPAddr)
 		if err != nil {
 			log.Error().Msgf("could not forward UDP: %s", err)
 			return -1
