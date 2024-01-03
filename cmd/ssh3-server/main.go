@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -671,6 +672,7 @@ func fileExists(path string) bool {
 func main() {
 	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
+	displayVersion := flag.Bool("version", false, "if set, displays the software version on standard output and exit")
 	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
 	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key "+
 		"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
@@ -681,6 +683,11 @@ func main() {
 		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
 	}
 	flag.Parse()
+
+	if *displayVersion {
+		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
+		os.Exit(0)
+	}
 
 	if !enablePasswordLogin {
 		fmt.Fprintln(os.Stderr, "password login is disabled")
@@ -748,6 +755,8 @@ func main() {
 		}
 		log.Logger = log.Output(logFile)
 	}
+
+	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
 
 	quicConf := &quic.Config{
 		Allow0RTT: true,

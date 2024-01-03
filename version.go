@@ -10,7 +10,8 @@ import (
 
 const MAJOR int = 0
 const MINOR int = 1
-const PATCH int = 3
+const PATCH int = 5
+const RC int = 3
 
 type InvalidSSHVersion struct {
 	versionString string
@@ -28,13 +29,15 @@ func (e UnsupportedSSHVersion) Error() string {
 	return fmt.Sprintf("unsupported ssh version: %s", e.versionString)
 }
 
-func GetCurrentVersion() string {
+// GetCurrentVersionString() returns the version string to be exchanged between two
+// endpoints for version negotiation
+func GetCurrentVersionString() string {
 	return fmt.Sprintf("SSH 3.0 francoismichel/ssh3 %d.%d.%d", MAJOR, MINOR, PATCH)
 }
 
-func ParseVersion(version string) (major int, minor int, patch int, err error) {
+func ParseVersionString(version string) (major int, minor int, patch int, err error) {
 	fields := strings.Fields(version)
-	if len(fields) != 4 || fields[0] != "SSH" || fields[1] != "3.0" {
+	if len(fields) < 4 || fields[0] != "SSH" || fields[1] != "3.0" {
 		log.Error().Msgf("bad SSH version fields")
 		return 0, 0, 0, InvalidSSHVersion{versionString: version}
 	}
@@ -59,4 +62,14 @@ func ParseVersion(version string) (major int, minor int, patch int, err error) {
 		return 0, 0, 0, InvalidSSHVersion{versionString: version}
 	}
 	return major, minor, patch, nil
+}
+
+// GetCurrentSoftwareVersion() returns the current software version to be displayed to the user
+// For version string to be communicated between endpoints, use GetCurrentVersionString() instead.
+func GetCurrentSoftwareVersion() string {
+	versionStr := fmt.Sprintf("%d.%d.%d", MAJOR, MINOR, PATCH)
+	if RC > 0 {
+		versionStr += fmt.Sprintf("-rc%d", RC)
+	}
+	return versionStr
 }

@@ -112,7 +112,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	}
 
 	serverVersion := rsp.Header.Get("Server")
-	major, minor, patch, err := ParseVersion(serverVersion)
+	major, minor, patch, err := ParseVersionString(serverVersion)
 	if err != nil {
 		log.Error().Msgf("Could not parse server version: \"%s\"", serverVersion)
 		if rsp.StatusCode == 200 {

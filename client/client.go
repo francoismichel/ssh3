@@ -268,7 +268,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 		log.Fatal().Msgf("%s", err)
 	}
 	req.Proto = "ssh3"
-	req.Header.Set("User-Agent", ssh3.GetCurrentVersion())
+	req.Header.Set("User-Agent", ssh3.GetCurrentVersionString())
 
 	var identity ssh3.Identity
 	for _, method := range options.authMethods {
