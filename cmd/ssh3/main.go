@@ -66,6 +66,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 		InsecureSkipVerify: skipHostVerification,
 		NextProtos:         []string{http3.NextProtoH3},
 		KeyLogWriter:       keylog,
+		ServerName:         options.Hostname(),
 	}
 
 	var qconf quic.Config
