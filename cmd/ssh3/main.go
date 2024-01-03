@@ -508,12 +508,6 @@ func mainWithStatusCode() int {
 
 	authMethods = append(authMethods, configOptions.AuthMethods()...)
 
-	if *issuerUrl == "" {
-		for _, issuerConfig := range oidcConfig {
-			authMethods = append(authMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
-		}
-	}
-
 	options, err := client.NewOptions(configOptions.Username(), configOptions.Hostname(), configOptions.Port(), configOptions.UrlPath(), authMethods)
 	if err != nil {
 		log.Error().Msgf("could not instantiate invalid options: %s", err)
