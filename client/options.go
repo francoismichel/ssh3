@@ -14,7 +14,7 @@ type Options struct {
 }
 
 func NewOptions(username string, hostname string, port int, urlPath string, authMethods []interface{}) (*Options, error) {
-	if urlPath[0] != '/' {
+	if len(urlPath) == 0 || urlPath[0] != '/' {
 		urlPath = "/" + urlPath
 	}
 	return &Options{
