@@ -578,7 +578,7 @@ func newDataReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages
 func handleAuthAgentSocketConn(conn net.Conn, conversation *ssh3.Conversation) {
 	channel, err := conversation.OpenChannel("agent-connection", 30000, 10)
 	if err != nil {
-		log.Error().Msgf("could not open channel: %s", err.Error())
+		log.Error().Msgf("could not open channel from server: %s", err.Error())
 		return
 	}
 	go func() {

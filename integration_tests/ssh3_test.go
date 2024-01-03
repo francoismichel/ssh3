@@ -111,6 +111,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 			var clientArgs []string
 			getClientArgs := func(privKeyPath string, additionalArgs ...string) []string {
 				args := []string{
+					"-v",
 					"-insecure",
 					"-privkey", privKeyPath,
 				}
