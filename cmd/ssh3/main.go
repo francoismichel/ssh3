@@ -76,7 +76,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 	qconf.EnableDatagrams = true
 	qconf.KeepAlivePeriod = 1 * time.Second
 
-	if certs, ok := knownHosts[options.Hostname()]; ok {
+	if certs, ok := knownHosts[options.CaonicalHostFormat()]; ok {
 		foundSelfsignedSSH3 := false
 
 		for _, cert := range certs {
