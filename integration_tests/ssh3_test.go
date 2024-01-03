@@ -19,16 +19,19 @@ var ssh3Path string
 var ssh3ServerPath string
 
 const DEFAULT_URL_PATH = "/ssh3-tests"
+const DEFAULT_PROXY_URL_PATH = "/ssh3-tests-proxy"
 
 var serverCommand *exec.Cmd
 var serverSession *Session
+var proxyServerCommand *exec.Cmd
+var proxyServerSession *Session
 var rsaPrivKeyPath string
 var ed25519PrivKeyPath string
 var attackerPrivKeyPath string
 var username string
 
-// must exist on the machine to successfully run the tests
 const serverBind = "127.0.0.1:4433"
+const proxyServerBind = "127.0.0.1:4444"
 
 func IPv6LoopbackAvailable(addrs []net.Addr) bool {
 	for _, addr := range addrs {
@@ -67,6 +70,17 @@ var _ = BeforeSuite(func() {
 			"-key", os.Getenv("CERT_PRIV_KEY"))
 		serverCommand.Env = append(serverCommand.Env, "SSH3_LOG_LEVEL=debug")
 		serverSession, err = Start(serverCommand, GinkgoWriter, GinkgoWriter)
+		Expect(err).ToNot(HaveOccurred())
+
+		proxyServerCommand = exec.Command(ssh3ServerPath,
+			"-bind", proxyServerBind,
+			"-v",
+			"-enable-password-login",
+			"-url-path", DEFAULT_PROXY_URL_PATH,
+			"-cert", os.Getenv("CERT_PEM"),
+			"-key", os.Getenv("CERT_PRIV_KEY"))
+		proxyServerCommand.Env = append(proxyServerCommand.Env, "SSH3_LOG_LEVEL=debug")
+		proxyServerSession, err = Start(proxyServerCommand, GinkgoWriter, GinkgoWriter)
 		Expect(err).ToNot(HaveOccurred())
 
 		rsaPrivKeyPath = os.Getenv("TESTUSER_PRIVKEY")
@@ -130,6 +144,15 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					Eventually(session).Should(Say("Hello, World!\n"))
 				})
 
+				It("Should connect using an RSA privkey through proxy jump", func() {
+					clientArgs = append(getClientArgs(rsaPrivKeyPath, "-proxy-jump", fmt.Sprintf("%s@%s%s", username, proxyServerBind, DEFAULT_PROXY_URL_PATH)), "echo", "Hello, World!")
+					command := exec.Command(ssh3Path, clientArgs...)
+					session, err := Start(command, GinkgoWriter, GinkgoWriter)
+					Expect(err).ToNot(HaveOccurred())
+					Eventually(session).Should(Exit(0))
+					Eventually(session).Should(Say("Hello, World!\n"))
+				})
+
 				It("Should connect using an ed25519 privkey", func() {
 					clientArgs = append(getClientArgs(ed25519PrivKeyPath), "echo", "Hello, World!")
 					command := exec.Command(ssh3Path, clientArgs...)
@@ -184,7 +207,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 				// a TCP socket is indeed well open on the client and is indeed forwarded
 				// through the SSH3 connection towards the specified remote IP and port.
 				Context("TCP port forwarding", func() {
-					testTCPPortForwarding := func(localPort uint16, remoteAddr *net.TCPAddr, messageFromClient string, messageFromServer string) {
+					testTCPPortForwarding := func(localPort uint16, proxyJump bool, remoteAddr *net.TCPAddr, messageFromClient string, messageFromServer string) {
 						localIP := "[::1]"
 						if remoteAddr.IP.To4() != nil {
 							localIP = "127.0.0.1"
@@ -223,7 +246,13 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 						Eventually(serverStarted).Should(Receive())
 						// Execute the client with TCP port forwarding
-						clientArgs := getClientArgs(rsaPrivKeyPath, "-forward-tcp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
+
+						additionalArgs := []string{}
+						if proxyJump {
+							additionalArgs = append(additionalArgs, "-proxy-jump", fmt.Sprintf("%s@%s%s", username, proxyServerBind, DEFAULT_PROXY_URL_PATH))
+						}
+						additionalArgs = append(additionalArgs, "-forward-tcp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
+						clientArgs := getClientArgs(rsaPrivKeyPath, additionalArgs...)
 						command := exec.Command(ssh3Path, clientArgs...)
 						session, err := Start(command, GinkgoWriter, GinkgoWriter)
 						Expect(err).ToNot(HaveOccurred())
@@ -265,7 +294,11 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					}
 
 					It("works with small messages", func() {
-						testTCPPortForwarding(8080, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server")
+						testTCPPortForwarding(8080, false, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server")
+					})
+
+					It("works through proxy jump", func() {
+						testTCPPortForwarding(8080, true, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server")
 					})
 
 					It("works with messages larger than a typical MTU", func() {
@@ -278,7 +311,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						n, err = rng.Read(messageFromServer)
 						Expect(n).To(Equal(len(messageFromServer)))
 						Expect(err).ToNot(HaveOccurred())
-						testTCPPortForwarding(8081, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
+						testTCPPortForwarding(8081, false, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
 					})
 
 					It("works with IPv6 addresses", func() {
@@ -289,7 +322,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						if !IPv6LoopbackAvailable(addrs) {
 							Skip("IPv6 not available on this host")
 						}
-						testTCPPortForwarding(8082, &net.TCPAddr{IP: net.ParseIP("::1"), Port: 9091}, "hello from client", "hello from server")
+						testTCPPortForwarding(8082, false, &net.TCPAddr{IP: net.ParseIP("::1"), Port: 9091}, "hello from client", "hello from server")
 					})
 				})
 			})
@@ -298,7 +331,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 			// a UDP socket is indeed well open on the client and is indeed forwarded
 			// through the SSH3 connection towards the specified remote IP and port.
 			Context("UDP port forwarding", func() {
-				testUDPPortForwarding := func(localPort uint16, remoteAddr *net.UDPAddr, messageFromClient, messageFromServer string) {
+				testUDPPortForwarding := func(localPort uint16, proxyJump bool, remoteAddr *net.UDPAddr, messageFromClient, messageFromServer string) {
 					localIP := "[::1]"
 					localIPWithoutBrackets := "::1"
 					if remoteAddr.IP.To4() != nil {
@@ -329,7 +362,13 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 					Eventually(serverStarted).Should(Receive())
 					// Execute the client with UDP port forwarding
-					clientArgs := getClientArgs(rsaPrivKeyPath, "-forward-udp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
+
+					additionalArgs := []string{}
+					if proxyJump {
+						additionalArgs = append(additionalArgs, "-proxy-jump", fmt.Sprintf("%s@%s%s", username, proxyServerBind, DEFAULT_PROXY_URL_PATH))
+					}
+					additionalArgs = append(additionalArgs, "-forward-udp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
+					clientArgs := getClientArgs(rsaPrivKeyPath, additionalArgs...)
 					command := exec.Command(ssh3Path, clientArgs...)
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
@@ -365,7 +404,11 @@ var _ = Describe("Testing the ssh3 cli", func() {
 				}
 
 				It("works with small messages", func() {
-					testUDPPortForwarding(8080, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server")
+					testUDPPortForwarding(8080, false, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server")
+				})
+
+				It("works through proxy jump", func() {
+					testUDPPortForwarding(8080, true, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server")
 				})
 
 				// Due to current quic-go limitations, the max datagram size is limited to 1200, whatever the real MTU is,
@@ -380,7 +423,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					n, err = rng.Read(messageFromServer)
 					Expect(n).To(Equal(len(messageFromServer)))
 					Expect(err).ToNot(HaveOccurred())
-					testUDPPortForwarding(8081, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
+					testUDPPortForwarding(8081, false, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
 				})
 
 				It("works with IPv6 addresses", func() {
@@ -390,8 +433,9 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					if !IPv6LoopbackAvailable(addrs) {
 						Skip("IPv6 not available on this host")
 					}
-					testUDPPortForwarding(8082, &net.UDPAddr{IP: net.ParseIP("::1"), Port: 9091}, "hello from client", "hello from server")
+					testUDPPortForwarding(8082, false, &net.UDPAddr{IP: net.ParseIP("::1"), Port: 9091}, "hello from client", "hello from server")
 				})
+
 			})
 
 			Context("Server behaviour", func() {
