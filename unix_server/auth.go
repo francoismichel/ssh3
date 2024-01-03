@@ -22,14 +22,14 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer w.(http.Flusher).Flush()
-		w.Header().Set("Server", ssh3.GetCurrentVersion())
-		major, minor, patch, err := ssh3.ParseVersion(r.UserAgent())
+		w.Header().Set("Server", ssh3.GetCurrentVersionString())
+		major, minor, patch, err := ssh3.ParseVersionString(r.UserAgent())
 		log.Debug().Msgf("received request from User-Agent %s (major %d, minor %d, patch %d)", r.UserAgent(), major, minor, patch)
 		// currently apply strict version rules
 		if err != nil || major != ssh3.MAJOR || minor != ssh3.MINOR {
 			w.WriteHeader(http.StatusForbidden)
 			if err == nil {
-				w.Write([]byte(fmt.Sprintf("Unsupported version: %d.%d.%d not supported by server in version %s", major, minor, patch, ssh3.GetCurrentVersion())))
+				w.Write([]byte(fmt.Sprintf("Unsupported version: %d.%d.%d not supported by server in version %s", major, minor, patch, ssh3.GetCurrentVersionString())))
 			} else {
 				w.Write([]byte("Unsupported user-agent"))
 			}

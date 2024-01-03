@@ -15,6 +15,7 @@ import (
 	"os"
 	osuser "os/user"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -266,12 +267,18 @@ func mainWithStatusCode() int {
 	issuerUrl := flag.String("use-oidc", "", "if set, force the use of OpenID Connect with the specified issuer url as parameter (it opens a browser window)")
 	oidcConfigFileName := flag.String("oidc-config", "", "OpenID Connect json config file containing the \"client_id\" and \"client_secret\" fields needed for most identity providers")
 	verbose := flag.Bool("v", false, "if set, enable verbose mode")
+	displayVersion := flag.Bool("version", false, "if set, displays the software version on standard output and exit")
 	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc")
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	flag.Parse()
 	args := flag.Args()
+
+	if *displayVersion {
+		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
+		return 0
+	}
 
 	useOIDC := *issuerUrl != ""
 
@@ -284,6 +291,14 @@ func mainWithStatusCode() int {
 	} else {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
 	}
+
+	if len(args) == 0 {
+		log.Error().Msgf("no remote host specified, exit")
+		flag.Usage()
+		os.Exit(-1)
+	}
+
+	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
 
 	knownHostsPath := path.Join(ssh3Dir, "known_hosts")
 	knownHosts, skippedLines, err := ssh3.ParseKnownHosts(knownHostsPath)
