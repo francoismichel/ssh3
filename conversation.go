@@ -29,7 +29,7 @@ type Conversation struct {
 	maxPacketSize             uint64
 	defaultDatagramsQueueSize uint64
 	streamCreator             http3.StreamCreator
-	messageSender             util.MessageSender
+	messageSender             util.DatagramSender
 	channelsManager           *channelsManager
 	context                   context.Context
 	cancelContext             context.CancelCauseFunc
@@ -134,7 +134,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 			//		 currently does not work for several conversations in the same QUIC connection
 
 			for {
-				dgram, err := qconn.ReceiveMessage(c.Context())
+				dgram, err := qconn.ReceiveDatagram(c.Context())
 				if err != nil {
 					if err != context.Canceled {
 						log.Error().Msgf("could not receive message from conn: %s", err)
@@ -166,7 +166,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	}
 }
 
-func NewServerConversation(ctx context.Context, controlStream http3.Stream, qconn quic.Connection, messageSender util.MessageSender, maxPacketsize uint64) (*Conversation, error) {
+func NewServerConversation(ctx context.Context, controlStream http3.Stream, qconn quic.Connection, messageSender util.DatagramSender, maxPacketsize uint64) (*Conversation, error) {
 	backgroundContext, backgroundCancelFunc := context.WithCancelCause(ctx)
 
 	tls := qconn.ConnectionState().TLS
@@ -290,7 +290,7 @@ func (c *Conversation) getDatagramSenderForChannel(channelID util.ChannelID) fun
 		buf := util.AppendVarInt(nil, uint64(c.controlStream.StreamID()))
 		buf = util.AppendVarInt(buf, channelID)
 		buf = append(buf, datagram...)
-		return c.messageSender.SendMessage(buf)
+		return c.messageSender.SendDatagram(buf)
 	}
 }
 
