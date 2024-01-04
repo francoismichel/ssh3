@@ -40,7 +40,6 @@ While SSH3 shows promise for faster session establishment, it is still at an ear
 We are developing SSH3 as an open source project to facilitate community feedback and analysis. However, we **cannot yet endorse its appropriateness for production systems** without further peer review. Please collaborate with us if you have relevant expertise!
 
 ### 🥷 Do not deploy the SSH3 server on your production servers for now
-
 Given the current prototype state, we advise *testing SSH3 in sandboxed environments or private networks*. Be aware that making experimental servers directly Internet-accessible could introduce risk before thorough security vetting.
 
 While [hiding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it 
