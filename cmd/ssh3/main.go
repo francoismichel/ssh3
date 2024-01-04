@@ -529,7 +529,7 @@ func mainWithStatusCode() int {
 		return -1
 	}
 
-	if *proxyJump == "" {
+	if *proxyJump == "" && sshConfig != nil {
 		*proxyJump, err = sshConfig.Get(parsedUrl.Hostname(), "UDPProxyJump")
 		if err != nil {
 			log.Error().Msgf("Could not get UDPProxyJump config value: %s", err)
