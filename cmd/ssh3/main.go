@@ -529,6 +529,14 @@ func mainWithStatusCode() int {
 		return -1
 	}
 
+	if *proxyJump == "" {
+		*proxyJump, err = sshConfig.Get(parsedUrl.Hostname(), "UDPProxyJump")
+		if err != nil {
+			log.Error().Msgf("Could not get UDPProxyJump config value: %s", err)
+			return -1
+		}
+	}
+
 	var proxyAddress *net.UDPAddr
 	if *proxyJump != "" {
 		if !strings.HasPrefix(*proxyJump, "https://") {
