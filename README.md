@@ -41,12 +41,12 @@ We are developing SSH3 as an open source project to facilitate community feedbac
 
 Given the current prototype state, we advise *testing SSH3 in sandboxed environments or private networks*. Be aware that making experimental servers directly Internet-accessible could introduce risk before thorough security vetting.
 
-While [hidding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it 
+While [hiding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it 
 does not negate the need for rigorous vulnerability analysis before 
 public launch. We are excited by SSH3's future possibilities but 
 encourage additional scrutiny first.
 
-## 🙏 Community support needed
+## 🙏 Community support
 
 Help us progress SSH3 responsibly! We welcome capable security 
 researchers to review our codebase and provide feedback. Please also 
