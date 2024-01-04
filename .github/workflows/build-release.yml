@@ -37,7 +37,7 @@ jobs:
       - name: Set a different ld for each arch # ugly but there are no working flags to explicitly set the ld to use...
         run: sudo cp /usr/bin/x86_64-linux-gnu-ld /usr/bin/amd64-ld && sudo cp /tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc /usr/bin/arm64-ld
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: '1.21.x'
       - name: Run GoReleaser

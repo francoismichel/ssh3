@@ -147,7 +147,7 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) AuthenticatedHandlerFun
 				// TODO: this hijacks the datagrams for the whole quic connection, so the server
 				//		 currently does not work for several conversations in the same QUIC connection
 				for {
-					dgram, err := qconn.ReceiveMessage(ctx)
+					dgram, err := qconn.ReceiveDatagram(ctx)
 					if err != nil {
 						if !errors.Is(err, context.Canceled) && !errors.Is(err, net.ErrClosed) {
 							log.Error().Msgf("could not receive message from conn: %s", err)
