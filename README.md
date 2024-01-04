@@ -42,10 +42,7 @@ We are developing SSH3 as an open source project to facilitate community feedbac
 ### 🥷 Do not deploy the SSH3 server on your production servers for now
 Given the current prototype state, we advise *testing SSH3 in sandboxed environments or private networks*. Be aware that making experimental servers directly Internet-accessible could introduce risk before thorough security vetting.
 
-While [hiding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it 
-does not negate the need for rigorous vulnerability analysis before 
-entering production. We are excited by SSH3's future possibilities but 
-encourage additional scrutiny first.
+While [hiding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it does not negate the need for rigorous vulnerability analysis before entering production. We are excited by SSH3's future possibilities but encourage additional scrutiny first.
 
 ## 🥷 Your SSH3 public server can be hidden
 Using SSH3, you can avoid the usual stress of scanning and dictionary attacks against your SSH server. Similarly to your secret Google Drive documents, your SSH3 server can be hidden behind a secret link and only answer to authentication attempts that made an HTTP request to this specific link, like the following:
