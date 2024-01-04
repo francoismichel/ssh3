@@ -17,9 +17,9 @@ before:
 
 builds:
   - 
-    id: "ssh3"
-    main: ./cmd/ssh3/main.go
-    binary: ssh3
+    id: "soh"
+    main: ./cmd/soh/main.go
+    binary: soh
     goos:
       - linux
     goarch:
@@ -30,9 +30,9 @@ builds:
       - static_build
       - feature
   - 
-    id: "ssh3-server"
-    main: ./cmd/ssh3-server/main.go
-    binary: ssh3-server
+    id: "soh-server"
+    main: ./cmd/soh-server/main.go
+    binary: soh-server
     env:
       - CGO_ENABLED=1
       - CC=/usr/local/musl/bin/musl-gcc

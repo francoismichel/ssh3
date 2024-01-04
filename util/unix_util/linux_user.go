@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/soh/util"
 )
 
 type ShadowEntry struct {

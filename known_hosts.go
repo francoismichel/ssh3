@@ -1,4 +1,4 @@
-package ssh3
+package soh
 
 import (
 	"bufio"
