@@ -43,7 +43,7 @@ Given the current prototype state, we advise *testing SSH3 in sandboxed environm
 
 While [hiding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it 
 does not negate the need for rigorous vulnerability analysis before 
-public launch. We are excited by SSH3's future possibilities but 
+entering production. We are excited by SSH3's future possibilities but 
 encourage additional scrutiny first.
 
 ## 🙏 Community support
