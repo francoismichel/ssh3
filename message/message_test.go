@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	mathrand "math/rand"
 
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/soh/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
