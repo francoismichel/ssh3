@@ -36,9 +36,7 @@ SSH3 already implements the common password-based and public-key (RSA and EdDSA/
 
 ### ⚡ SSH3 is still experimental
 
-While SSH3 shows promise for faster session establishment, it is 
-still at an early proof-of-concept stage. As with any new complex 
-protocol, **expert cryptographic review over an extended timeframe is required before reasonable security conclusions can be made**.
+While SSH3 shows promise for faster session establishment, it is still at an early proof-of-concept stage. As with any new complex protocol, **expert cryptographic review over an extended timeframe is required before reasonable security conclusions can be made**.
 
 We are developing SSH3 as an open source project to facilitate community feedback and analysis. However, we **cannot yet endorse its appropriateness for production systems** without further peer review. Please collaborate with us if you have relevant expertise!
 
