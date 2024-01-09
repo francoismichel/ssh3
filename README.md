@@ -64,12 +64,13 @@ UDP packets are forwarded using QUIC datagrams.
 ### Famous OpenSSH features implemented
 This SSH3 implementation already provides many of the popular features of OpenSSH, so if you are used to OpenSSH, the process of adopting SSH3 will be smooth. Here is a list of some OpenSSH features that SSH3 also implements:
 - Parses `~/.ssh/authorized_keys` on the server
-- Parses `~/.ssh/config` on the client and handles the `Hostname`, `User`, `Port` and `IdentityFile` config options (the other options are currently ignored)
 - Certificate-based server authentication
 - `known_hosts` mechanism when X.509 certificates are not used.
 - Automatically using the `ssh-agent` for public key authentication
 - SSH agent forwarding to use your local keys on your remote server
 - Direct TCP port forwarding (reverse port forwarding will be implemented in the future)
+- Proxy jump (see `-proxy-jump` parameter). If A is an SSH3 client and B and C are both SSH3 servers, you can connect from A to C using B as a gateway/proxy. The proxy uses UDP forwarding to forward the QUIC packets from A to C, so B cannot decrypt the traffic A<->C SSH3 traffic.
+- Parses `~/.ssh/config` on the client and handles the `Hostname`, `User`, `Port` and `IdentityFile` config options (the other options are currently ignored). Also parses a new `UDPProxyJump` that behaves similarly to OpenSSH's `ProxyJump`.
 
 ## 🙏 Community support
 Help us progress SSH3 responsibly! We welcome capable security researchers to review our codebase and provide feedback. Please also connect us with relevant standards bodies to potentially advance SSH3 through the formal IETF/IRTF processes over time.
@@ -179,6 +180,8 @@ Usage of ssh3:
         if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport
   -forward-udp string
         if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport
+  -proxy-jump string
+    	if set, performs a proxy jump using the specified remote host as proxy
   -insecure
         if set, skip server certificate verification
   -keylog string
@@ -258,3 +261,8 @@ This will provide you with a `client_id` and a `client_secret` that you can then
 oidc <client_id> https://accounts.google.com <email>
 ```
 We currently consider removing the need of setting the client_id in the `authorized_identities` file in the future.
+
+#### Proxy jump
+It is often the cases that some SSH hosts can only be accessed through a gateway. SSH3 allows you to perform a Proxy Jump similarly to what is proposed by OpenSSH.
+You can connect from A to C using B as a gateway/proxy. B and C must both be running a valid SSH3 server. This works by establishing UDP port forwarding on B to forward QUIC packets from A to C.
+The connection from A to C is therefore fully end-to-end and B cannot decrypt or alter the SSH3 traffic between A and C.
