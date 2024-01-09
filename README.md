@@ -69,7 +69,7 @@ This SSH3 implementation already provides many of the popular features of OpenSS
 - Automatically using the `ssh-agent` for public key authentication
 - SSH agent forwarding to use your local keys on your remote server
 - Direct TCP port forwarding (reverse port forwarding will be implemented in the future)
-- Proxy jump (see `-proxy-jump` parameter). If A is an SSH3 client and B and C are both SSH3 servers, you can connect from A to C using B as a gateway/proxy. The proxy uses UDP forwarding to forward the QUIC packets from A to C, so B cannot decrypt the traffic A<->C SSH3 traffic.
+- Proxy jump (see the `-proxy-jump` parameter). If A is an SSH3 client and B and C are both SSH3 servers, you can connect from A to C using B as a gateway/proxy. The proxy uses UDP forwarding to forward the QUIC packets from A to C, so B cannot decrypt the traffic A<->C SSH3 traffic.
 - Parses `~/.ssh/config` on the client and handles the `Hostname`, `User`, `Port` and `IdentityFile` config options (the other options are currently ignored). Also parses a new `UDPProxyJump` that behaves similarly to OpenSSH's `ProxyJump`.
 
 ## 🙏 Community support
