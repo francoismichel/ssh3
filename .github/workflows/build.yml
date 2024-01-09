@@ -7,7 +7,7 @@ jobs:
   build-linux:
     strategy:
         matrix:
-          go-version: [ '1.20.x', '1.21.x' ]
+          go-version: [ '1.21.x', '1.22.0-rc.1' ]
           goos: [linux]
           testuser: [ssh3-testuser]
           testpasswd: [ssh3-testpasswd]
@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: '${{matrix.go-version}}'
       - name: Install dependencies to generate ssh keys and certificates
@@ -46,7 +46,7 @@ jobs:
       - name: log authorized_identities
         run: cat ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Integration tests
-        run: sudo -E make -e integration-tests
+        run: sudo -E PATH=$PATH make -e integration-tests
         env:
           CERT_PEM: /cert.pem
           CERT_PRIV_KEY: /priv.key
@@ -62,14 +62,14 @@ jobs:
   build-macos:
     strategy:
       matrix:
-        go-version: [ '1.20.x', '1.21.x' ]
+        go-version: [ '1.21.x', '1.22.0-rc.1' ]
         goos: [darwin]
         goarch: [amd64,arm64]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: '${{matrix.go-version}}'
       - name: Install dependencies
@@ -89,7 +89,7 @@ jobs:
   build-other-unix:
     strategy:
       matrix:
-        go-version: [ '1.20.x', '1.21.x' ]
+        go-version: [ '1.21.x', '1.22.0-rc.1' ]
         goos: [openbsd,freebsd,linux]
         goarch: [amd64,"386",arm64,arm]
         exclude:
@@ -101,7 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: '${{matrix.go-version}}'
       - name: Install dependencies

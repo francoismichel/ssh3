@@ -47,19 +47,22 @@ func homedir() string {
 // If non-nil, use udpConn as transport (can be used for proxy jump)
 // Otherwise, create a UDPConn from udp://host:port
 func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog io.Writer, ssh3Dir string, certPool *x509.CertPool, knownHostsPath string, knownHosts ssh3.KnownHosts,
-	oidcConfig []*auth.OIDCConfig, options *client.Options, udpConn *net.UDPConn, tty *os.File) (quic.EarlyConnection, int) {
+	oidcConfig []*auth.OIDCConfig, options *client.Options, proxyRemoteAddr *net.UDPAddr, tty *os.File) (quic.EarlyConnection, int) {
 
-	remoteAddr, err := net.ResolveUDPAddr("udp", options.URLHostnamePort())
-	if err != nil {
-		log.Error().Msgf("could not resolve UDP address: %s", err)
-		return nil, -1
-	}
-	if udpConn == nil {
-		udpConn, err = net.ListenUDP("udp", nil)
+	var err error
+	remoteAddr := proxyRemoteAddr
+	if remoteAddr == nil {
+		remoteAddr, err = net.ResolveUDPAddr("udp", options.URLHostnamePort())
 		if err != nil {
-			log.Error().Msgf("could not create UDP connection: %s", err)
+			log.Error().Msgf("could not resolve UDP address: %s", err)
 			return nil, -1
 		}
+	}
+
+	udpConn, err := net.ListenUDP("udp", nil)
+	if err != nil {
+		log.Error().Msgf("could not create UDP connection: %s", err)
+		return nil, -1
 	}
 
 	tlsConf := &tls.Config{
@@ -299,6 +302,7 @@ func mainWithStatusCode() int {
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
+	proxyJump := flag.String("proxy-jump", "", "if set, performs a proxy jump using the specified remote host as proxy")
 	flag.Parse()
 	args := flag.Args()
 
@@ -524,7 +528,69 @@ func mainWithStatusCode() int {
 		log.Error().Msgf("Could not get connection material for %s: %s", parsedUrl, err)
 		return -1
 	}
-	qconn, status := setupQUICConnection(ctx, *insecure, keyLog, ssh3Dir, pool, knownHostsPath, knownHosts, oidcConfig, options, nil, tty)
+
+	if *proxyJump == "" && sshConfig != nil {
+		*proxyJump, err = sshConfig.Get(parsedUrl.Hostname(), "UDPProxyJump")
+		if err != nil {
+			log.Error().Msgf("Could not get UDPProxyJump config value: %s", err)
+			return -1
+		}
+	}
+
+	var proxyAddress *net.UDPAddr
+	if *proxyJump != "" {
+		if !strings.HasPrefix(*proxyJump, "https://") {
+			*proxyJump = fmt.Sprintf("https://%s", *proxyJump)
+		}
+		proxyParsedUrl, err := url.Parse(*proxyJump)
+		if err != nil {
+			log.Error().Msgf("Could not parse proxy host URL %s: %s", *proxyJump, err)
+			return -1
+		}
+		proxyAgentClient, proxyOptions, err := getConnectionMaterialFromURL(proxyParsedUrl, sshConfig, cliAuthMethods)
+		if err != nil {
+			log.Error().Msgf("Could not get connection material for proxy %s: %s", proxyParsedUrl, err)
+			return -1
+		}
+		qconn, status := setupQUICConnection(ctx, *insecure, keyLog, ssh3Dir, pool, knownHostsPath, knownHosts, oidcConfig, proxyOptions, nil, tty)
+
+		if qconn == nil {
+			if status != 0 {
+				log.Error().Msgf("could not setup transport for proxy client: %s", err)
+			}
+			return status
+		}
+
+		roundTripper := &http3.RoundTripper{
+			EnableDatagrams: true,
+		}
+
+		proxyClient, err := client.Dial(ctx, proxyOptions, qconn, roundTripper, proxyAgentClient)
+		if err != nil {
+			log.Error().Msgf("could not establish SSH3 proxy conversation: %s", err)
+			return -1
+		}
+
+		baseAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
+		if err != nil {
+			log.Error().Msgf("Could not resolve 127.0.0.1:0: %s", err)
+			return -1
+		}
+		remoteAddr, err := net.ResolveUDPAddr("udp", options.URLHostnamePort())
+		if err != nil {
+			log.Error().Msgf("Could not resolve remote address %s: %s", options.URLHostnamePort(), err)
+			return -1
+		}
+		addr, err := proxyClient.ForwardUDP(ctx, baseAddr, remoteAddr)
+		if err != nil {
+			log.Error().Msgf("Could not forward UDP for proxy jump: %s", err)
+			return -1
+		}
+		proxyAddress = addr
+		log.Debug().Msgf("started proxy jump at %s", proxyAddress)
+	}
+
+	qconn, status := setupQUICConnection(ctx, *insecure, keyLog, ssh3Dir, pool, knownHostsPath, knownHosts, oidcConfig, options, proxyAddress, tty)
 
 	if qconn == nil {
 		if status != 0 {
