@@ -457,7 +457,6 @@ func mainWithStatusCode() int {
 		log.Debug().Msgf("successfully parsed OIDC config")
 	}
 
-
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {
 		f, err := os.Create(*keyLogFile)
@@ -508,7 +507,7 @@ func mainWithStatusCode() int {
 				if *issuerUrl == issuerConfig.IssuerUrl {
 					log.Debug().Msgf("found issuer %s matching the issuer specified in the command-line", issuerConfig.IssuerUrl)
 					cliAuthMethods = append(cliAuthMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
-					} else {
+				} else {
 					log.Debug().Msgf("issuer %s does not match issuer URL %s specified in the command-line", issuerConfig.IssuerUrl, *issuerUrl)
 				}
 			}
