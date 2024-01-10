@@ -612,7 +612,7 @@ func mainWithStatusCode() int {
 
 	c, err := client.Dial(ctx, options, qconn, roundTripper, agentClient)
 	if err != nil {
-		log.Error().Msgf("could not establish SSH3 conversation: %s", err)
+		log.Error().Msgf("could not dial %s: %s", options.CanonicalHostFormat(), err)
 		return -1
 	}
 	if localTCPAddr != nil && remoteTCPAddr != nil {

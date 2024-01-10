@@ -55,6 +55,20 @@ func (e Unauthorized) Error() string {
 	return "Unauthorized"
 }
 
+type OtherHTTPError struct {
+	StatusCode int
+	HasBody    bool
+	Body       string
+}
+
+func (e OtherHTTPError) Error() string {
+	str := fmt.Sprintf("HTTP response with %d status code", e.StatusCode)
+	if e.HasBody {
+		str = fmt.Sprintf("%s: %s", str, e.Body)
+	}
+	return str
+}
+
 type BytesReadCloser struct {
 	*bytes.Reader
 }

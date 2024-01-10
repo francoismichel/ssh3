@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 
@@ -162,7 +163,17 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	} else if rsp.StatusCode == http.StatusUnauthorized {
 		return util.Unauthorized{}
 	} else {
-		return fmt.Errorf("returned non-200 and non-401 status code: %d", rsp.StatusCode)
+		bodyContent, err := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		if err != nil {
+			log.Error().Msgf("could not read response body from server: %s", err)
+		}
+
+		return util.OtherHTTPError{
+			HasBody:    rsp.ContentLength > 0,
+			Body:       string(bodyContent),
+			StatusCode: rsp.StatusCode,
+		}
 	}
 }
 
