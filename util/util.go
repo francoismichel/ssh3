@@ -60,6 +60,8 @@ func lower(b byte) byte {
 
 func ConfigureLogger(logLevel string) {
 	switch strings.ToLower(logLevel) {
+	case "trace":
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
 	case "debug":
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	case "info":

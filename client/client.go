@@ -625,14 +625,14 @@ func (c *Client) RunSession(tty *os.File, forwardSSHAgent bool, command ...strin
 					log.Fatal().Msgf("%s", err)
 				}
 
-				log.Debug().Msgf("received data %s", message.Data)
+				log.Trace().Msgf("received data %s", message.Data)
 			case ssh3Messages.SSH_EXTENDED_DATA_STDERR:
 				_, err = os.Stderr.Write([]byte(message.Data))
 				if err != nil {
 					log.Fatal().Msgf("%s", err)
 				}
 
-				log.Debug().Msgf("received stderr data %s", message.Data)
+				log.Trace().Msgf("received stderr data %s", message.Data)
 			}
 		}
 	}
