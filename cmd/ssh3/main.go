@@ -428,11 +428,15 @@ func mainWithStatusCode() int {
 	var oidcConfigFile *os.File = nil
 	if *oidcConfigFileName == "" {
 		defaultFileName := path.Join(ssh3Dir, "oidc_config.json")
+		log.Debug().Msgf("no OIDC config file specified, use default file: %s", defaultFileName)
 		oidcConfigFile, err = os.Open(defaultFileName)
-		if err != nil && !os.IsNotExist(err) {
+		if os.IsNotExist(err) {
+			log.Debug().Msgf("%s does not exist", defaultFileName)
+		} else if err != nil {
 			log.Warn().Msgf("could not open %s: %s", defaultFileName, err.Error())
 		}
 	} else {
+		log.Debug().Msgf("open OIDC config from %s", *oidcConfigFileName)
 		oidcConfigFile, err = os.Open(*oidcConfigFileName)
 		if err != nil {
 			log.Error().Msgf("could not open %s: %s", *oidcConfigFileName, err.Error())
@@ -450,9 +454,9 @@ func mainWithStatusCode() int {
 			log.Error().Msgf("could not parse oidc config file: %s", err.Error())
 			return -1
 		}
+		log.Debug().Msgf("successfully parsed OIDC config")
 	}
 
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	var keyLog io.Writer
 	if len(*keyLogFile) > 0 {
@@ -499,9 +503,13 @@ func mainWithStatusCode() int {
 	} else {
 		// for now, only perform OIDC if it was explicitly asked by the user
 		if *issuerUrl != "" {
+			log.Debug().Msgf("add OIDC auth, %d issuers in configs", len(oidcConfig))
 			for _, issuerConfig := range oidcConfig {
 				if *issuerUrl == issuerConfig.IssuerUrl {
+					log.Debug().Msgf("found issuer %s matching the issuer specified in the command-line", issuerConfig.IssuerUrl)
 					cliAuthMethods = append(cliAuthMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+					} else {
+					log.Debug().Msgf("issuer %s does not match issuer URL %s specified in the command-line", issuerConfig.IssuerUrl, *issuerUrl)
 				}
 			}
 		} else {
