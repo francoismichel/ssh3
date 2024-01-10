@@ -317,7 +317,7 @@ func mainWithStatusCode() int {
 	os.MkdirAll(ssh3Dir, 0700)
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	if *verbose {
+	if *verbose && os.Getenv("SSH3_LOG_LEVEL") != "trace" {
 		util.ConfigureLogger("debug")
 	} else {
 		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
