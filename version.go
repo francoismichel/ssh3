@@ -11,7 +11,7 @@ import (
 const MAJOR int = 0
 const MINOR int = 1
 const PATCH int = 5
-const RC int = 3
+const RC int = 4
 
 type InvalidSSHVersion struct {
 	versionString string
