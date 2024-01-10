@@ -274,6 +274,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	for _, method := range options.authMethods {
 		switch m := method.(type) {
 		case *ssh3.PasswordAuthMethod:
+			log.Debug().Msgf("try password-based auth")
 			fmt.Printf("password for %s:", hostUrl.String())
 			password, err := term.ReadPassword(int(syscall.Stdin))
 			fmt.Println()
@@ -283,6 +284,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 			}
 			identity = m.IntoIdentity(string(password))
 		case *ssh3.PrivkeyFileAuthMethod:
+			log.Debug().Msgf("try file-based pubkey auth using file %s", m.Filename())
 			identity, err = m.IntoIdentityWithoutPassphrase()
 			// could not identify without passphrase, try agent authentication by using the key's public key
 			if passphraseErr, ok := err.(*ssh.PassphraseMissingError); ok {
@@ -333,8 +335,10 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 				log.Warn().Msgf("Could not load private key: %s", err)
 			}
 		case *ssh3.AgentAuthMethod:
+			log.Debug().Msgf("try ssh-agent-based auth")
 			identity = m.IntoIdentity(sshAgent)
 		case *ssh3.OidcAuthMethod:
+			log.Debug().Msgf("try OIDC auth to issuer %s", m.OIDCConfig().IssuerUrl)
 			token, err := auth.Connect(context.Background(), m.OIDCConfig(), m.OIDCConfig().IssuerUrl, m.DoPKCE())
 			if err != nil {
 				log.Error().Msgf("could not get token: %s", err)
