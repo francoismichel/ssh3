@@ -348,6 +348,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 		}
 		// currently only tries a single identity (the first one), but the goal is to
 		// try several identities, similarly to OpenSSH
+		log.Debug().Msgf("we only try the first specified auth method for now")
 		break
 	}
 
