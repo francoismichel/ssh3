@@ -69,6 +69,15 @@ func (e OtherHTTPError) Error() string {
 	return str
 }
 
+type InvalidConfig struct {
+	Field string
+	Value string
+}
+
+func (e InvalidConfig) Error() string {
+	return fmt.Sprintf("Invalid %s config field: \"%s\"", e.Field, e.Value)
+}
+
 type BytesReadCloser struct {
 	*bytes.Reader
 }
