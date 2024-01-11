@@ -26,11 +26,11 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	ssh3 "github.com/francoismichel/ssh3"
-	ssh3Messages "github.com/francoismichel/ssh3/message"
-	"github.com/francoismichel/ssh3/unix_server"
-	util "github.com/francoismichel/ssh3/util"
-	"github.com/francoismichel/ssh3/util/unix_util"
+	soh "github.com/francoismichel/soh"
+	sohMessages "github.com/francoismichel/soh/message"
+	"github.com/francoismichel/soh/unix_server"
+	util "github.com/francoismichel/soh/util"
+	"github.com/francoismichel/soh/util/unix_util"
 )
 
 var signals = map[string]os.Signal{
@@ -99,8 +99,8 @@ type runningSession struct {
 	authAgentSocketPath string
 }
 
-// var runningSessions = make(map[ssh3.Channel]*runningSession)
-var runningSessions = util.NewSyncMap[ssh3.Channel, *runningSession]()
+// var runningSessions = make(map[soh.Channel]*runningSession)
+var runningSessions = util.NewSyncMap[soh.Channel, *runningSession]()
 
 func setWinsize(f *os.File, charWidth, charHeight, pixWidth, pixHeight uint64) {
 	syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCSWINSZ),
@@ -124,7 +124,7 @@ func setupEnv(user *unix_util.User, runningCommand *runningCommand, authAgentSoc
 	}
 }
 
-func forwardUDPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.UDPConn) {
+func forwardUDPInBackground(ctx context.Context, channel soh.Channel, conn *net.UDPConn) {
 	go func() {
 		defer conn.Close()
 		for {
@@ -170,7 +170,7 @@ func forwardUDPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 }
 
-func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
+func forwardTCPInBackground(ctx context.Context, channel soh.Channel, conn *net.TCPConn) {
 	go func() {
 		defer conn.CloseWrite()
 		for {
@@ -193,8 +193,8 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 			}
 
 			switch message := genericMessage.(type) {
-			case *ssh3Messages.DataOrExtendedDataMessage:
-				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
+			case *sohMessages.DataOrExtendedDataMessage:
+				if message.DataType == sohMessages.SSH_EXTENDED_DATA_NONE {
 					_, err := conn.Write([]byte(message.Data))
 					if err != nil {
 						log.Error().Msgf("could not write data on TCP socket: %s", err)
@@ -226,7 +226,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 				log.Error().Msgf("could read data on TCP socket: %s", err)
 				return
 			}
-			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			_, errWrite := channel.WriteData(buf[:n], sohMessages.SSH_EXTENDED_DATA_NONE)
 			if errWrite != nil {
 				switch quicErr := errWrite.(type) {
 				case *quic.StreamError:
@@ -247,7 +247,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 }
 
-func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string) error {
+func execCmdInBackground(channel soh.Channel, openPty *openPty, user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string) error {
 	setupEnv(user, runningCommand, authAgentSocketPath)
 	if openPty != nil {
 		err := unix_util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
@@ -320,7 +320,7 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util
 				} else {
 					buf, err := stdoutResult.data, stdoutResult.err
 					// an error could be returned but still with relevant data, so first send the data
-					_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_NONE)
+					_, err2 := channel.WriteData(buf, sohMessages.SSH_EXTENDED_DATA_NONE)
 					if err2 != nil {
 						log.Error().Msgf("could not write the pty's output in an SSH message: %+v\n", err)
 						return
@@ -336,7 +336,7 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util
 					stderrChan = nil
 				} else {
 					buf, err := stderrResult.data, stderrResult.err
-					_, err2 := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_STDERR)
+					_, err2 := channel.WriteData(buf, sohMessages.SSH_EXTENDED_DATA_STDERR)
 					if err2 != nil {
 						log.Error().Msgf("could not write the pty's output in an SSH message: %+v\n", err)
 						return
@@ -360,9 +360,9 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util
 				}
 			}
 			if stdoutChan == nil && stderrChan == nil && execResultChan == nil {
-				err := channel.SendRequest(&ssh3Messages.ChannelRequestMessage{
+				err := channel.SendRequest(&sohMessages.ChannelRequestMessage{
 					WantReply:      false,
-					ChannelRequest: &ssh3Messages.ExitStatusRequest{ExitStatus: execExitStatus},
+					ChannelRequest: &sohMessages.ExitStatusRequest{ExitStatus: execExitStatus},
 				})
 				if err != nil {
 					log.Error().Msgf("Could not send exit status message to the peer: %s", err)
@@ -375,7 +375,7 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util
 	return nil
 }
 
-func newPtyReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
+func newPtyReq(user *unix_util.User, channel soh.Channel, request sohMessages.PtyRequest, wantReply bool) error {
 	var session *runningSession
 	session, ok := runningSessions.Get(channel)
 	if !ok {
@@ -407,11 +407,11 @@ func newPtyReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.
 	return nil
 }
 
-func newX11Req(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.X11Request, wantReply bool) error {
+func newX11Req(user *unix_util.User, channel soh.Channel, request sohMessages.X11Request, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newCommand(user *unix_util.User, channel ssh3.Channel, loginShell bool, command string, args ...string) error {
+func newCommand(user *unix_util.User, channel soh.Channel, loginShell bool, command string, args ...string) error {
 	var session *runningSession
 	session, ok := runningSessions.Get(channel)
 	if !ok {
@@ -475,24 +475,24 @@ func newCommand(user *unix_util.User, channel ssh3.Channel, loginShell bool, com
 	return execCmdInBackground(channel, session.pty, user, session.runningCmd, session.authAgentSocketPath)
 }
 
-func newShellReq(user *unix_util.User, channel ssh3.Channel, wantReply bool) error {
+func newShellReq(user *unix_util.User, channel soh.Channel, wantReply bool) error {
 	return newCommand(user, channel, true, user.Shell)
 }
 
 // similar behaviour to OpenSSH; exec requests are just pasted in the user's shell
-func newCommandInShellReq(user *unix_util.User, channel ssh3.Channel, wantReply bool, command string) error {
+func newCommandInShellReq(user *unix_util.User, channel soh.Channel, wantReply bool, command string) error {
 	return newCommand(user, channel, false, user.Shell, "-c", command)
 }
 
-func newSubsystemReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.SubsystemRequest, wantReply bool) error {
+func newSubsystemReq(user *unix_util.User, channel soh.Channel, request sohMessages.SubsystemRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newWindowChangeReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.WindowChangeRequest, wantReply bool) error {
+func newWindowChangeReq(user *unix_util.User, channel soh.Channel, request sohMessages.WindowChangeRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newSignalReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
+func newSignalReq(user *unix_util.User, channel soh.Channel, request sohMessages.SignalRequest, wantReply bool) error {
 	runningSession, ok := runningSessions.Get(channel)
 	if !ok {
 		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID(), channel.ConversationID())
@@ -518,15 +518,15 @@ func newSignalReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messag
 	return nil
 }
 
-func newExitStatusReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.ExitStatusRequest, wantReply bool) error {
+func newExitStatusReq(user *unix_util.User, channel soh.Channel, request sohMessages.ExitStatusRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func newExitSignalReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.ExitSignalRequest, wantReply bool) error {
+func newExitSignalReq(user *unix_util.User, channel soh.Channel, request sohMessages.ExitSignalRequest, wantReply bool) error {
 	return fmt.Errorf("%T not implemented", request)
 }
 
-func handleUDPForwardingChannel(ctx context.Context, user *unix_util.User, conv *ssh3.Conversation, channel *ssh3.UDPForwardingChannelImpl) error {
+func handleUDPForwardingChannel(ctx context.Context, user *unix_util.User, conv *soh.Conversation, channel *soh.UDPForwardingChannelImpl) error {
 	// TODO: currently, the rights for socket creation are not checked. The socket is opened with the process's uid and gid
 	// Not sure how to handled that in go since we cannot temporarily change the uid/gid without potentially impacting every
 	// other goroutine
@@ -538,7 +538,7 @@ func handleUDPForwardingChannel(ctx context.Context, user *unix_util.User, conv 
 	return nil
 }
 
-func handleTCPForwardingChannel(ctx context.Context, user *unix_util.User, conv *ssh3.Conversation, channel *ssh3.TCPForwardingChannelImpl) error {
+func handleTCPForwardingChannel(ctx context.Context, user *unix_util.User, conv *soh.Conversation, channel *soh.TCPForwardingChannelImpl) error {
 	// TODO: currently, the rights for socket creation are not checked. The socket is opened with the process's uid and gid
 	// Not sure how to handled that in go since we cannot temporarily change the uid/gid without potentially impacting every
 	// other goroutine
@@ -550,7 +550,7 @@ func handleTCPForwardingChannel(ctx context.Context, user *unix_util.User, conv 
 	return nil
 }
 
-func newDataReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
+func newDataReq(user *unix_util.User, channel soh.Channel, request sohMessages.DataOrExtendedDataMessage) error {
 	runningSession, ok := runningSessions.Get(channel)
 	if !ok {
 		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID(), channel.ConversationID())
@@ -566,7 +566,7 @@ func newDataReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages
 			return fmt.Errorf("there is no running command on Channel %d (conv %d) to feed the received data", channel.ChannelID(), channel.ConversationID())
 		}
 		switch request.DataType {
-		case ssh3Messages.SSH_EXTENDED_DATA_NONE:
+		case sohMessages.SSH_EXTENDED_DATA_NONE:
 			runningSession.runningCmd.stdinW.Write([]byte(request.Data))
 		default:
 			return fmt.Errorf("extended data type forbidden server PTY")
@@ -577,7 +577,7 @@ func newDataReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages
 	return nil
 }
 
-func handleAuthAgentSocketConn(conn net.Conn, conversation *ssh3.Conversation) {
+func handleAuthAgentSocketConn(conn net.Conn, conversation *soh.Conversation) {
 	channel, err := conversation.OpenChannel("agent-connection", 30000, 10)
 	if err != nil {
 		log.Error().Msgf("could not open channel from server: %s", err.Error())
@@ -592,7 +592,7 @@ func handleAuthAgentSocketConn(conn net.Conn, conversation *ssh3.Conversation) {
 				log.Info().Msgf("could not read data socket %d: %s", channel.ChannelID(), err.Error())
 				return
 			}
-			_, err = channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			_, err = channel.WriteData(buf[:n], sohMessages.SSH_EXTENDED_DATA_NONE)
 			if err != nil {
 				log.Info().Msgf("could not write data on agent channel %d: %s", channel.ChannelID(), err.Error())
 				return
@@ -606,7 +606,7 @@ func handleAuthAgentSocketConn(conn net.Conn, conversation *ssh3.Conversation) {
 			return
 		}
 		switch message := genericMessage.(type) {
-		case *ssh3Messages.DataOrExtendedDataMessage:
+		case *sohMessages.DataOrExtendedDataMessage:
 			_, err := conn.Write([]byte(message.Data))
 			if err != nil {
 				log.Error().Msgf("could not write data to channel %d: %s", channel.ChannelID(), err.Error())
@@ -619,7 +619,7 @@ func handleAuthAgentSocketConn(conn net.Conn, conversation *ssh3.Conversation) {
 	}
 }
 
-func listenAndAcceptAuthSockets(cancel context.CancelCauseFunc, conversation *ssh3.Conversation, listener net.Listener, maxSSHPacketSize uint64) {
+func listenAndAcceptAuthSockets(cancel context.CancelCauseFunc, conversation *soh.Conversation, listener net.Listener, maxSSHPacketSize uint64) {
 	defer cancel(nil)
 	defer listener.Close()
 	for {
@@ -635,7 +635,7 @@ func listenAndAcceptAuthSockets(cancel context.CancelCauseFunc, conversation *ss
 	}
 }
 
-func openAgentSocketAndForwardAgent(parent context.Context, conv *ssh3.Conversation, user *unix_util.User) (string, error) {
+func openAgentSocketAndForwardAgent(parent context.Context, conv *soh.Conversation, user *unix_util.User) (string, error) {
 	ctx, cancel := context.WithCancelCause(parent)
 	sockPath, err := unix_util.NewUnixSocketPath()
 	if err != nil {
@@ -674,7 +674,7 @@ func main() {
 	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	displayVersion := flag.Bool("version", false, "if set, displays the software version on standard output and exit")
-	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
+	urlPath := flag.String("url-path", "/soh-term", "the secret URL path on which the soh server listens")
 	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key "+
 		"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
 	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
@@ -686,7 +686,7 @@ func main() {
 	flag.Parse()
 
 	if *displayVersion {
-		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
+		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", soh.GetCurrentSoftwareVersion())
 		os.Exit(0)
 	}
 
@@ -707,7 +707,7 @@ func main() {
 		if !certPathExists || !keyPathExists {
 			fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
 				"you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
-			fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
+			fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/soh/blob/main/generate_openssl_selfsigned_certificate.sh")
 			os.Exit(-1)
 		}
 	} else {
@@ -743,11 +743,11 @@ func main() {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 		util.ConfigureLogger("debug")
 	} else {
-		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+		util.ConfigureLogger(os.Getenv("SOH_LOG_LEVEL"))
 
-		logFileName := os.Getenv("SSH3_LOG_FILE")
+		logFileName := os.Getenv("SOH_LOG_FILE")
 		if logFileName == "" {
-			logFileName = "/var/log/ssh3.log"
+			logFileName = "/var/log/soh.log"
 		}
 		logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
@@ -757,7 +757,7 @@ func main() {
 		log.Logger = log.Output(logFile)
 	}
 
-	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
+	log.Debug().Msgf("version %s", soh.GetCurrentSoftwareVersion())
 
 	quicConf := &quic.Config{
 		Allow0RTT: true,
@@ -776,7 +776,7 @@ func main() {
 		}
 
 		mux := http.NewServeMux()
-		ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
+		sohServer := soh.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *soh.Conversation) error {
 			authenticatedUser, err := unix_util.GetUser(authenticatedUsername)
 			if err != nil {
 				return err
@@ -788,9 +788,9 @@ func main() {
 				}
 
 				switch c := channel.(type) {
-				case *ssh3.UDPForwardingChannelImpl:
+				case *soh.UDPForwardingChannelImpl:
 					handleUDPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
-				case *ssh3.TCPForwardingChannelImpl:
+				case *soh.TCPForwardingChannelImpl:
 					handleTCPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
 				default:
 					runningSessions.Insert(channel, &runningSession{
@@ -815,28 +815,28 @@ func main() {
 								return
 							}
 							switch message := genericMessage.(type) {
-							case *ssh3Messages.ChannelRequestMessage:
+							case *sohMessages.ChannelRequestMessage:
 								switch requestMessage := message.ChannelRequest.(type) {
-								case *ssh3Messages.PtyRequest:
+								case *sohMessages.PtyRequest:
 									err = newPtyReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.X11Request:
+								case *sohMessages.X11Request:
 									err = newX11Req(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.ShellRequest:
+								case *sohMessages.ShellRequest:
 									err = newShellReq(authenticatedUser, channel, message.WantReply)
-								case *ssh3Messages.ExecRequest:
+								case *sohMessages.ExecRequest:
 									err = newCommandInShellReq(authenticatedUser, channel, message.WantReply, requestMessage.Command)
-								case *ssh3Messages.SubsystemRequest:
+								case *sohMessages.SubsystemRequest:
 									err = newSubsystemReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.WindowChangeRequest:
+								case *sohMessages.WindowChangeRequest:
 									err = newWindowChangeReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.SignalRequest:
+								case *sohMessages.SignalRequest:
 									err = newSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.ExitStatusRequest:
+								case *sohMessages.ExitStatusRequest:
 									err = newExitStatusReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.ExitSignalRequest:
+								case *sohMessages.ExitSignalRequest:
 									err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 								}
-							case *ssh3Messages.DataOrExtendedDataMessage:
+							case *sohMessages.DataOrExtendedDataMessage:
 								runningSession, ok := runningSessions.Get(channel)
 								if ok && runningSession.channelState == LARVAL {
 									if message.Data == string("forward-agent") {
@@ -859,8 +859,8 @@ func main() {
 
 			}
 		})
-		ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
-		handler, err := unix_server.HandleAuths(context.Background(), enablePasswordLogin, 30000, ssh3Handler)
+		sohHandler := sohServer.GetHTTPHandlerFunc(context.Background())
+		handler, err := unix_server.HandleAuths(context.Background(), enablePasswordLogin, 30000, sohHandler)
 		if err != nil {
 			log.Error().Msgf("Could not get authentication handlers: %s", err)
 			return

@@ -56,7 +56,7 @@ func (o *Options) UrlPath() string {
 	return o.urlPath
 }
 
-// Returns the canonical host representation used by SSH3.
+// Returns the canonical host representation used by SOH.
 // The format is <urlhostnameport><path>
 // <urlhostnameport> is the host:port pair in the format returned by
 // URLHostnamePort()

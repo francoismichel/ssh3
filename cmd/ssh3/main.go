@@ -20,10 +20,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/auth"
-	"github.com/francoismichel/ssh3/client"
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/soh"
+	"github.com/francoismichel/soh/auth"
+	"github.com/francoismichel/soh/client"
+	"github.com/francoismichel/soh/util"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/crypto/ssh"
@@ -43,10 +43,10 @@ func homedir() string {
 	}
 }
 
-// Prepares the QUIC connection that will be used by SSH3
+// Prepares the QUIC connection that will be used by SOH
 // If non-nil, use udpConn as transport (can be used for proxy jump)
 // Otherwise, create a UDPConn from udp://host:port
-func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog io.Writer, ssh3Dir string, certPool *x509.CertPool, knownHostsPath string, knownHosts ssh3.KnownHosts,
+func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog io.Writer, sohDir string, certPool *x509.CertPool, knownHostsPath string, knownHosts soh.KnownHosts,
 	oidcConfig []*auth.OIDCConfig, options *client.Options, proxyRemoteAddr *net.UDPAddr, tty *os.File) (quic.EarlyConnection, int) {
 
 	var err error
@@ -81,21 +81,21 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 	qconf.KeepAlivePeriod = 1 * time.Second
 
 	if certs, ok := knownHosts[options.CanonicalHostFormat()]; ok {
-		foundSelfsignedSSH3 := false
+		foundSelfsignedSOH := false
 
 		for _, cert := range certs {
 			certPool.AddCert(cert)
-			if cert.VerifyHostname("selfsigned.ssh3") == nil {
-				foundSelfsignedSSH3 = true
+			if cert.VerifyHostname("selfsigned.soh") == nil {
+				foundSelfsignedSOH = true
 			}
 		}
 
-		// If no IP SAN was in the cert, then assume the self-signed cert at least matches the .ssh3 TLD
-		if foundSelfsignedSSH3 {
-			// Put "ssh3" as ServerName so that the TLS verification can succeed
+		// If no IP SAN was in the cert, then assume the self-signed cert at least matches the .soh TLD
+		if foundSelfsignedSOH {
+			// Put "soh" as ServerName so that the TLS verification can succeed
 			// Otherwise, TLS refuses to validate a certificate without IP SANs
 			// if the hostname is an IP address.
-			tlsConf.ServerName = "selfsigned.ssh3"
+			tlsConf.ServerName = "selfsigned.soh"
 		}
 	}
 
@@ -150,7 +150,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					"This session is vulnerable a machine-in-the-middle attack.\n\r" +
 					"Certificate fingerprint: " +
 					"SHA256 " + util.Sha256Fingerprint(peerCertificate.Raw) + "\n\r" +
-					"Do you want to add this certificate to ~/.ssh3/known_hosts (yes/no)? ")
+					"Do you want to add this certificate to ~/.soh/known_hosts (yes/no)? ")
 				if err != nil {
 					log.Error().Msgf("cound not write on /dev/tty: %s", err)
 					return nil, -1
@@ -171,7 +171,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					log.Info().Msg("Connection aborted")
 					return nil, 0
 				}
-				if err := ssh3.AppendKnownHost(knownHostsPath, options.CanonicalHostFormat(), peerCertificate); err != nil {
+				if err := soh.AppendKnownHost(knownHostsPath, options.CanonicalHostFormat(), peerCertificate); err != nil {
 					log.Error().Msgf("could not append known host to %s: %s", knownHostsPath, err)
 					return nil, -1
 				}
@@ -211,7 +211,7 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.Options, error) {
 	urlHostname, urlPort := hostUrl.Hostname(), hostUrl.Port()
 
-	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	configHostname, configPort, configUser, configAuthMethods, err := soh.GetConfigForHost(urlHostname, sshConfig)
 	if err != nil {
 		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
 		return nil, err
@@ -307,20 +307,20 @@ func mainWithStatusCode() int {
 	args := flag.Args()
 
 	if *displayVersion {
-		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
+		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", soh.GetCurrentSoftwareVersion())
 		return 0
 	}
 
 	useOIDC := *issuerUrl != ""
 
-	ssh3Dir := path.Join(homedir(), ".ssh3")
-	os.MkdirAll(ssh3Dir, 0700)
+	sohDir := path.Join(homedir(), ".soh")
+	os.MkdirAll(sohDir, 0700)
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	if *verbose && os.Getenv("SSH3_LOG_LEVEL") != "trace" {
+	if *verbose && os.Getenv("SOH_LOG_LEVEL") != "trace" {
 		util.ConfigureLogger("debug")
 	} else {
-		util.ConfigureLogger(os.Getenv("SSH3_LOG_LEVEL"))
+		util.ConfigureLogger(os.Getenv("SOH_LOG_LEVEL"))
 	}
 
 	if len(args) == 0 {
@@ -329,10 +329,10 @@ func mainWithStatusCode() int {
 		os.Exit(-1)
 	}
 
-	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
+	log.Debug().Msgf("version %s", soh.GetCurrentSoftwareVersion())
 
-	knownHostsPath := path.Join(ssh3Dir, "known_hosts")
-	knownHosts, skippedLines, err := ssh3.ParseKnownHosts(knownHostsPath)
+	knownHostsPath := path.Join(sohDir, "known_hosts")
+	knownHosts, skippedLines, err := soh.ParseKnownHosts(knownHostsPath)
 	if len(skippedLines) != 0 {
 		stringSkippedLines := []string{}
 		for _, lineNumber := range skippedLines {
@@ -427,7 +427,7 @@ func mainWithStatusCode() int {
 	var oidcConfig auth.OIDCIssuerConfig = nil
 	var oidcConfigFile *os.File = nil
 	if *oidcConfigFileName == "" {
-		defaultFileName := path.Join(ssh3Dir, "oidc_config.json")
+		defaultFileName := path.Join(sohDir, "oidc_config.json")
 		log.Debug().Msgf("no OIDC config file specified, use default file: %s", defaultFileName)
 		oidcConfigFile, err = os.Open(defaultFileName)
 		if os.IsNotExist(err) {
@@ -471,7 +471,7 @@ func mainWithStatusCode() int {
 	// Only do privkey and agent auth if OIDC is not asked explicitly
 	if !useOIDC {
 		if *privKeyFile != "" {
-			cliAuthMethods = append(cliAuthMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
+			cliAuthMethods = append(cliAuthMethods, soh.NewPrivkeyFileAuthMethod(*privKeyFile))
 		}
 
 		if *pubkeyForAgent != "" {
@@ -490,13 +490,13 @@ func mainWithStatusCode() int {
 						log.Error().Msgf("could not parse public key: %s", err)
 						return -1
 					}
-					cliAuthMethods = append(cliAuthMethods, ssh3.NewAgentAuthMethod(pubkey))
+					cliAuthMethods = append(cliAuthMethods, soh.NewAgentAuthMethod(pubkey))
 				}
 			}
 		}
 
 		if *passwordAuthentication {
-			cliAuthMethods = append(cliAuthMethods, ssh3.NewPasswordAuthMethod())
+			cliAuthMethods = append(cliAuthMethods, soh.NewPasswordAuthMethod())
 		}
 
 	} else {
@@ -506,7 +506,7 @@ func mainWithStatusCode() int {
 			for _, issuerConfig := range oidcConfig {
 				if *issuerUrl == issuerConfig.IssuerUrl {
 					log.Debug().Msgf("found issuer %s matching the issuer specified in the command-line", issuerConfig.IssuerUrl)
-					cliAuthMethods = append(cliAuthMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+					cliAuthMethods = append(cliAuthMethods, soh.NewOidcAuthMethod(*doPKCE, issuerConfig))
 				} else {
 					log.Debug().Msgf("issuer %s does not match issuer URL %s specified in the command-line", issuerConfig.IssuerUrl, *issuerUrl)
 				}
@@ -559,7 +559,7 @@ func mainWithStatusCode() int {
 			log.Error().Msgf("Could not get connection material for proxy %s: %s", proxyParsedUrl, err)
 			return -1
 		}
-		qconn, status := setupQUICConnection(ctx, *insecure, keyLog, ssh3Dir, pool, knownHostsPath, knownHosts, oidcConfig, proxyOptions, nil, tty)
+		qconn, status := setupQUICConnection(ctx, *insecure, keyLog, sohDir, pool, knownHostsPath, knownHosts, oidcConfig, proxyOptions, nil, tty)
 
 		if qconn == nil {
 			if status != 0 {
@@ -574,7 +574,7 @@ func mainWithStatusCode() int {
 
 		proxyClient, err := client.Dial(ctx, proxyOptions, qconn, roundTripper, proxyAgentClient)
 		if err != nil {
-			log.Error().Msgf("could not establish SSH3 proxy conversation: %s", err)
+			log.Error().Msgf("could not establish SOH proxy conversation: %s", err)
 			return -1
 		}
 
@@ -597,7 +597,7 @@ func mainWithStatusCode() int {
 		log.Debug().Msgf("started proxy jump at %s", proxyAddress)
 	}
 
-	qconn, status := setupQUICConnection(ctx, *insecure, keyLog, ssh3Dir, pool, knownHostsPath, knownHosts, oidcConfig, options, proxyAddress, tty)
+	qconn, status := setupQUICConnection(ctx, *insecure, keyLog, sohDir, pool, knownHostsPath, knownHosts, oidcConfig, options, proxyAddress, tty)
 
 	if qconn == nil {
 		if status != 0 {

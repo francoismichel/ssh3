@@ -1,136 +1,136 @@
 
 <div align=center>
-<img src="resources/figures/ssh3.png" style="display: block; width: 60%">
+<img src="resources/figures/soh.png" style="display: block; width: 60%">
 </div>
 
 
-# SSH3: faster and rich secure shell using HTTP/3
-SSH3 is a complete revisit of the SSH
+# SOH: faster and rich secure shell using HTTP/3
+SOH is a complete revisit of the SSH
 protocol, mapping its semantics on top of the HTTP mechanisms.
-In a nutshell, SSH3 uses [QUIC](https://datatracker.ietf.org/doc/html/rfc9000)+[TLS1.3](https://datatracker.ietf.org/doc/html/rfc8446) for
+In a nutshell, SOH uses [QUIC](https://datatracker.ietf.org/doc/html/rfc9000)+[TLS1.3](https://datatracker.ietf.org/doc/html/rfc8446) for
 secure channel establishment and the [HTTP Authorization](https://www.rfc-editor.org/rfc/rfc9110.html#name-authorization) mechanisms for user authentication.
-Among others, SSH3 allows the following improvements:
+Among others, SOH allows the following improvements:
 - Significantly faster session establishment
 - New HTTP authentication methods such as [OAuth 2.0](https://datatracker.ietf.org/doc/html/rfc6749) and [OpenID Connect](https://openid.net/specs/openid-connect-core-1_0.html) in addition to classical SSH authentication
-- Robustness to port scanning attacks: your SSH3 server can be made **invisible** to other Internet users
+- Robustness to port scanning attacks: your SOH server can be made **invisible** to other Internet users
 - UDP port forwarding in addition to classical TCP port forwarding
 - All the features allowed by the modern QUIC protocol: including connection migration (soon) and multipath connections
 
 > [!TIP]
-> Quickly want to get started ? Checkout how to [install SSH3](#installing-ssh3). You will learn to [setup an SSH3 server](#deploying-an-ssh3-server) and [use the SSH3 client](#using-the-ssh3-client).
+> Quickly want to get started ? Checkout how to [install SOH](#installing-soh). You will learn to [setup an SOH server](#deploying-an-soh-server) and [use the SOH client](#using-the-soh-client).
 
-*SSH3* stands for the concatenation of *SSH* and *H3*.
+*SOH* stands for *Shell over HTTP*.
 
-## ⚡ SSH3 is faster
-Faster for session establishment, not throughput ! SSH3 offers a significantly faster session establishment than SSHv2. Establishing a new session with SSHv2 can take 5 to 7 network round-trip times, which can easily be noticed by the user. SSH3 only needs 3 round-trip times. The keystroke latency in a running session is unchanged.
+## ⚡ SOH is faster
+Faster for session establishment, not throughput ! SOH offers a significantly faster session establishment than SSHv2. Establishing a new session with SSHv2 can take 5 to 7 network round-trip times, which can easily be noticed by the user. SOH only needs 3 round-trip times. The keystroke latency in a running session is unchanged.
 
 <p align="center">
-<img src="resources/figures/ssh3_100ms_rtt.gif"/>
-<i>SSH3 (top) VS SSHv2 (bottom) session establishement with a 100ms ping towards the server.</i>
+<img src="resources/figures/soh_100ms_rtt.gif"/>
+<i>SOH (top) VS SSHv2 (bottom) session establishement with a 100ms ping towards the server.</i>
 </p>
 
-## 🔒 SSH3 security
-While SSHv2 defines its own protocols for user authentication and secure channel establishment, SSH3 relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP. These protocols are already extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
+## 🔒 SOH security
+While SSHv2 defines its own protocols for user authentication and secure channel establishment, SOH relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP. These protocols are already extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
 
-SSH3 already implements the common password-based and public-key (RSA and EdDSA/ed25519) authentication methods. It also supports new authentication methods such as OAuth 2.0 and allows logging in to your servers using your Google/Microsoft/Github accounts.
+SOH already implements the common password-based and public-key (RSA and EdDSA/ed25519) authentication methods. It also supports new authentication methods such as OAuth 2.0 and allows logging in to your servers using your Google/Microsoft/Github accounts.
 
-### 🧪 SSH3 is still experimental
-While SSH3 shows promise for faster session establishment, it is still at an early proof-of-concept stage. As with any new complex protocol, **expert cryptographic review over an extended timeframe is required before reasonable security conclusions can be made**.
+### 🧪 SOH is still experimental
+While SOH shows promise for faster session establishment, it is still at an early proof-of-concept stage. As with any new complex protocol, **expert cryptographic review over an extended timeframe is required before reasonable security conclusions can be made**.
 
-We are developing SSH3 as an open source project to facilitate community feedback and analysis. However, we **cannot yet endorse its appropriateness for production systems** without further peer review. Please collaborate with us if you have relevant expertise!
+We are developing SOH as an open source project to facilitate community feedback and analysis. However, we **cannot yet endorse its appropriateness for production systems** without further peer review. Please collaborate with us if you have relevant expertise!
 
-### 🥷 Do not deploy the SSH3 server on your production servers for now
-Given the current prototype state, we advise *testing SSH3 in sandboxed environments or private networks*. Be aware that making experimental servers directly Internet-accessible could introduce risk before thorough security vetting.
+### 🥷 Do not deploy the SOH server on your production servers for now
+Given the current prototype state, we advise *testing SOH in sandboxed environments or private networks*. Be aware that making experimental servers directly Internet-accessible could introduce risk before thorough security vetting.
 
-While [hiding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it does not negate the need for rigorous vulnerability analysis before entering production. We are excited by SSH3's future possibilities but encourage additional scrutiny first.
+While [hiding](#-your-soh-public-server-can-be-hidden) servers behind secret paths has potential benefits, it does not negate the need for rigorous vulnerability analysis before entering production. We are excited by SOH's future possibilities but encourage additional scrutiny first.
 
-## 🥷 Your SSH3 public server can be hidden
-Using SSH3, you can avoid the usual stress of scanning and dictionary attacks against your SSH server. Similarly to your secret Google Drive documents, your SSH3 server can be hidden behind a secret link and only answer to authentication attempts that made an HTTP request to this specific link, like the following:
+## 🥷 Your SOH public server can be hidden
+Using SOH, you can avoid the usual stress of scanning and dictionary attacks against your SSH server. Similarly to your secret Google Drive documents, your SOH server can be hidden behind a secret link and only answer to authentication attempts that made an HTTP request to this specific link, like the following:
 
-    ssh3-server -bind 192.0.2.0:443 -url-path <my-long-secret>
+    soh-server -bind 192.0.2.0:443 -url-path <my-long-secret>
 
-By replacing `<my-long-secret>` by, let's say, the random value `M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU`, your SSH3 server will only answer to SSH3 connection attempts made to the URL `https://192.0.2.0:443/M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU` and it will respond a `404 Not Found` to other requests. Attackers and crawlers on the Internet can therefore not detect the presence of your SSH3 server. They will only see a simple web server answering 404 status codes to every request.
+By replacing `<my-long-secret>` by, let's say, the random value `M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU`, your SOH server will only answer to SOH connection attempts made to the URL `https://192.0.2.0:443/M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU` and it will respond a `404 Not Found` to other requests. Attackers and crawlers on the Internet can therefore not detect the presence of your SOH server. They will only see a simple web server answering 404 status codes to every request.
 
-## 💐 SSH3 is already feature-rich
-SSH3 provides new feature that could not be provided by the SSHv2 protocol.
+## 💐 SOH is already feature-rich
+SOH provides new feature that could not be provided by the SSHv2 protocol.
 
 ### Brand new features
-- **UDP port forwarding**: you can now access your QUIC, DNS, RTP or any UDP-based server that are only reachable from your SSH3 host.
+- **UDP port forwarding**: you can now access your QUIC, DNS, RTP or any UDP-based server that are only reachable from your SOH host.
 UDP packets are forwarded using QUIC datagrams.
-- **X.509 certificates**: you can now use your classical HTTPS certificates to authenticate your SSH3 server. This mechanism is more secure than the classical SSHv2 host key mechanism. Certificates can be obtained easily using LetsEncrypt for instance.
+- **X.509 certificates**: you can now use your classical HTTPS certificates to authenticate your SOH server. This mechanism is more secure than the classical SSHv2 host key mechanism. Certificates can be obtained easily using LetsEncrypt for instance.
 - **Hiding** your server behind a secret link.
-- **Keyless** secure user authentication using **OpenID Connect**. You can connect to your SSH3 server using the SSO of your company or your Google/Github account, and you don't need to copy the public keys of your users anymore.
+- **Keyless** secure user authentication using **OpenID Connect**. You can connect to your SOH server using the SSO of your company or your Google/Github account, and you don't need to copy the public keys of your users anymore.
 
 ### Famous OpenSSH features implemented
-This SSH3 implementation already provides many of the popular features of OpenSSH, so if you are used to OpenSSH, the process of adopting SSH3 will be smooth. Here is a list of some OpenSSH features that SSH3 also implements:
+This SOH implementation already provides many of the popular features of OpenSSH, so if you are used to OpenSSH, the process of adopting SOH will be smooth. Here is a list of some OpenSSH features that SOH also implements:
 - Parses `~/.ssh/authorized_keys` on the server
 - Certificate-based server authentication
 - `known_hosts` mechanism when X.509 certificates are not used.
 - Automatically using the `ssh-agent` for public key authentication
 - SSH agent forwarding to use your local keys on your remote server
 - Direct TCP port forwarding (reverse port forwarding will be implemented in the future)
-- Proxy jump (see the `-proxy-jump` parameter). If A is an SSH3 client and B and C are both SSH3 servers, you can connect from A to C using B as a gateway/proxy. The proxy uses UDP forwarding to forward the QUIC packets from A to C, so B cannot decrypt the traffic A<->C SSH3 traffic.
+- Proxy jump (see the `-proxy-jump` parameter). If A is an SOH client and B and C are both SOH servers, you can connect from A to C using B as a gateway/proxy. The proxy uses UDP forwarding to forward the QUIC packets from A to C, so B cannot decrypt the traffic A<->C SOH traffic.
 - Parses `~/.ssh/config` on the client and handles the `Hostname`, `User`, `Port` and `IdentityFile` config options (the other options are currently ignored). Also parses a new `UDPProxyJump` that behaves similarly to OpenSSH's `ProxyJump`.
 
 ## 🙏 Community support
-Help us progress SSH3 responsibly! We welcome capable security researchers to review our codebase and provide feedback. Please also connect us with relevant standards bodies to potentially advance SSH3 through the formal IETF/IRTF processes over time.
+Help us progress SOH responsibly! We welcome capable security researchers to review our codebase and provide feedback. Please also connect us with relevant standards bodies to potentially advance SOH through the formal IETF/IRTF processes over time.
 
-With collaborative assistance, we hope to iteratively improve SSH3 towards safe production readiness. But we cannot credibly make definitive security claims without evidence of extensive expert cryptographic review and adoption by respected security authorities. Let's work together to realize SSH3's possibilities!
+With collaborative assistance, we hope to iteratively improve SOH towards safe production readiness. But we cannot credibly make definitive security claims without evidence of extensive expert cryptographic review and adoption by respected security authorities. Let's work together to realize SOH's possibilities!
 
-## Installing SSH3
-You can either download the last [release binaries](https://github.com/francoismichel/ssh3/releases),
-[install it using `go install`](#installing-ssh3-and-ssh3-server-using-go-install) or generate these binaries yourself by compiling the code from source.
+## Installing SOH
+You can either download the last [release binaries](https://github.com/francoismichel/soh/releases),
+[install it using `go install`](#installing-soh-and-soh-server-using-go-install) or generate these binaries yourself by compiling the code from source.
 
 > [!TIP]
-> SSH3 is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SSH3 server, you can use the
-> [secret path](#-your-ssh3-public-server-can-be-hidden) feature of SSH3 to hide it behing a secret URL.
+> SOH is still experimental and is the fruit of a research work. If you are afraid of deploying publicly a new SOH server, you can use the
+> [secret path](#-your-soh-public-server-can-be-hidden) feature of SOH to hide it behing a secret URL.
 
-### Installing ssh3 and ssh3-server using Go install
+### Installing soh and soh-server using Go install
 ```bash
-go install github.com/francoismichel/ssh3/cmd/...@v0.1.5-rc5
+go install github.com/francoismichel/soh/cmd/...@v0.1.5-rc5
 ```
 
 
 
-### Compiling SSH3 from source
+### Compiling SOH from source
 You need a recent [Golang](https://go.dev/dl/) version to do this.
 Downloading the source code and compiling the binaries can be done with the following steps:
 
 ```bash
-git clone https://github.com/francoismichel/ssh3    # clone the repo
-cd ssh3
-go build -o ssh3 cmd/ssh3/main.go                        # build the client
-CGO_ENABLED=1 go build -o ssh3-server cmd/ssh3-server/main.go   # build the server, requires having gcc installed
+git clone https://github.com/francoismichel/soh    # clone the repo
+cd soh
+go build -o soh cmd/soh/main.go                        # build the client
+CGO_ENABLED=1 go build -o soh-server cmd/soh-server/main.go   # build the server, requires having gcc installed
 ```
 
-If you have root/sudo privileges and you want to make ssh3 accessible to all you users,
+If you have root/sudo privileges and you want to make soh accessible to all you users,
 you can then directly copy the binaries to `/usr/bin`:
 
 ```bash
-cp ssh3 /usr/bin/ && cp ssh3-server /usr/bin
+cp soh /usr/bin/ && cp soh-server /usr/bin
 ```
 
 Otherwise, you can simply add the executables to your `PATH` environment variable by adding
 the following line at the end of your `.bashrc` or equivalent:
 
 ```bash
-export PATH=$PATH:/path/to/the/ssh3/directory
+export PATH=$PATH:/path/to/the/soh/directory
 ```
 
-### Deploying an SSH3 server
-Before connecting to your host, you need to deploy an SSH3 server on it. There is currently
-no SSH3 daemon, so right now, you will have to run the `ssh3-server` executable in background
+### Deploying an SOH server
+Before connecting to your host, you need to deploy an SOH server on it. There is currently
+no SOH daemon, so right now, you will have to run the `soh-server` executable in background
 using `screen` or a similar utility.
 
 
 > [!NOTE]
-> As SSH3 runs on top of HTTP/3, a server needs an X.509 certificate and its corresponding private key. If you do not want to generate a certificate signed by a real certificate authority, you can generate a self-signed one using the `generate_openssl_selfsigned_certificate.sh` script. This provides you with similar security guarantees to SSHv2's host keys mechanism, with the same security issue: you may be vulnerable to machine-in-the-middle attacks during your first connection to your server. Using real certificates signed by public certificate authorities such as Let's Encrypt avoids this issue.
+> As SOH runs on top of HTTP/3, a server needs an X.509 certificate and its corresponding private key. If you do not want to generate a certificate signed by a real certificate authority, you can generate a self-signed one using the `generate_openssl_selfsigned_certificate.sh` script. This provides you with similar security guarantees to SSHv2's host keys mechanism, with the same security issue: you may be vulnerable to machine-in-the-middle attacks during your first connection to your server. Using real certificates signed by public certificate authorities such as Let's Encrypt avoids this issue.
 
 
-Here is the usage of the `ssh3-server` executable:
+Here is the usage of the `soh-server` executable:
 
 ```
-Usage of ./ssh3-server:
+Usage of ./soh-server:
   -bind string
         the address:port pair to listen to, e.g. 0.0.0.0:443 (default "[::]:443")
   -cert string
@@ -143,31 +143,31 @@ Usage of ./ssh3-server:
   -key string
         the filename of the certificate private key (default "./priv.key")
   -url-path string
-        the secret URL path on which the ssh3 server listens (default "/ssh3-term")
+        the secret URL path on which the soh server listens (default "/soh-term")
   -v    verbose mode, if set
 ```
 
-The following command starts a public SSH3 server on port 443 and answers to new
-sessions requests querying the `/ssh3` URL path:
+The following command starts a public SOH server on port 443 and answers to new
+sessions requests querying the `/soh` URL path:
 
-    ssh3-server -cert /path/to/cert/or/fullchain -key /path/to/cert/private/key -url-path /ssh3
+    soh-server -cert /path/to/cert/or/fullchain -key /path/to/cert/private/key -url-path /soh
 
 > [!NOTE]
 > Similarly to OpenSSH, the server must be run with root priviledges to log in as other users.
 
 #### Authorized keys and authorized identities
-By default, the SSH3 server will look for identities in the `~/.ssh/authorized_keys` and `~/.ssh3/authorized_identities` files for each user.
-`~/.ssh3/authorized_identities` allows new identities such as OpenID Connect (`oidc`) discussed [below](#openid-connect-authentication-still-experimental).
+By default, the SOH server will look for identities in the `~/.ssh/authorized_keys` and `~/.soh/authorized_identities` files for each user.
+`~/.soh/authorized_identities` allows new identities such as OpenID Connect (`oidc`) discussed [below](#openid-connect-authentication-still-experimental).
 Popular key types such as `rsa`, `ed25519` and keys in the OpenSSH format can be used.
 
-### Using the SSH3 client
-Once you have an SSH3 server running, you can connect to it using the SSH3 client similarly to what
+### Using the SOH client
+Once you have an SOH server running, you can connect to it using the SOH client similarly to what
 you did with your classical SSHv2 tool.
 
-Here is the usage of the `ssh3` executable:
+Here is the usage of the `soh` executable:
 
 ```
-Usage of ssh3:
+Usage of soh:
   -pubkey-for-agent string
         if set, use an agent key whose public key matches the one in the specified path
   -privkey string
@@ -196,13 +196,13 @@ Usage of ssh3:
 ```
 
 #### Private-key authentication
-You can connect to your SSH3 server at my-server.example.org listening on `/my-secret-path` using the private key located in `~/.ssh/id_rsa` with the following command:
+You can connect to your SOH server at my-server.example.org listening on `/my-secret-path` using the private key located in `~/.ssh/id_rsa` with the following command:
 
-      ssh3 -privkey ~/.ssh/id_rsa username@my-server.example.org/my-secret-path
+      soh -privkey ~/.ssh/id_rsa username@my-server.example.org/my-secret-path
 
 #### Agent-based private key authentication
-The SSH3 client works with the OpenSSH agent and uses the classical `SSH_AUTH_SOCK` environment variable to
-communicate with this agent. Similarly to OpenSSH, SSH3 will list the keys provided by the SSH agent
+The SOH client works with the OpenSSH agent and uses the classical `SSH_AUTH_SOCK` environment variable to
+communicate with this agent. Similarly to OpenSSH, SOH will list the keys provided by the SSH agent
 and connect using the first key listen by the agent by default.
 If you want to specify a specific key to use with the agent, you can either specify the private key
 directly with the `-privkey` argument like above, or specify the corresponding public key using the
@@ -210,13 +210,13 @@ directly with the `-privkey` argument like above, or specify the corresponding p
 a direct access to the private key but you only have access to the public key.
 
 #### Password-based authentication
-While discouraged, you can connect to your server using passwords (if explicitly enabled on the `ssh3-server`)
+While discouraged, you can connect to your server using passwords (if explicitly enabled on the `soh-server`)
 with the following command:
 
-      ssh3 -use-password username@my-server.example.org/my-secret-path
+      soh -use-password username@my-server.example.org/my-secret-path
 
 #### Config-based session establishment
-`ssh3` parses your OpenSSH config. Currently, it only handles the `Hostname`; `User`, `Port` and `IdentityFile` options.
+`soh` parses your OpenSSH config. Currently, it only handles the `Hostname`; `User`, `Port` and `IdentityFile` options.
 Let's say you have the following lines in your OpenSSH config located in `~/.ssh/config` :
 ```
 Host my-server
@@ -225,11 +225,11 @@ Host my-server
   IdentityFile ~/.ssh/id_rsa
 ```
 
-Similarly to what OpenSSH does, the following `ssh3` command will connect you to the SSH3 server running on 192.0.2.0 on UDP port 443 using public key authentication with the private key located in `.ssh/id_rsa` :
+Similarly to what OpenSSH does, the following `soh` command will connect you to the SOH server running on 192.0.2.0 on UDP port 443 using public key authentication with the private key located in `.ssh/id_rsa` :
 
-      ssh3 my-server/my-secret-path
+      soh my-server/my-secret-path
 
-If you do not want a config-based utilization of SSH3, you can read the sections below to see how to use the CLI parameters of `ssh3`.
+If you do not want a config-based utilization of SOH, you can read the sections below to see how to use the CLI parameters of `soh`.
 
 #### OpenID Connect authentication (still experimental)
 This feature allows you to connect using an external identity provider such as the one
@@ -237,12 +237,12 @@ of your company or any other provider that implements the OpenID Connect standar
 Github or Microsoft Entra. The authentication flow is illustrated in the GIF below.
 
 <div align="center">
-<img src="resources/figures/ssh3_oidc.gif" width=75%>
+<img src="resources/figures/soh_oidc.gif" width=75%>
 
 *Secure connection without private key using a Google account.*
 </div>
 
-The way it connects to your identity provider is configured in a file named `~/.ssh3/oidc_config.json`.
+The way it connects to your identity provider is configured in a file named `~/.soh/oidc_config.json`.
 Below is an example `config.json` file for use with a Google account. This configuration file is an array
 and can contain several identity providers configurations.
 ```json
@@ -255,7 +255,7 @@ and can contain several identity providers configurations.
 ]
 ```
 This might change in the future, but currently, to make this feature work with your Google account, you will need to setup a new experimental application in your Google Cloud console and add your email as authorized users.
-This will provide you with a `client_id` and a `client_secret` that you can then set in your `~/.ssh3/oidc_config.json`. On the server side, you just have to add the following line in your `~/.ssh3/authorized_identities`:
+This will provide you with a `client_id` and a `client_secret` that you can then set in your `~/.soh/oidc_config.json`. On the server side, you just have to add the following line in your `~/.soh/authorized_identities`:
 
 ```
 oidc <client_id> https://accounts.google.com <email>
@@ -263,6 +263,6 @@ oidc <client_id> https://accounts.google.com <email>
 We currently consider removing the need of setting the client_id in the `authorized_identities` file in the future.
 
 #### Proxy jump
-It is often the case that some SSH hosts can only be accessed through a gateway. SSH3 allows you to perform a Proxy Jump similarly to what is proposed by OpenSSH.
-You can connect from A to C using B as a gateway/proxy. B and C must both be running a valid SSH3 server. This works by establishing UDP port forwarding on B to forward QUIC packets from A to C.
-The connection from A to C is therefore fully end-to-end and B cannot decrypt or alter the SSH3 traffic between A and C.
+It is often the case that some SSH hosts can only be accessed through a gateway. SOH allows you to perform a Proxy Jump similarly to what is proposed by OpenSSH.
+You can connect from A to C using B as a gateway/proxy. B and C must both be running a valid SOH server. This works by establishing UDP port forwarding on B to forward QUIC packets from A to C.
+The connection from A to C is therefore fully end-to-end and B cannot decrypt or alter the SOH traffic between A and C.

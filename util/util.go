@@ -266,7 +266,7 @@ func GenerateCert(priv crypto.PrivateKey) (*x509.Certificate, error) {
 	cert := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"SSH3Organization"},
+			Organization: []string{"SOHOrganization"},
 		},
 		NotBefore: time.Now(),
 		NotAfter:  time.Now().Add(time.Hour * 24 * 365 * 10),
@@ -274,7 +274,7 @@ func GenerateCert(priv crypto.PrivateKey) (*x509.Certificate, error) {
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		DNSNames:              []string{"*", "selfsigned.ssh3"},
+		DNSNames:              []string{"*", "selfsigned.soh"},
 		IsCA:                  true,
 	}
 

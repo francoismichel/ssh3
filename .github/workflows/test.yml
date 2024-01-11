@@ -9,9 +9,9 @@ jobs:
         matrix:
           go-version: [ '1.21.x', '1.22.0-rc.1' ]
           goos: [linux]
-          testuser: [ssh3-testuser]
-          testpasswd: [ssh3-testpasswd]
-          testuserhome: [/home/ssh3-testuser]
+          testuser: [soh-testuser]
+          testpasswd: [soh-testpasswd]
+          testuserhome: [/home/soh-testuser]
           archparams: [{goarch: amd64, cc: gcc}] #,{goarch: arm64, cc: aarch64-linux-gnu-gcc}]
     runs-on: ubuntu-22.04
 
