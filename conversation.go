@@ -1,4 +1,4 @@
-package ssh3
+package soh
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/soh/util"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -40,7 +40,7 @@ type Conversation struct {
 }
 
 func GenerateConversationID(tls *tls.ConnectionState) (convID ConversationID, err error) {
-	ret, err := tls.ExportKeyingMaterial("EXPORTER-SSH3", nil, 32)
+	ret, err := tls.ExportKeyingMaterial("EXPORTER-SOH", nil, 32)
 	if err != nil {
 		return convID, err
 	}

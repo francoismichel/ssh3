@@ -1,4 +1,4 @@
-package ssh3_test
+package soh_test
 
 import (
 	"testing"

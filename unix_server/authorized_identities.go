@@ -9,9 +9,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/francoismichel/ssh3/auth"
-	"github.com/francoismichel/ssh3/util"
-	"github.com/francoismichel/ssh3/util/unix_util"
+	"github.com/francoismichel/soh/auth"
+	"github.com/francoismichel/soh/util"
+	"github.com/francoismichel/soh/util/unix_util"
 
 	"github.com/rs/zerolog/log"
 
@@ -21,7 +21,7 @@ import (
 )
 
 /*
- * In ssh3, authorized_keys are replaced by authorized_identities where a use can specify classical
+ * In soh, authorized_keys are replaced by authorized_identities where a use can specify classical
  * public keys as well as other authentication and authorization methods such as OAUTH2 and SAML 2.0
  *
  */
@@ -38,7 +38,7 @@ type PubKeyIdentity struct {
 }
 
 func DefaultIdentitiesFileNames(user *unix_util.User) []string {
-	return []string{path.Join(user.Dir, ".ssh3", "authorized_identities"), path.Join(user.Dir, ".ssh", "authorized_keys")}
+	return []string{path.Join(user.Dir, ".soh", "authorized_identities"), path.Join(user.Dir, ".ssh", "authorized_keys")}
 }
 
 func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
@@ -54,7 +54,7 @@ func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64Conversation
 			return nil, fmt.Errorf("unsupported signature algorithm '%s' for %T", unvalidatedToken.Method.Alg(), i)
 		},
 			jwt.WithIssuer(i.username),
-			jwt.WithSubject("ssh3"),
+			jwt.WithSubject("soh"),
 			jwt.WithIssuedAt(),
 			jwt.WithAudience("unused"),
 			jwt.WithValidMethods([]string{"RS256", "EdDSA"}))
@@ -66,7 +66,7 @@ func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64Conversation
 			if _, ok = claims["exp"]; !ok {
 				return false
 			}
-			if clientId, ok := claims["client_id"]; !ok || clientId != fmt.Sprintf("ssh3-%s", i.username) {
+			if clientId, ok := claims["client_id"]; !ok || clientId != fmt.Sprintf("soh-%s", i.username) {
 				return false
 			}
 			if jti, ok := claims["jti"]; !ok || jti != base64ConversationID {

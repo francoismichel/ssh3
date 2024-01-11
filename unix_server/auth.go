@@ -8,26 +8,26 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/util/unix_util"
+	"github.com/francoismichel/soh"
+	"github.com/francoismichel/soh/util/unix_util"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog/log"
 )
 
-func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacketSize uint64, handlerFunc ssh3.AuthenticatedHandlerFunc) (http.HandlerFunc, error) {
+func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacketSize uint64, handlerFunc soh.AuthenticatedHandlerFunc) (http.HandlerFunc, error) {
 	if runtime.GOOS != "linux" && enablePasswordLogin {
 		return nil, fmt.Errorf("password login not supported on %s/%s systems", runtime.GOOS, runtime.GOARCH)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Server", ssh3.GetCurrentVersionString())
-		major, minor, patch, err := ssh3.ParseVersionString(r.UserAgent())
+		w.Header().Set("Server", soh.GetCurrentVersionString())
+		major, minor, patch, err := soh.ParseVersionString(r.UserAgent())
 		log.Debug().Msgf("received request from User-Agent %s (major %d, minor %d, patch %d)", r.UserAgent(), major, minor, patch)
 		// currently apply strict version rules
-		if err != nil || major != ssh3.MAJOR || minor != ssh3.MINOR {
+		if err != nil || major != soh.MAJOR || minor != soh.MINOR {
 			if err == nil {
-				http.Error(w, fmt.Sprintf("Unsupported version: %d.%d.%d not supported by server with version %s", major, minor, patch, ssh3.GetCurrentVersionString()), http.StatusForbidden)
+				http.Error(w, fmt.Sprintf("Unsupported version: %d.%d.%d not supported by server with version %s", major, minor, patch, soh.GetCurrentVersionString()), http.StatusForbidden)
 			} else {
 				http.Error(w, "Unsupported user-agent", http.StatusForbidden)
 			}
@@ -52,7 +52,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 			return
 		}
 		str := r.Body.(http3.HTTPStreamer).HTTPStream()
-		conv, err := ssh3.NewServerConversation(ctx, str, qconn, qconn, defaultMaxPacketSize)
+		conv, err := soh.NewServerConversation(ctx, str, qconn, qconn, defaultMaxPacketSize)
 		if err != nil {
 			log.Error().Msgf("could not create new server conversation")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -75,7 +75,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 	}, nil
 }
 
-func HandleBasicAuth(handlerFunc ssh3.AuthenticatedHandlerFunc, conv *ssh3.Conversation) http.HandlerFunc {
+func HandleBasicAuth(handlerFunc soh.AuthenticatedHandlerFunc, conv *soh.Conversation) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 		if !ok {

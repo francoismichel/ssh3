@@ -1,4 +1,4 @@
-package ssh3
+package soh
 
 import (
 	"fmt"
@@ -32,7 +32,7 @@ func (e UnsupportedSSHVersion) Error() string {
 // GetCurrentVersionString() returns the version string to be exchanged between two
 // endpoints for version negotiation
 func GetCurrentVersionString() string {
-	return fmt.Sprintf("SSH 3.0 francoismichel/ssh3 %d.%d.%d", MAJOR, MINOR, PATCH)
+	return fmt.Sprintf("SSH 3.0 francoismichel/soh %d.%d.%d", MAJOR, MINOR, PATCH)
 }
 
 func ParseVersionString(version string) (major int, minor int, patch int, err error) {

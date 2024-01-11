@@ -1,4 +1,4 @@
-package ssh3
+package soh
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog/log"
 
-	"github.com/francoismichel/ssh3/util"
+	"github.com/francoismichel/soh/util"
 )
 
 type ServerConversationHandler func(authenticatedUsername string, conversation *Conversation) error
@@ -30,7 +30,7 @@ type Server struct {
 // Creates a new server handling http requests for SSH conversations
 
 func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *http3.Server, conversationHandler ServerConversationHandler) *Server {
-	ssh3Server := &Server{
+	sohServer := &Server{
 		maxPacketSize:       maxPacketSize,
 		h3Server:            h3Server,
 		conversations:       make(map[http3.StreamCreator]*conversationsManager),
@@ -46,9 +46,9 @@ func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *
 			return false, nil
 		}
 
-		conversationsManager, ok := ssh3Server.getConversationsManager(qconn)
+		conversationsManager, ok := sohServer.getConversationsManager(qconn)
 		if !ok {
-			err := fmt.Errorf("could not find SSH3 conversation for new channel %d on conn %+v", stream.StreamID(), qconn)
+			err := fmt.Errorf("could not find SOH conversation for new channel %d on conn %+v", stream.StreamID(), qconn)
 			log.Error().Msgf("%s", err)
 			return false, err
 		}
@@ -60,7 +60,7 @@ func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *
 
 		conversation, ok := conversationsManager.getConversation(conversationControlStreamID)
 		if !ok {
-			err := fmt.Errorf("could not find SSH3 conversation with control stream id %d for new channel %d", conversationControlStreamID,
+			err := fmt.Errorf("could not find SOH conversation with control stream id %d for new channel %d", conversationControlStreamID,
 				uint64(stream.StreamID()))
 			log.Error().Msgf("%s", err)
 			return false, err
@@ -95,7 +95,7 @@ func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *
 		conversation.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
-	return ssh3Server
+	return sohServer
 }
 
 func (s *Server) getConversationsManager(streamCreator http3.StreamCreator) (*conversationsManager, bool) {
@@ -130,7 +130,7 @@ func (s *Server) GetHTTPHandlerFunc(ctx context.Context) AuthenticatedHandlerFun
 
 	return func(authenticatedUsername string, newConv *Conversation, w http.ResponseWriter, r *http.Request) {
 		log.Info().Msgf("got request: method: %s, URL: %s", r.Method, r.URL.String())
-		if r.Method == http.MethodConnect && r.Proto == "ssh3" {
+		if r.Method == http.MethodConnect && r.Proto == "soh" {
 			hijacker, ok := w.(http3.Hijacker)
 			if !ok { // should never happen, unless quic-go change their API
 				log.Error().Msg("failed to hijack HTTP conversation: is it an HTTP/3 conversation ?")
