@@ -55,6 +55,20 @@ func (e Unauthorized) Error() string {
 	return "Unauthorized"
 }
 
+type OtherHTTPError struct {
+	StatusCode int
+	HasBody    bool
+	Body       string
+}
+
+func (e OtherHTTPError) Error() string {
+	str := fmt.Sprintf("HTTP response with %d status code", e.StatusCode)
+	if e.HasBody {
+		str = fmt.Sprintf("%s: %s", str, e.Body)
+	}
+	return str
+}
+
 type BytesReadCloser struct {
 	*bytes.Reader
 }
@@ -64,6 +78,6 @@ func (b *BytesReadCloser) Close() error { return nil }
 // sends an ssh3 datagram. The function must know the ID of the channel
 type SSH3DatagramSenderFunc func(p []byte) error
 
-type MessageSender interface {
-	SendMessage(p []byte) error
+type DatagramSender interface {
+	SendDatagram(p []byte) error
 }

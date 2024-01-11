@@ -29,12 +29,20 @@ Faster for session establishment, not throughput ! SSH3 offers a significantly f
 <i>SSH3 (top) VS SSHv2 (bottom) session establishement with a 100ms ping towards the server.</i>
 </p>
 
-## 🔒 SSH3 is secure
+## 🔒 SSH3 security
 While SSHv2 defines its own protocols for user authentication and secure channel establishment, SSH3 relies on the robust and time-tested mechanisms of TLS 1.3, QUIC and HTTP. These protocols are already extensively used to secure security-critical applications on the Internet such as e-commerce and Internet banking.
 
-SSH3 already implements the common password-based and public-key (RSA and EdDSA/ed25519) authentication methods.
-It also supports new authentication methods
-such as OAuth 2.0 and allows logging in to your servers using your Google/Microsoft/Github accounts.
+SSH3 already implements the common password-based and public-key (RSA and EdDSA/ed25519) authentication methods. It also supports new authentication methods such as OAuth 2.0 and allows logging in to your servers using your Google/Microsoft/Github accounts.
+
+### 🧪 SSH3 is still experimental
+While SSH3 shows promise for faster session establishment, it is still at an early proof-of-concept stage. As with any new complex protocol, **expert cryptographic review over an extended timeframe is required before reasonable security conclusions can be made**.
+
+We are developing SSH3 as an open source project to facilitate community feedback and analysis. However, we **cannot yet endorse its appropriateness for production systems** without further peer review. Please collaborate with us if you have relevant expertise!
+
+### 🥷 Do not deploy the SSH3 server on your production servers for now
+Given the current prototype state, we advise *testing SSH3 in sandboxed environments or private networks*. Be aware that making experimental servers directly Internet-accessible could introduce risk before thorough security vetting.
+
+While [hiding](#-your-ssh3-public-server-can-be-hidden) servers behind secret paths has potential benefits, it does not negate the need for rigorous vulnerability analysis before entering production. We are excited by SSH3's future possibilities but encourage additional scrutiny first.
 
 ## 🥷 Your SSH3 public server can be hidden
 Using SSH3, you can avoid the usual stress of scanning and dictionary attacks against your SSH server. Similarly to your secret Google Drive documents, your SSH3 server can be hidden behind a secret link and only answer to authentication attempts that made an HTTP request to this specific link, like the following:
@@ -56,12 +64,18 @@ UDP packets are forwarded using QUIC datagrams.
 ### Famous OpenSSH features implemented
 This SSH3 implementation already provides many of the popular features of OpenSSH, so if you are used to OpenSSH, the process of adopting SSH3 will be smooth. Here is a list of some OpenSSH features that SSH3 also implements:
 - Parses `~/.ssh/authorized_keys` on the server
-- Parses `~/.ssh/config` on the client and handles the `Hostname`, `User`, `Port` and `IdentityFile` config options (the other options are currently ignored)
 - Certificate-based server authentication
 - `known_hosts` mechanism when X.509 certificates are not used.
 - Automatically using the `ssh-agent` for public key authentication
 - SSH agent forwarding to use your local keys on your remote server
 - Direct TCP port forwarding (reverse port forwarding will be implemented in the future)
+- Proxy jump (see the `-proxy-jump` parameter). If A is an SSH3 client and B and C are both SSH3 servers, you can connect from A to C using B as a gateway/proxy. The proxy uses UDP forwarding to forward the QUIC packets from A to C, so B cannot decrypt the traffic A<->C SSH3 traffic.
+- Parses `~/.ssh/config` on the client and handles the `Hostname`, `User`, `Port` and `IdentityFile` config options (the other options are currently ignored). Also parses a new `UDPProxyJump` that behaves similarly to OpenSSH's `ProxyJump`.
+
+## 🙏 Community support
+Help us progress SSH3 responsibly! We welcome capable security researchers to review our codebase and provide feedback. Please also connect us with relevant standards bodies to potentially advance SSH3 through the formal IETF/IRTF processes over time.
+
+With collaborative assistance, we hope to iteratively improve SSH3 towards safe production readiness. But we cannot credibly make definitive security claims without evidence of extensive expert cryptographic review and adoption by respected security authorities. Let's work together to realize SSH3's possibilities!
 
 ## Installing SSH3
 You can either download the last [release binaries](https://github.com/francoismichel/ssh3/releases),
@@ -73,7 +87,7 @@ You can either download the last [release binaries](https://github.com/francoism
 
 ### Installing ssh3 and ssh3-server using Go install
 ```bash
-go install github.com/francoismichel/ssh3/cmd/...@v0.1.5-rc2
+go install github.com/francoismichel/ssh3/cmd/...@v0.1.5-rc5
 ```
 
 
@@ -166,6 +180,8 @@ Usage of ssh3:
         if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport
   -forward-udp string
         if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport
+  -proxy-jump string
+    	if set, performs a proxy jump using the specified remote host as proxy
   -insecure
         if set, skip server certificate verification
   -keylog string
@@ -245,3 +261,8 @@ This will provide you with a `client_id` and a `client_secret` that you can then
 oidc <client_id> https://accounts.google.com <email>
 ```
 We currently consider removing the need of setting the client_id in the `authorized_identities` file in the future.
+
+#### Proxy jump
+It is often the case that some SSH hosts can only be accessed through a gateway. SSH3 allows you to perform a Proxy Jump similarly to what is proposed by OpenSSH.
+You can connect from A to C using B as a gateway/proxy. B and C must both be running a valid SSH3 server. This works by establishing UDP port forwarding on B to forward QUIC packets from A to C.
+The connection from A to C is therefore fully end-to-end and B cannot decrypt or alter the SSH3 traffic between A and C.

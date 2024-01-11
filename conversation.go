@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 
@@ -29,7 +30,7 @@ type Conversation struct {
 	maxPacketSize             uint64
 	defaultDatagramsQueueSize uint64
 	streamCreator             http3.StreamCreator
-	messageSender             util.MessageSender
+	messageSender             util.DatagramSender
 	channelsManager           *channelsManager
 	context                   context.Context
 	cancelContext             context.CancelCauseFunc
@@ -112,7 +113,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	}
 
 	serverVersion := rsp.Header.Get("Server")
-	major, minor, patch, err := ParseVersion(serverVersion)
+	major, minor, patch, err := ParseVersionString(serverVersion)
 	if err != nil {
 		log.Error().Msgf("Could not parse server version: \"%s\"", serverVersion)
 		if rsp.StatusCode == 200 {
@@ -134,7 +135,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 			//		 currently does not work for several conversations in the same QUIC connection
 
 			for {
-				dgram, err := qconn.ReceiveMessage(c.Context())
+				dgram, err := qconn.ReceiveDatagram(c.Context())
 				if err != nil {
 					if err != context.Canceled {
 						log.Error().Msgf("could not receive message from conn: %s", err)
@@ -162,11 +163,21 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	} else if rsp.StatusCode == http.StatusUnauthorized {
 		return util.Unauthorized{}
 	} else {
-		return fmt.Errorf("returned non-200 and non-401 status code: %d", rsp.StatusCode)
+		bodyContent, err := io.ReadAll(rsp.Body)
+		rsp.Body.Close()
+		if err != nil {
+			log.Error().Msgf("could not read response body from server: %s", err)
+		}
+
+		return util.OtherHTTPError{
+			HasBody:    rsp.ContentLength > 0,
+			Body:       string(bodyContent),
+			StatusCode: rsp.StatusCode,
+		}
 	}
 }
 
-func NewServerConversation(ctx context.Context, controlStream http3.Stream, qconn quic.Connection, messageSender util.MessageSender, maxPacketsize uint64) (*Conversation, error) {
+func NewServerConversation(ctx context.Context, controlStream http3.Stream, qconn quic.Connection, messageSender util.DatagramSender, maxPacketsize uint64) (*Conversation, error) {
 	backgroundContext, backgroundCancelFunc := context.WithCancelCause(ctx)
 
 	tls := qconn.ConnectionState().TLS
@@ -290,7 +301,7 @@ func (c *Conversation) getDatagramSenderForChannel(channelID util.ChannelID) fun
 		buf := util.AppendVarInt(nil, uint64(c.controlStream.StreamID()))
 		buf = util.AppendVarInt(buf, channelID)
 		buf = append(buf, datagram...)
-		return c.messageSender.SendMessage(buf)
+		return c.messageSender.SendDatagram(buf)
 	}
 }
 

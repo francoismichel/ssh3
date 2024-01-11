@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -98,7 +99,8 @@ type runningSession struct {
 	authAgentSocketPath string
 }
 
-var runningSessions = make(map[ssh3.Channel]*runningSession)
+// var runningSessions = make(map[ssh3.Channel]*runningSession)
+var runningSessions = util.NewSyncMap[ssh3.Channel, *runningSession]()
 
 func setWinsize(f *os.File, charWidth, charHeight, pixWidth, pixHeight uint64) {
 	syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(syscall.TIOCSWINSZ),
@@ -375,7 +377,7 @@ func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util
 
 func newPtyReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.PtyRequest, wantReply bool) error {
 	var session *runningSession
-	session, ok := runningSessions[channel]
+	session, ok := runningSessions.Get(channel)
 	if !ok {
 		return fmt.Errorf("internal error: cannot find session for current channel")
 	}
@@ -411,7 +413,7 @@ func newX11Req(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.
 
 func newCommand(user *unix_util.User, channel ssh3.Channel, loginShell bool, command string, args ...string) error {
 	var session *runningSession
-	session, ok := runningSessions[channel]
+	session, ok := runningSessions.Get(channel)
 	if !ok {
 		return fmt.Errorf("internal error: cannot find session for current channel")
 	}
@@ -491,7 +493,7 @@ func newWindowChangeReq(user *unix_util.User, channel ssh3.Channel, request ssh3
 }
 
 func newSignalReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.SignalRequest, wantReply bool) error {
-	runningSession, ok := runningSessions[channel]
+	runningSession, ok := runningSessions.Get(channel)
 	if !ok {
 		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID(), channel.ConversationID())
 	}
@@ -549,7 +551,7 @@ func handleTCPForwardingChannel(ctx context.Context, user *unix_util.User, conv 
 }
 
 func newDataReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
-	runningSession, ok := runningSessions[channel]
+	runningSession, ok := runningSessions.Get(channel)
 	if !ok {
 		return fmt.Errorf("could not find running session for channel %d (conv %d)", channel.ChannelID(), channel.ConversationID())
 	}
@@ -578,7 +580,7 @@ func newDataReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages
 func handleAuthAgentSocketConn(conn net.Conn, conversation *ssh3.Conversation) {
 	channel, err := conversation.OpenChannel("agent-connection", 30000, 10)
 	if err != nil {
-		log.Error().Msgf("could not open channel: %s", err.Error())
+		log.Error().Msgf("could not open channel from server: %s", err.Error())
 		return
 	}
 	go func() {
@@ -671,6 +673,7 @@ func fileExists(path string) bool {
 func main() {
 	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
+	displayVersion := flag.Bool("version", false, "if set, displays the software version on standard output and exit")
 	urlPath := flag.String("url-path", "/ssh3-term", "the secret URL path on which the ssh3 server listens")
 	generateSelfSignedCert := flag.Bool("generate-selfsigned-cert", false, "if set, generates a self-self-signed cerificate and key "+
 		"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
@@ -681,6 +684,11 @@ func main() {
 		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
 	}
 	flag.Parse()
+
+	if *displayVersion {
+		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
+		os.Exit(0)
+	}
 
 	if !enablePasswordLogin {
 		fmt.Fprintln(os.Stderr, "password login is disabled")
@@ -749,6 +757,8 @@ func main() {
 		log.Logger = log.Output(logFile)
 	}
 
+	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
+
 	quicConf := &quic.Config{
 		Allow0RTT: true,
 	}
@@ -783,11 +793,11 @@ func main() {
 				case *ssh3.TCPForwardingChannelImpl:
 					handleTCPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
 				default:
-					runningSessions[channel] = &runningSession{
+					runningSessions.Insert(channel, &runningSession{
 						channelState: LARVAL,
 						pty:          nil,
 						runningCmd:   nil,
-					}
+					})
 					go func() {
 						// handle the main sessionChannel, once it ends, the whole conversation ends
 						defer channel.Close()
@@ -827,7 +837,7 @@ func main() {
 									err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 								}
 							case *ssh3Messages.DataOrExtendedDataMessage:
-								runningSession, ok := runningSessions[channel]
+								runningSession, ok := runningSessions.Get(channel)
 								if ok && runningSession.channelState == LARVAL {
 									if message.Data == string("forward-agent") {
 										runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(conv.Context(), conv, authenticatedUser)

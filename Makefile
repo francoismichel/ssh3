@@ -3,7 +3,7 @@ BUILDFLAGS ?=-ldflags "-X main.version=$(shell git describe --tags --always --di
 
 GO_OPTS?=CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS)
 GO_TAGS?=
-TEST_OPTS?=-v GOOS=$(GOOS) GOARCH=$(GOARCH)
+TEST_OPTS?=GOOS=$(GOOS) GOARCH=$(GOARCH)
 
 lint:
 	go fmt ./...

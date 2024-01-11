@@ -18,21 +18,21 @@ func getUser(username string) (*User, error) {
 		return nil, err
 	}
 
-	uid, err := strconv.Atoi(u.Uid)
+	uid, err := strconv.ParseUint(u.Uid, 10, 64)
 	if err != nil {
-		log.Error().Msgf("could not convert uid %s into an int")
+		log.Error().Msgf("could not convert uid %s into a uint64", u.Uid)
 		return nil, err
 	}
-	gid, err := strconv.Atoi(u.Uid)
+	gid, err := strconv.ParseUint(u.Gid, 10, 64)
 	if err != nil {
-		log.Error().Msgf("could not convert gid %s into an int")
+		log.Error().Msgf("could not convert gid %s into a uint64", u.Gid)
 		return nil, err
 	}
 
 	return &User{
 		Username: u.Username,
-		Uid:      uint64(uid),
-		Gid:      uint64(gid),
+		Uid:      uid,
+		Gid:      gid,
 		Dir:      u.HomeDir,
 		Shell:    "/bin/sh",
 	}, nil

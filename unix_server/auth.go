@@ -21,20 +21,21 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 		return nil, fmt.Errorf("password login not supported on %s/%s systems", runtime.GOOS, runtime.GOARCH)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		defer w.(http.Flusher).Flush()
-		w.Header().Set("Server", ssh3.GetCurrentVersion())
-		major, minor, patch, err := ssh3.ParseVersion(r.UserAgent())
+		w.Header().Set("Server", ssh3.GetCurrentVersionString())
+		major, minor, patch, err := ssh3.ParseVersionString(r.UserAgent())
 		log.Debug().Msgf("received request from User-Agent %s (major %d, minor %d, patch %d)", r.UserAgent(), major, minor, patch)
 		// currently apply strict version rules
 		if err != nil || major != ssh3.MAJOR || minor != ssh3.MINOR {
-			w.WriteHeader(http.StatusForbidden)
 			if err == nil {
-				w.Write([]byte(fmt.Sprintf("Unsupported version: %d.%d.%d not supported by server in version %s", major, minor, patch, ssh3.GetCurrentVersion())))
+				http.Error(w, fmt.Sprintf("Unsupported version: %d.%d.%d not supported by server with version %s", major, minor, patch, ssh3.GetCurrentVersionString()), http.StatusForbidden)
 			} else {
-				w.Write([]byte("Unsupported user-agent"))
+				http.Error(w, "Unsupported user-agent", http.StatusForbidden)
 			}
 			return
 		}
+		// Only call Flush() here, as calling flush prevents from adding the Content-Length header to the response
+		// The Content-Length can be useful upon receiving an error response
+		defer w.(http.Flusher).Flush()
 		hijacker, ok := w.(http3.Hijacker)
 		if !ok { // should never happen, unless quic-go change their API
 			log.Error().Msgf("failed to hijack")

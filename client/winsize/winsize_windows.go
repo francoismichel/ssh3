@@ -2,13 +2,16 @@
 
 package winsize
 
-import "os"
-import "golang.org/x/term"
+import (
+	"os"
 
-func GetWinsize() (ws WindowSize, err error) {
+	"golang.org/x/term"
+)
+
+func GetWinsize(tty *os.File) (ws WindowSize, err error) {
 	// for Windows, it is a bit more complicated to get the window size in pixels, so on rely
 	// on window size expressed in columns
-	width, height, err := term.GetSize(int(os.Stdout.Fd()))
+	width, height, err := term.GetSize(int(tty.Fd()))
 	if err != nil {
 		return ws, err
 	}

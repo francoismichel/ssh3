@@ -60,6 +60,8 @@ func lower(b byte) byte {
 
 func ConfigureLogger(logLevel string) {
 	switch strings.ToLower(logLevel) {
+	case "trace":
+		zerolog.SetGlobalLevel(zerolog.TraceLevel)
 	case "debug":
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	case "info":
@@ -310,4 +312,23 @@ func DumpCertAndKeyToFiles(cert *x509.Certificate, pubkey crypto.PublicKey, priv
 	}
 
 	return nil
+}
+
+type SyncMap[K comparable, V any] struct {
+	inner sync.Map
+}
+
+func NewSyncMap[K comparable, V any]() SyncMap[K, V] {
+	return SyncMap[K, V]{
+		inner: sync.Map{},
+	}
+}
+
+func (m *SyncMap[K, V]) Get(key K) (V, bool) {
+	val, ok := m.inner.Load(key)
+	return val.(V), ok
+}
+
+func (m *SyncMap[K, V]) Insert(key K, val V) {
+	m.inner.Store(key, val)
 }
