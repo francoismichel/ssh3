@@ -260,7 +260,7 @@ func (i rawBearerTokenIdentity) String() string {
 	return "raw-bearer-identity"
 }
 
-func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, port int, user string, authMethodsToTry []interface{}, err error) {
+func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, port int, user string, urlPath string, authMethodsToTry []interface{}, err error) {
 	port = -1
 	if config == nil {
 		return
@@ -280,6 +280,19 @@ func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, 
 		log.Error().Msgf("Could not get User from config: %s", err)
 		return
 	}
+	urlPath, err = config.Get(host, "URLPath")
+	if err != nil {
+		log.Error().Msgf("Could not get URLPath from config: %s", err)
+		return
+	}
+	if len(urlPath) > 0 && urlPath[0] != '/' {
+		log.Error().Msgf("Non-empty URLPath in config file must start by a '/'")
+		err = util.InvalidConfig{
+			Field: "URLPath",
+			Value: urlPath,
+		}
+		return
+	}
 	p, err := strconv.Atoi(portStr)
 	if err == nil {
 		port = p
@@ -292,7 +305,7 @@ func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, 
 	for _, identityFile := range identityFiles {
 		authMethodsToTry = append(authMethodsToTry, NewPrivkeyFileAuthMethod(identityFile))
 	}
-	return hostname, port, user, authMethodsToTry, nil
+	return hostname, port, user, urlPath, authMethodsToTry, nil
 }
 
 func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation) (string, error) {

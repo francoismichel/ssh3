@@ -211,9 +211,9 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.Options, error) {
 	urlHostname, urlPort := hostUrl.Hostname(), hostUrl.Port()
 
-	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	configHostname, configPort, configUser, configUrlPath, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
 	if err != nil {
-		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
+		log.Error().Msgf("Could not get config for %s: %s", urlHostname, err)
 		return nil, err
 	}
 
@@ -258,7 +258,12 @@ func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.O
 	if username == "" {
 		return nil, fmt.Errorf("no username could be found")
 	}
-	return client.NewOptions(username, hostname, port, hostUrl.Path, configAuthMethods)
+
+	urlPath := hostUrl.Path
+	if urlPath == "" {
+		urlPath = configUrlPath
+	}
+	return client.NewOptions(username, hostname, port, urlPath, configAuthMethods)
 }
 
 func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config, cliAuthMethods []interface{}) (agent.ExtendedAgent, *client.Options, error) {
