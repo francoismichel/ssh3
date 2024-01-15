@@ -35,6 +35,7 @@ type Conversation struct {
 	context                   context.Context
 	cancelContext             context.CancelCauseFunc
 	conversationID            ConversationID // generated using TLS exporters
+	peerVersion               Version
 
 	channelsAcceptQueue *util.AcceptQueue[Channel]
 }
@@ -68,6 +69,8 @@ func NewClientConversation(maxPacketsize uint64, defaultDatagramsQueueSize uint6
 		context:                   backgroundCtx,
 		cancelContext:             backgroundCancelCauseFunc,
 		conversationID:            convID,
+
+		// peerVersion set afterwards
 	}
 	return conv, nil
 }
@@ -113,18 +116,19 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	}
 
 	serverVersion := rsp.Header.Get("Server")
-	major, minor, patch, err := ParseVersionString(serverVersion)
+	peerVersion, err := ParseVersionString(serverVersion)
 	if err != nil {
 		log.Error().Msgf("Could not parse server version: \"%s\"", serverVersion)
 		if rsp.StatusCode == 200 {
 			return InvalidSSHVersion{versionString: serverVersion}
 		}
-	} else if major > MAJOR || minor > MINOR {
-		log.Warn().Msgf("The server runs a higher SSH version (%d.%d.%d), you may want to consider to update the client (currently %d.%d.%d)",
-			major, minor, patch, MAJOR, MINOR, PATCH)
 	}
 
 	if rsp.StatusCode == 200 {
+		if !IsVersionSupported(peerVersion) {
+			log.Warn().Msgf("The server runs an unsupported SSH version (%s), you may want to consider to update the client (currently %s)",
+				peerVersion.GetProtocolVersion(), ThisVersion().GetProtocolVersion())
+		}
 		c.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
 		c.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
 		qconn := c.streamCreator.(quic.Connection)
@@ -159,6 +163,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 				}
 			}
 		}()
+		c.peerVersion = *peerVersion
 		return nil
 	} else if rsp.StatusCode == http.StatusUnauthorized {
 		return util.Unauthorized{}
@@ -177,7 +182,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	}
 }
 
-func NewServerConversation(ctx context.Context, controlStream http3.Stream, qconn quic.Connection, messageSender util.DatagramSender, maxPacketsize uint64) (*Conversation, error) {
+func NewServerConversation(ctx context.Context, controlStream http3.Stream, qconn quic.Connection, messageSender util.DatagramSender, maxPacketsize uint64, peerVersion Version) (*Conversation, error) {
 	backgroundContext, backgroundCancelFunc := context.WithCancelCause(ctx)
 
 	tls := qconn.ConnectionState().TLS
@@ -197,6 +202,7 @@ func NewServerConversation(ctx context.Context, controlStream http3.Stream, qcon
 		context:             backgroundContext,
 		cancelContext:       backgroundCancelFunc,
 		conversationID:      convID,
+		peerVersion:         peerVersion,
 	}
 	return conv, nil
 }

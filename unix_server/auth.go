@@ -22,15 +22,15 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Server", ssh3.GetCurrentVersionString())
-		major, minor, patch, err := ssh3.ParseVersionString(r.UserAgent())
-		log.Debug().Msgf("received request from User-Agent %s (major %d, minor %d, patch %d)", r.UserAgent(), major, minor, patch)
+		peerVersion, err := ssh3.ParseVersionString(r.UserAgent())
+		log.Debug().Msgf("received request from User-Agent %s", r.UserAgent())
 		// currently apply strict version rules
-		if err != nil || major != ssh3.MAJOR || minor != ssh3.MINOR {
-			if err == nil {
-				http.Error(w, fmt.Sprintf("Unsupported version: %d.%d.%d not supported by server with version %s", major, minor, patch, ssh3.GetCurrentVersionString()), http.StatusForbidden)
-			} else {
-				http.Error(w, "Unsupported user-agent", http.StatusForbidden)
-			}
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Unsupported user-agent: %s", r.UserAgent()[:100]), http.StatusForbidden)
+			return
+		}
+		if !ssh3.IsVersionSupported(peerVersion) {
+			http.Error(w, fmt.Sprintf("Unsupported version: %s not supported by server with version %s", peerVersion.GetProtocolVersion(), ssh3.ThisVersion().GetProtocolVersion()), http.StatusForbidden)
 			return
 		}
 		// Only call Flush() here, as calling flush prevents from adding the Content-Length header to the response
@@ -52,7 +52,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 			return
 		}
 		str := r.Body.(http3.HTTPStreamer).HTTPStream()
-		conv, err := ssh3.NewServerConversation(ctx, str, qconn, qconn, defaultMaxPacketSize)
+		conv, err := ssh3.NewServerConversation(ctx, str, qconn, qconn, defaultMaxPacketSize, *peerVersion)
 		if err != nil {
 			log.Error().Msgf("could not create new server conversation")
 			w.WriteHeader(http.StatusInternalServerError)

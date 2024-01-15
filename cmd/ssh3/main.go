@@ -568,7 +568,7 @@ func mainWithStatusCode() int {
 
 		if qconn == nil {
 			if status != 0 {
-				log.Error().Msgf("could not setup transport for proxy client: %s", err)
+				log.Error().Msgf("could not setup transport for proxy client.")
 			}
 			return status
 		}
