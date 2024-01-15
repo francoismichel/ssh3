@@ -24,6 +24,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 		w.Header().Set("Server", ssh3.GetCurrentVersionString())
 		peerVersion, err := ssh3.ParseVersionString(r.UserAgent())
 		log.Debug().Msgf("received request from User-Agent %s", r.UserAgent())
+		log.Debug().Msgf("peer version: protocol version %s, software version %s", peerVersion.GetProtocolVersion(), peerVersion.GetSoftwareVersion())
 		// currently apply strict version rules
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Unsupported user-agent: %s", r.UserAgent()[:100]), http.StatusForbidden)
