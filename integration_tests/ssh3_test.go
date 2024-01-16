@@ -23,7 +23,7 @@ const DEFAULT_URL_PATH = "/ssh3-tests"
 const DEFAULT_PROXY_URL_PATH = "/ssh3-tests-proxy"
 
 var serverCommand *exec.Cmd
-var serverSessions map[string]*Session = make(map[string]*Session)	// bind address to session
+var serverSessions map[string]*Session = make(map[string]*Session) // bind address to session
 var proxyServerCommand *exec.Cmd
 var proxyServerSession *Session
 var rsaPrivKeyPath string
@@ -34,7 +34,7 @@ var username string
 const serverBind = "127.0.0.1:4433"
 const proxyServerBind = "127.0.0.1:4444"
 
-var oldServerBinds map[string]string = map[string]string {
+var oldServerBinds map[string]string = map[string]string{
 	"v0.1.5-rc1": "127.0.0.1:5000",
 	"v0.1.5-rc5": "127.0.0.1:5001",
 } // tag version to bind string
@@ -190,7 +190,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 				})
 
 				for key, val := range oldServerBinds {
-					// actually capture the values of key,val, as directly referring them in the code below will only keep the value of the last iteration 
+					// actually capture the values of key,val, as directly referring them in the code below will only keep the value of the last iteration
 					tag, bind := key, val
 					When("server version is"+tag+", bind is"+bind, func() {
 						It("Should connect using an RSA privkey to old supported server", func() {
