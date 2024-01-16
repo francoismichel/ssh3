@@ -27,7 +27,7 @@ const SOFTWARE_MAJOR int = 0
 const SOFTWARE_MINOR int = 1
 const SOFTWARE_PATCH int = 6
 
-const SOFTWARE_RC int = 2
+const SOFTWARE_RC int = 0
 
 var AVAILABLE_CLIENT_VERSIONS []Version = []Version{
 	ThisVersion(),
