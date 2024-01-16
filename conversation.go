@@ -156,7 +156,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 
 		// there is no exact match, the implementation/software version might differ, but the
 		// protocol version may still match
-		if matchingVersionIndex != -1 {
+		if matchingVersionIndex == -1 {
 			matchingVersionIndex = slices.IndexFunc(supportedVersions, func(supportedVersion Version) bool {
 				return peerProtocolVersion == thisProtocolVersion
 			})
