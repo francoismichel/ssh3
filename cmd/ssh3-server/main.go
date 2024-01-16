@@ -4,6 +4,7 @@ import (
 	// "bufio"
 	// "context"
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,11 +21,14 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/creack/pty"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	ssh3 "github.com/francoismichel/ssh3"
 	ssh3Messages "github.com/francoismichel/ssh3/message"
@@ -670,6 +674,17 @@ func fileExists(path string) bool {
 	return !os.IsNotExist(err)
 }
 
+type autogenCertificates []string
+
+func (i *autogenCertificates) String() string {
+	return fmt.Sprint(*i)
+}
+
+func (i *autogenCertificates) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
 func main() {
 	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
@@ -679,6 +694,12 @@ func main() {
 		"that will be stored at the paths indicated by the -cert and -key args (they must not already exist)")
 	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
 	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
+	var autogenCertificates autogenCertificates
+	flag.Var(&autogenCertificates, "generate-public-cert", "Automatically produce and use a valid public certificate using"+
+		"Let's Encrypt for the provided domain name. The flag can be used several times to generate several certificates."+
+		"If certificates have already been generated previously using this flag, "+
+		"they will simply be reused without being regenerated. The public certificates are automatically renewed as long as the "+
+		"server is running. Automatically-generated IP public certificates are not available yet.")
 	enablePasswordLogin := false
 	if unix_util.PasswordAuthAvailable() {
 		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
@@ -697,20 +718,24 @@ func main() {
 	certPathExists := fileExists(*certPath)
 	keyPathExists := fileExists(*keyPath)
 
-	if !*generateSelfSignedCert {
+	// handle bad case where one of the cert or key path is valid but not the other
+	badCertificatesConf := (certPathExists && !keyPathExists) ||
+		(!certPathExists && keyPathExists) ||
+		(!certPathExists && !keyPathExists && !*generateSelfSignedCert && len(autogenCertificates) == 0) // no certificate available whatsoever
+
+	if badCertificatesConf {
 		if !certPathExists {
 			fmt.Fprintf(os.Stderr, "the \"%s\" certificate file does not exist\n", *certPath)
 		}
 		if !keyPathExists {
 			fmt.Fprintf(os.Stderr, "the \"%s\" certificate private key file does not exist\n", *keyPath)
 		}
-		if !certPathExists || !keyPathExists {
-			fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
-				"you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
-			fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
-			os.Exit(-1)
-		}
-	} else {
+		fmt.Fprintln(os.Stderr, "No certificate available for the QUIC connection.")
+		fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
+			"you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
+		fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
+		os.Exit(-1)
+	} else if *generateSelfSignedCert {
 		if certPathExists {
 			fmt.Fprintf(os.Stderr, "asked for generating a certificate but the \"%s\" file already exists\n", *certPath)
 		}
@@ -737,6 +762,8 @@ func main() {
 			os.Exit(-1)
 		}
 
+		certPathExists = true
+		keyPathExists = true
 	}
 
 	if *verbose {
@@ -757,6 +784,47 @@ func main() {
 		log.Logger = log.Output(logFile)
 	}
 
+	tlsConfig := &tls.Config{}
+	if len(autogenCertificates) > 0 {
+		var zapLevel zapcore.Level
+		switch zerolog.GlobalLevel() {
+		case zerolog.TraceLevel:
+			fallthrough
+		case zerolog.DebugLevel:
+			zapLevel = zap.DebugLevel
+		case zerolog.InfoLevel:
+			zapLevel = zap.InfoLevel
+		case zerolog.WarnLevel:
+			zapLevel = zap.WarnLevel
+		case zerolog.ErrorLevel:
+			zapLevel = zap.ErrorLevel
+		}
+		certmagic.Default.Logger = zap.New(zapcore.NewCore(
+			zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig()),
+			os.Stderr,
+			zapLevel,
+		))
+		certmagic.Default.Logger = certmagic.Default.Logger.Named("github.com/caddyserver/certmagic")
+
+		var err error
+		fmt.Fprintln(os.Stderr, "Generate public certificates...")
+		tlsConfig, err = certmagic.TLS(autogenCertificates)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not generate public certificates: %s\n", err)
+			os.Exit(-1)
+		}
+		fmt.Fprintln(os.Stderr, "Successfully generated public certificates")
+	}
+
+	if certPathExists && keyPathExists {
+		certificate, err := tls.LoadX509KeyPair(*certPath, *keyPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not load -cert and -key pair: %s\n", err)
+			os.Exit(-1)
+		}
+		tlsConfig.Certificates = append(tlsConfig.Certificates, certificate)
+	}
+
 	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
 
 	quicConf := &quic.Config{
@@ -773,6 +841,7 @@ func main() {
 			Addr:            *bindAddr,
 			QuicConfig:      quicConf,
 			EnableDatagrams: true,
+			TLSConfig:       tlsConfig,
 		}
 
 		mux := http.NewServeMux()
@@ -870,7 +939,7 @@ func main() {
 		outputMessage := fmt.Sprintf("Server started, listening on %s%s", *bindAddr, *urlPath)
 		fmt.Fprintln(os.Stderr, outputMessage)
 		log.Info().Msg(outputMessage)
-		err = server.ListenAndServeTLS(*certPath, *keyPath)
+		err = server.ListenAndServe()
 
 		if err != nil {
 			log.Error().Msgf("error while serving HTTP connection: %s", err)
