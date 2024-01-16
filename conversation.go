@@ -131,7 +131,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 			}
 		} else {
 			log.Debug().Msgf("server has valid version \"%s\" (protocol version = %s, software version = %s)",
-							 serverVersionStr, serverVersion.GetProtocolVersion(), serverVersion.GetSoftwareVersion())
+				serverVersionStr, serverVersion.GetProtocolVersion(), serverVersion.GetSoftwareVersion())
 		}
 		return rsp, serverVersion, nil
 	}
