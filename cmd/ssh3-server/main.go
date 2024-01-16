@@ -764,7 +764,6 @@ func main() {
 		keyPathExists = true
 	}
 
-
 	if *verbose {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 		util.ConfigureLogger("debug")
@@ -783,7 +782,6 @@ func main() {
 		log.Logger = log.Output(logFile)
 	}
 
-	
 	var zapLevel zapcore.Level
 	switch log.Logger.GetLevel() {
 	case zerolog.TraceLevel:
