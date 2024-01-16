@@ -805,13 +805,13 @@ func main() {
 		certmagic.Default.Logger = certmagic.Default.Logger.Named("github.com/caddyserver/certmagic")
 
 		var err error
-		fmt.Fprintf(os.Stderr, "Generate public certificates...")
+		fmt.Fprintln(os.Stderr, "Generate public certificates...")
 		tlsConfig, err = certmagic.TLS(autogenCertificates)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not generate public certificates: %s\n", err)
 			os.Exit(-1)
 		}
-		fmt.Fprintf(os.Stderr, "Successfully generated public certificates")
+		fmt.Fprintln(os.Stderr, "Successfully generated public certificates")
 	}
 
 	if certPathExists && keyPathExists {
