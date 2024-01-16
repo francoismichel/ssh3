@@ -839,6 +839,7 @@ func main() {
 			Addr:            *bindAddr,
 			QuicConfig:      quicConf,
 			EnableDatagrams: true,
+			TLSConfig:       tlsConfig,
 		}
 
 		mux := http.NewServeMux()
@@ -936,7 +937,7 @@ func main() {
 		outputMessage := fmt.Sprintf("Server started, listening on %s%s", *bindAddr, *urlPath)
 		fmt.Fprintln(os.Stderr, outputMessage)
 		log.Info().Msg(outputMessage)
-		err = server.ListenAndServeTLS(*certPath, *keyPath)
+		err = server.ListenAndServe()
 
 		if err != nil {
 			log.Error().Msgf("error while serving HTTP connection: %s", err)
