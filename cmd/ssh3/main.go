@@ -480,12 +480,13 @@ func mainWithStatusCode() int {
 		}
 
 		if *pubkeyForAgent != "" {
+			pubkeyFileName := util.ExpandTildeWithHomeDir(*pubkeyForAgent)
 			if os.Getenv("SSH_AUTH_SOCK") == "" {
 				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
 			} else {
 				var pubkey ssh.PublicKey = nil
-				if *pubkeyForAgent != "" {
-					pubKeyBytes, err := os.ReadFile(*pubkeyForAgent)
+				if pubkeyFileName != "" {
+					pubKeyBytes, err := os.ReadFile(pubkeyFileName)
 					if err != nil {
 						log.Error().Msgf("could not load public key file: %s", err)
 						return -1

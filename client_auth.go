@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/francoismichel/ssh3/auth"
@@ -63,7 +61,7 @@ func (m *OidcAuthMethod) IntoIdentity(bearerToken string) Identity {
 
 func NewPrivkeyFileAuthMethod(filename string) *PrivkeyFileAuthMethod {
 	return &PrivkeyFileAuthMethod{
-		filename: filename,
+		filename: util.ExpandTildeWithHomeDir(filename),
 	}
 }
 
@@ -87,12 +85,7 @@ func (m *PrivkeyFileAuthMethod) IntoIdentityPassphrase(passphrase string) (Ident
 
 func (m *PrivkeyFileAuthMethod) intoIdentity(passphrase *string) (Identity, error) {
 
-	filename := m.filename
-	if strings.HasPrefix(filename, "~/") {
-		dirname, _ := os.UserHomeDir()
-		filename = path.Join(dirname, filename[2:])
-	}
-	pemBytes, err := os.ReadFile(filename)
+	pemBytes, err := os.ReadFile(m.filename)
 	if err != nil {
 		return nil, err
 	}
