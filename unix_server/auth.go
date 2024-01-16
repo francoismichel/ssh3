@@ -53,7 +53,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 			return
 		}
 		str := r.Body.(http3.HTTPStreamer).HTTPStream()
-		conv, err := ssh3.NewServerConversation(ctx, str, qconn, qconn, defaultMaxPacketSize, *peerVersion)
+		conv, err := ssh3.NewServerConversation(ctx, str, qconn, qconn, defaultMaxPacketSize, peerVersion)
 		if err != nil {
 			log.Error().Msgf("could not create new server conversation")
 			w.WriteHeader(http.StatusInternalServerError)
