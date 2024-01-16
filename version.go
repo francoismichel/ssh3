@@ -65,9 +65,10 @@ func IsVersionSupported(other Version) bool {
 	}
 
 	// special case: to our knowledge, experimental spec version older than alpha-00 are only implemented by us (i.e. francoismichel/ssh3)
-	if other.protocolVersion.ExperimentalSpecVersion == "" && other.softwareVersion.ImplementationName == SOFTWARE_IMPLEMENTATION_NAME &&
+	// this should be removed in the near future, once we remove support for these legacy servers
+	if other.protocolVersion.ExperimentalSpecVersion == "" && other.softwareVersion.ImplementationName == "francoismichel/ssh3" &&
 		other.softwareVersion.Major == 0 && other.softwareVersion.Minor == 1 && other.softwareVersion.Patch <= 5 {
-		// then, only support software version >= 0.1.4
+		// then, only support software version >= 0.1.3
 		return other.softwareVersion.Patch >= 3
 	}
 
