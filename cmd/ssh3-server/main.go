@@ -675,12 +675,12 @@ func fileExists(path string) bool {
 type autogenCertificates []string
 
 func (i *autogenCertificates) String() string {
-    return fmt.Sprint(*i)
+	return fmt.Sprint(*i)
 }
 
 func (i *autogenCertificates) Set(value string) error {
-    *i = append(*i, value)
-    return nil
+	*i = append(*i, value)
+	return nil
 }
 
 func main() {
@@ -694,8 +694,8 @@ func main() {
 	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
 	var autogenCertificates autogenCertificates
 	flag.Var(&autogenCertificates, "generate-public-cert", "Automatically produce and use a valid public certificate using"+
-								   "Let's Encrypt for the provided domain name. The flag can be used several times to generate several certificates."+
-								   "Automatically-generated IP public certificates are not available yet.")
+		"Let's Encrypt for the provided domain name. The flag can be used several times to generate several certificates."+
+		"Automatically-generated IP public certificates are not available yet.")
 	enablePasswordLogin := false
 	if unix_util.PasswordAuthAvailable() {
 		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
@@ -715,10 +715,9 @@ func main() {
 	keyPathExists := fileExists(*keyPath)
 
 	// handle bad case where one of the cert or key path is valid but not the other
-	badCertificatesConf :=  (certPathExists && !keyPathExists) ||
-							(!certPathExists && keyPathExists) ||
-							(!certPathExists && !keyPathExists && !*generateSelfSignedCert && len(autogenCertificates) == 0) // no certificate available whatsoever
-
+	badCertificatesConf := (certPathExists && !keyPathExists) ||
+		(!certPathExists && keyPathExists) ||
+		(!certPathExists && !keyPathExists && !*generateSelfSignedCert && len(autogenCertificates) == 0) // no certificate available whatsoever
 
 	if badCertificatesConf {
 		if !certPathExists {
