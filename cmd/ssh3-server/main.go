@@ -800,6 +800,7 @@ func main() {
 		os.Stderr,
 		zapLevel,
 	))
+	certmagic.Default.Logger = certmagic.Default.Logger.Named("github.com/caddyserver/certmagic")
 
 	tlsConfig := &tls.Config{}
 	if len(autogenCertificates) > 0 {
