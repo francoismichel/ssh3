@@ -27,6 +27,8 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	ssh3 "github.com/francoismichel/ssh3"
 	ssh3Messages "github.com/francoismichel/ssh3/message"
@@ -762,24 +764,6 @@ func main() {
 		keyPathExists = true
 	}
 
-	tlsConfig := &tls.Config{}
-	if len(autogenCertificates) > 0 {
-		var err error
-		tlsConfig, err = certmagic.TLS(autogenCertificates)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "could not generate ZeroSSL certificates: %s\n", err)
-			os.Exit(-1)
-		}
-	}
-
-	if certPathExists && keyPathExists {
-		certificate, err := tls.LoadX509KeyPair(*certPath, *keyPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could not load -cert and -key pair: %s\n", err)
-			os.Exit(-1)
-		}
-		tlsConfig.Certificates = append(tlsConfig.Certificates, certificate)
-	}
 
 	if *verbose {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -797,6 +781,45 @@ func main() {
 			return
 		}
 		log.Logger = log.Output(logFile)
+	}
+
+	
+	var zapLevel zapcore.Level
+	switch log.Logger.GetLevel() {
+	case zerolog.TraceLevel:
+		fallthrough
+	case zerolog.DebugLevel:
+		zapLevel = zap.DebugLevel
+	case zerolog.InfoLevel:
+		zapLevel = zap.InfoLevel
+	case zerolog.WarnLevel:
+		zapLevel = zap.WarnLevel
+	case zerolog.ErrorLevel:
+		zapLevel = zap.ErrorLevel
+	}
+	certmagic.Default.Logger = zap.New(zapcore.NewCore(
+		zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig()),
+		os.Stderr,
+		zapLevel,
+	))
+
+	tlsConfig := &tls.Config{}
+	if len(autogenCertificates) > 0 {
+		var err error
+		tlsConfig, err = certmagic.TLS(autogenCertificates)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not generate ZeroSSL certificates: %s\n", err)
+			os.Exit(-1)
+		}
+	}
+
+	if certPathExists && keyPathExists {
+		certificate, err := tls.LoadX509KeyPair(*certPath, *keyPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not load -cert and -key pair: %s\n", err)
+			os.Exit(-1)
+		}
+		tlsConfig.Certificates = append(tlsConfig.Certificates, certificate)
 	}
 
 	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
@@ -912,7 +935,6 @@ func main() {
 		outputMessage := fmt.Sprintf("Server started, listening on %s%s", *bindAddr, *urlPath)
 		fmt.Fprintln(os.Stderr, outputMessage)
 		log.Info().Msg(outputMessage)
-		certmagic.TLS([]string{})
 		err = server.ListenAndServeTLS(*certPath, *keyPath)
 
 		if err != nil {
