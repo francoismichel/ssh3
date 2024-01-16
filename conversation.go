@@ -114,28 +114,34 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 
 	doReq := func(version Version, req *http.Request) (*http.Response, Version, error) {
 		req.Header.Set("User-Agent", ThisVersion().GetVersionString())
+		log.Debug().Msgf("send %s request on URL %s, User-Agent=\"%s\"", req.Method, req.URL, req.Header.Get("User-Agent"))
 		rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
 		if err != nil {
 			return rsp, Version{}, err
 		}
 
-		serverVersion := rsp.Header.Get("Server")
-		peerVersion, err := ParseVersionString(serverVersion)
+		log.Debug().Msgf("got response with %s status code", rsp.Status)
+
+		serverVersionStr := rsp.Header.Get("Server")
+		serverVersion, err := ParseVersionString(serverVersionStr)
 		if err != nil {
-			log.Error().Msgf("Could not parse server version: \"%s\"", serverVersion)
+			log.Error().Msgf("Could not parse server version: \"%s\"", serverVersionStr)
 			if rsp.StatusCode == 200 {
-				return rsp, Version{}, InvalidSSHVersion{versionString: serverVersion}
+				return rsp, Version{}, InvalidSSHVersion{versionString: serverVersionStr}
 			}
+		} else {
+			log.Debug().Msgf("server has valid version \"%s\" (protocol version = %s, software version = %s)",
+							 serverVersionStr, serverVersion.GetProtocolVersion(), serverVersion.GetSoftwareVersion())
 		}
-		return rsp, peerVersion, nil
+		return rsp, serverVersion, nil
 	}
 
-	rsp, peerVersion, err := doReq(ThisVersion(), req)
+	rsp, serverVersion, err := doReq(ThisVersion(), req)
 	if err != nil {
 		return err
 	}
 
-	peerProtocolVersion := peerVersion.GetProtocolVersion()
+	peerProtocolVersion := serverVersion.GetProtocolVersion()
 	thisProtocolVersion := ThisVersion().GetProtocolVersion()
 	if rsp.StatusCode == http.StatusForbidden && peerProtocolVersion != thisProtocolVersion {
 		// This version negotiation code might feel a bit heavy but is only there for a smooth transition
@@ -146,7 +152,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 
 		// see if there is an exact version match (including software version, which is useful
 		// for old versions that do not support version negotiation based on the protocol version)
-		matchingVersionIndex := slices.Index(supportedVersions, peerVersion)
+		matchingVersionIndex := slices.Index(supportedVersions, serverVersion)
 
 		// there is no exact match, the implementation/software version might differ, but the
 		// protocol version may still match
@@ -157,9 +163,9 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 		}
 		if matchingVersionIndex != -1 {
 			log.Warn().Msgf("The server runs an old version of the protocol (%s). This software is still experimental, "+
-				"you may want to update the server version before support is removed.", peerVersion.GetVersionString())
+				"you may want to update the server version before support is removed.", serverVersion.GetVersionString())
 			// now retry the request with the compatible version
-			rsp, peerVersion, err = doReq(supportedVersions[matchingVersionIndex], req)
+			rsp, serverVersion, err = doReq(supportedVersions[matchingVersionIndex], req)
 			if err != nil {
 				return err
 			}
@@ -167,9 +173,9 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	}
 
 	if rsp.StatusCode == 200 {
-		if !IsVersionSupported(peerVersion) {
+		if !IsVersionSupported(serverVersion) {
 			log.Warn().Msgf("The server runs an unsupported SSH version (%s), you may want to consider to update the client (currently %s)",
-				peerVersion.GetProtocolVersion(), ThisVersion().GetProtocolVersion())
+				serverVersion.GetProtocolVersion(), ThisVersion().GetProtocolVersion())
 		}
 		c.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
 		c.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
@@ -205,7 +211,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 				}
 			}
 		}()
-		c.peerVersion = peerVersion
+		c.peerVersion = serverVersion
 		return nil
 	} else if rsp.StatusCode == http.StatusUnauthorized {
 		return util.Unauthorized{}
