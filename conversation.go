@@ -141,9 +141,9 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 		return err
 	}
 
-	peerProtocolVersion := serverVersion.GetProtocolVersion()
+	serverProtocolVersion := serverVersion.GetProtocolVersion()
 	thisProtocolVersion := ThisVersion().GetProtocolVersion()
-	if rsp.StatusCode == http.StatusForbidden && peerProtocolVersion != thisProtocolVersion {
+	if rsp.StatusCode == http.StatusForbidden && serverProtocolVersion != thisProtocolVersion {
 		// This version negotiation code might feel a bit heavy but is only there for a smooth transition
 		// between early versions and versions coming from an actual IETF specification that include
 		// proper version negotiation. Older version of this implementation strictly check the exact protocol
@@ -158,7 +158,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 		// protocol version may still match
 		if matchingVersionIndex == -1 {
 			matchingVersionIndex = slices.IndexFunc(supportedVersions, func(supportedVersion Version) bool {
-				return peerProtocolVersion == thisProtocolVersion
+				return serverProtocolVersion == supportedVersion.GetProtocolVersion()
 			})
 		}
 		if matchingVersionIndex != -1 {
