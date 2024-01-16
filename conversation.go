@@ -163,7 +163,8 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 		}
 		if matchingVersionIndex != -1 {
 			log.Warn().Msgf("The server runs an old version of the protocol (%s). This software is still experimental, "+
-				"you may want to update the server version before support is removed.", serverVersion.GetVersionString())
+				"you may want to update the server version before support is removed. Also, note that connecting to old "+
+				"servers may increase the connection establishment time.", serverVersion.GetVersionString())
 			// now retry the request with the compatible version
 			rsp, serverVersion, err = doReq(supportedVersions[matchingVersionIndex], req)
 			if err != nil {
