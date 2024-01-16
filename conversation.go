@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/francoismichel/ssh3/util"
+	"golang.org/x/exp/slices"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -75,7 +76,7 @@ func NewClientConversation(maxPacketsize uint64, defaultDatagramsQueueSize uint6
 	return conv, nil
 }
 
-func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripper *http3.RoundTripper) error {
+func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripper *http3.RoundTripper, supportedVersions []Version) error {
 
 	roundTripper.StreamHijacker = func(frameType http3.FrameType, qconn quic.Connection, stream quic.Stream, err error) (bool, error) {
 		if err != nil {
@@ -110,17 +111,58 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 		c.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
-	rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
+
+	doReq := func(version Version, req *http.Request) (*http.Response, Version, error) {
+		req.Header.Set("User-Agent", ThisVersion().GetVersionString())
+		rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
+		if err != nil {
+			return rsp, Version{}, err
+		}
+
+		serverVersion := rsp.Header.Get("Server")
+		peerVersion, err := ParseVersionString(serverVersion)
+		if err != nil {
+			log.Error().Msgf("Could not parse server version: \"%s\"", serverVersion)
+			if rsp.StatusCode == 200 {
+				return rsp, Version{}, InvalidSSHVersion{versionString: serverVersion}
+			}
+		}
+		return rsp, peerVersion, nil
+	}
+
+	rsp, peerVersion, err := doReq(ThisVersion(), req)
 	if err != nil {
 		return err
 	}
 
-	serverVersion := rsp.Header.Get("Server")
-	peerVersion, err := ParseVersionString(serverVersion)
-	if err != nil {
-		log.Error().Msgf("Could not parse server version: \"%s\"", serverVersion)
-		if rsp.StatusCode == 200 {
-			return InvalidSSHVersion{versionString: serverVersion}
+	peerProtocolVersion := peerVersion.GetProtocolVersion()
+	thisProtocolVersion := ThisVersion().GetProtocolVersion()
+	if rsp.StatusCode == http.StatusForbidden && peerProtocolVersion != thisProtocolVersion {
+		// This version negotiation code might feel a bit heavy but is only there for a smooth transition
+		// between early versions and versions coming from an actual IETF specification that include
+		// proper version negotiation. Older version of this implementation strictly check the exact protocol
+		// version (i.e. must be 3.0) and then check the software version. In next iterations, everything will be
+		// based on the protocol version for better interoperability.
+
+		// see if there is an exact version match (including software version, which is useful
+		// for old versions that do not support version negotiation based on the protocol version)
+		matchingVersionIndex := slices.Index(supportedVersions, peerVersion)
+
+		// there is no exact match, the implementation/software version might differ, but the
+		// protocol version may still match
+		if matchingVersionIndex != -1 {
+			matchingVersionIndex = slices.IndexFunc(supportedVersions, func(supportedVersion Version) bool {
+				return peerProtocolVersion == thisProtocolVersion
+			})
+		}
+		if matchingVersionIndex != -1 {
+			log.Warn().Msgf("The server runs an old version of the protocol (%s). This software is still experimental, "+
+				"you may want to update the server version before support is removed.", peerVersion.GetVersionString())
+			// now retry the request with the compatible version
+			rsp, peerVersion, err = doReq(supportedVersions[matchingVersionIndex], req)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -163,7 +205,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 				}
 			}
 		}()
-		c.peerVersion = *peerVersion
+		c.peerVersion = peerVersion
 		return nil
 	} else if rsp.StatusCode == http.StatusUnauthorized {
 		return util.Unauthorized{}

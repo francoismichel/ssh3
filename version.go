@@ -29,6 +29,12 @@ const SOFTWARE_PATCH int = 5
 
 const SOFTWARE_RC int = 5
 
+var AVAILABLE_CLIENT_VERSIONS []Version = []Version{
+	ThisVersion(),
+	NewVersion("SSH", NewProtocolVersion(3, 0, ""), NewSoftwareVersion(0, 1, 5, SOFTWARE_IMPLEMENTATION_NAME)),
+	NewVersion("SSH", NewProtocolVersion(3, 0, ""), NewSoftwareVersion(0, 1, 4, SOFTWARE_IMPLEMENTATION_NAME)),
+}
+
 func ThisVersion() Version {
 	return Version{
 		protocolName: "SSH",
@@ -38,16 +44,17 @@ func ThisVersion() Version {
 			ExperimentalSpecVersion: PROTOCOL_EXPERIMENTAL_SPEC_VERSION,
 		},
 		softwareVersion: SoftwareVersion{
-			Major: SOFTWARE_MAJOR,
-			Minor: SOFTWARE_MINOR,
-			Patch: SOFTWARE_PATCH,
+			ImplementationName: SOFTWARE_IMPLEMENTATION_NAME,
+			Major:              SOFTWARE_MAJOR,
+			Minor:              SOFTWARE_MINOR,
+			Patch:              SOFTWARE_PATCH,
 		},
 	}
 }
 
 // Tells if the this version (a.k.a. the version returned by ThisVersion())
 // is compatible with `other`.
-func IsVersionSupported(other *Version) bool {
+func IsVersionSupported(other Version) bool {
 	this := ThisVersion()
 	// right now, no check for protocol name as it is subject to change
 
@@ -75,6 +82,15 @@ type SoftwareVersion struct {
 	Major              int
 	Minor              int
 	Patch              int
+}
+
+func NewSoftwareVersion(major int, minor int, patch int, implementationName string) SoftwareVersion {
+	return SoftwareVersion{
+		Major:              major,
+		Minor:              minor,
+		Patch:              patch,
+		ImplementationName: implementationName,
+	}
 }
 
 type InvalidSoftwareVersion struct {
@@ -115,13 +131,21 @@ func ParseSoftwareVersion(implementationName string, versionString string) (Soft
 }
 
 func (v SoftwareVersion) String() string {
-	return fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)
+	return fmt.Sprintf("%s %d.%d.%d", v.ImplementationName, v.Major, v.Minor, v.Patch)
 }
 
 type ProtocolVersion struct {
 	Major                   int
 	Minor                   int
 	ExperimentalSpecVersion string
+}
+
+func NewProtocolVersion(major int, minor int, experimentalspecversion string) ProtocolVersion {
+	return ProtocolVersion{
+		Major:                   major,
+		Minor:                   minor,
+		ExperimentalSpecVersion: experimentalspecversion,
+	}
 }
 
 func (v ProtocolVersion) String() string {
@@ -181,8 +205,20 @@ func (v Version) GetSoftwareVersion() SoftwareVersion {
 	return v.softwareVersion
 }
 
-func NewVersion(protocolName string, protocolVersion ProtocolVersion, softwareVersion SoftwareVersion) *Version {
-	return &Version{
+// GetVersionString() returns the version string to be exchanged between two
+// endpoints for version negotiation
+func (v Version) GetVersionString() string {
+	// currently put the experimental spec version as an additional attribute for better compatibility with recent 0.1.5 software rcs
+	ret := fmt.Sprintf("%s %d.%d %s %d.%d.%d", v.protocolName, v.protocolVersion.Major, v.protocolVersion.Minor,
+		v.softwareVersion.ImplementationName, v.softwareVersion.Major, v.softwareVersion.Minor, v.softwareVersion.Patch)
+	if v.protocolVersion.ExperimentalSpecVersion != "" {
+		ret = fmt.Sprintf("%s experimental_spec_version=%s", ret, v.protocolVersion.ExperimentalSpecVersion)
+	}
+	return ret
+}
+
+func NewVersion(protocolName string, protocolVersion ProtocolVersion, softwareVersion SoftwareVersion) Version {
+	return Version{
 		protocolName:    protocolName,
 		protocolVersion: protocolVersion,
 		softwareVersion: softwareVersion,
@@ -208,27 +244,27 @@ func (e UnsupportedSSHVersion) Error() string {
 // GetCurrentVersionString() returns the version string to be exchanged between two
 // endpoints for version negotiation
 func GetCurrentVersionString() string {
-	return fmt.Sprintf("SSH %d.%d %s %d.%d.%d experimental_spec_version=%s", PROTOCOL_MAJOR, PROTOCOL_MINOR, SOFTWARE_IMPLEMENTATION_NAME, SOFTWARE_MAJOR, SOFTWARE_MINOR, SOFTWARE_PATCH, PROTOCOL_EXPERIMENTAL_SPEC_VERSION)
+	return ThisVersion().GetVersionString()
 }
 
-func ParseVersionString(versionString string) (version *Version, err error) {
+func ParseVersionString(versionString string) (version Version, err error) {
 	fields := strings.Fields(versionString)
 	if len(fields) < 4 {
 		log.Error().Msgf("bad SSH version fields")
-		return nil, InvalidSSHVersion{versionString: versionString}
+		return Version{}, InvalidSSHVersion{versionString: versionString}
 	}
 	protocolName := fields[0]
 
 	protocolVersion, err := ParseProtocolVersion(fields[1])
 	if err != nil {
 		log.Error().Msgf("could not parse protocol version: %s", err)
-		return nil, err
+		return Version{}, err
 	}
 
 	softwareVersion, err := ParseSoftwareVersion(fields[2], fields[3])
 	if err != nil {
 		log.Error().Msgf("could not parse software version: %s", err)
-		return nil, err
+		return Version{}, err
 	}
 
 	// Temporary tweak to announce a spec version while keeping compatibility with alpha-00 and older versions,
