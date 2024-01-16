@@ -782,28 +782,28 @@ func main() {
 		log.Logger = log.Output(logFile)
 	}
 
-	var zapLevel zapcore.Level
-	switch log.Logger.GetLevel() {
-	case zerolog.TraceLevel:
-		fallthrough
-	case zerolog.DebugLevel:
-		zapLevel = zap.DebugLevel
-	case zerolog.InfoLevel:
-		zapLevel = zap.InfoLevel
-	case zerolog.WarnLevel:
-		zapLevel = zap.WarnLevel
-	case zerolog.ErrorLevel:
-		zapLevel = zap.ErrorLevel
-	}
-	certmagic.Default.Logger = zap.New(zapcore.NewCore(
-		zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig()),
-		os.Stderr,
-		zapLevel,
-	))
-	certmagic.Default.Logger = certmagic.Default.Logger.Named("github.com/caddyserver/certmagic")
-
 	tlsConfig := &tls.Config{}
 	if len(autogenCertificates) > 0 {
+		var zapLevel zapcore.Level
+		switch zerolog.GlobalLevel() {
+		case zerolog.TraceLevel:
+			fallthrough
+		case zerolog.DebugLevel:
+			zapLevel = zap.DebugLevel
+		case zerolog.InfoLevel:
+			zapLevel = zap.InfoLevel
+		case zerolog.WarnLevel:
+			zapLevel = zap.WarnLevel
+		case zerolog.ErrorLevel:
+			zapLevel = zap.ErrorLevel
+		}
+		certmagic.Default.Logger = zap.New(zapcore.NewCore(
+			zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig()),
+			os.Stderr,
+			zapLevel,
+		))
+		certmagic.Default.Logger = certmagic.Default.Logger.Named("github.com/caddyserver/certmagic")
+
 		var err error
 		tlsConfig, err = certmagic.TLS(autogenCertificates)
 		if err != nil {
