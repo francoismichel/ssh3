@@ -113,7 +113,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	}
 
 	doReq := func(version Version, req *http.Request) (*http.Response, Version, error) {
-		req.Header.Set("User-Agent", ThisVersion().GetVersionString())
+		req.Header.Set("User-Agent", version.GetVersionString())
 		log.Debug().Msgf("send %s request on URL %s, User-Agent=\"%s\"", req.Method, req.URL, req.Header.Get("User-Agent"))
 		rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
 		if err != nil {
