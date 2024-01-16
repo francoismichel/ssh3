@@ -697,7 +697,9 @@ func main() {
 	var autogenCertificates autogenCertificates
 	flag.Var(&autogenCertificates, "generate-public-cert", "Automatically produce and use a valid public certificate using"+
 		"Let's Encrypt for the provided domain name. The flag can be used several times to generate several certificates."+
-		"Automatically-generated IP public certificates are not available yet.")
+		"If certificates have already been generated previously using this flag, "+
+		"they will simply be reused without being regenerated. The public certificates are automatically renewed as long as the "+
+		"server is running. Automatically-generated IP public certificates are not available yet.")
 	enablePasswordLogin := false
 	if unix_util.PasswordAuthAvailable() {
 		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
