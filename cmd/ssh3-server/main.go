@@ -693,9 +693,9 @@ func main() {
 	certPath := flag.String("cert", "./cert.pem", "the filename of the server certificate (or fullchain)")
 	keyPath := flag.String("key", "./priv.key", "the filename of the certificate private key")
 	var autogenCertificates autogenCertificates
-	flag.Var(&autogenCertificates, "generate-public-certificates", "Provides domain names or IP addresses for which public certificates "+
-								   "will be generated automatically. The flag can be used severa times to generate several certificates."+
-								   "IP certificates can ony be done using ZeroSSL.")
+	flag.Var(&autogenCertificates, "generate-public-cert", "Automatically produce and use a valid public certificate using"+
+								   "Let's Encrypt for the provided domain name. The flag can be used several times to generate several certificates."+
+								   "Automatically-generated IP public certificates are not available yet.")
 	enablePasswordLogin := false
 	if unix_util.PasswordAuthAvailable() {
 		flag.BoolVar(&enablePasswordLogin, "enable-password-login", false, "if set, enable password authentication (disabled by default)")
