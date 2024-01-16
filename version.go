@@ -33,6 +33,7 @@ var AVAILABLE_CLIENT_VERSIONS []Version = []Version{
 	ThisVersion(),
 	NewVersion("SSH", NewProtocolVersion(3, 0, ""), NewSoftwareVersion(0, 1, 5, SOFTWARE_IMPLEMENTATION_NAME)),
 	NewVersion("SSH", NewProtocolVersion(3, 0, ""), NewSoftwareVersion(0, 1, 4, SOFTWARE_IMPLEMENTATION_NAME)),
+	NewVersion("SSH", NewProtocolVersion(3, 0, ""), NewSoftwareVersion(0, 1, 3, SOFTWARE_IMPLEMENTATION_NAME)),
 }
 
 func ThisVersion() Version {
@@ -67,7 +68,7 @@ func IsVersionSupported(other Version) bool {
 	if other.protocolVersion.ExperimentalSpecVersion == "" && other.softwareVersion.ImplementationName == SOFTWARE_IMPLEMENTATION_NAME &&
 		other.softwareVersion.Major == 0 && other.softwareVersion.Minor == 1 && other.softwareVersion.Patch <= 5 {
 		// then, only support software version >= 0.1.4
-		return other.softwareVersion.Patch >= 4
+		return other.softwareVersion.Patch >= 3
 	}
 
 	// Starting from here, we have proper experimental spec version signalling.
@@ -149,7 +150,11 @@ func NewProtocolVersion(major int, minor int, experimentalspecversion string) Pr
 }
 
 func (v ProtocolVersion) String() string {
-	return fmt.Sprintf("%d.%d_%s", v.Major, v.Minor, v.ExperimentalSpecVersion)
+	ret := fmt.Sprintf("%d.%d", v.Major, v.Minor)
+	if v.ExperimentalSpecVersion != "" {
+		ret = fmt.Sprintf("%s_%s", ret, v.ExperimentalSpecVersion)
+	}
+	return ret
 }
 
 type InvalidProtocolVersion struct {
