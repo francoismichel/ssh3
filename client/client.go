@@ -268,7 +268,6 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 		log.Fatal().Msgf("%s", err)
 	}
 	req.Proto = "ssh3"
-	req.Header.Set("User-Agent", ssh3.GetCurrentVersionString())
 
 	var identity ssh3.Identity
 	for _, method := range options.authMethods {
@@ -363,8 +362,8 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 		return nil, err
 	}
 
-	log.Debug().Msgf("send CONNECT request to the server")
-	err = conv.EstablishClientConversation(req, roundTripper)
+	log.Debug().Msgf("establish conversation with the server")
+	err = conv.EstablishClientConversation(req, roundTripper, ssh3.AVAILABLE_CLIENT_VERSIONS)
 	if errors.Is(err, util.Unauthorized{}) {
 		log.Error().Msgf("Access denied from the server: unauthorized")
 		return nil, err
