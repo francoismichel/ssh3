@@ -87,7 +87,7 @@ You can either download the last [release binaries](https://github.com/francoism
 
 ### Installing ssh3 and ssh3-server using Go install
 ```bash
-go install github.com/francoismichel/ssh3/cmd/...@v0.1.5-rc5
+go install github.com/francoismichel/ssh3/cmd/...@latest
 ```
 
 
@@ -124,7 +124,7 @@ using `screen` or a similar utility.
 
 
 > [!NOTE]
-> As SSH3 runs on top of HTTP/3, a server needs an X.509 certificate and its corresponding private key. If you do not want to generate a certificate signed by a real certificate authority, you can generate a self-signed one using the `generate_openssl_selfsigned_certificate.sh` script. This provides you with similar security guarantees to SSHv2's host keys mechanism, with the same security issue: you may be vulnerable to machine-in-the-middle attacks during your first connection to your server. Using real certificates signed by public certificate authorities such as Let's Encrypt avoids this issue.
+> As SSH3 runs on top of HTTP/3, a server needs an X.509 certificate and its corresponding private key. Public certificates can be generated automatically for your public domain name through Let's Encrypt using the `-generate-public-cert` command-line argument on the server. If you do not want to generate a certificate signed by a real certificate authority or if you don't have any public domain name, you can generate a self-signed one using the `-generate-selfsigned-cert` command-line argument. Self-signed certificates provide you with similar security guarantees to SSHv2's host keys mechanism, with the same security issue: you may be vulnerable to machine-in-the-middle attacks during your first connection to your server. Using real certificates signed by public certificate authorities such as Let's Encrypt avoids this issue.
 
 
 Here is the usage of the `ssh3-server` executable:
@@ -135,20 +135,31 @@ Usage of ./ssh3-server:
         the address:port pair to listen to, e.g. 0.0.0.0:443 (default "[::]:443")
   -cert string
         the filename of the server certificate (or fullchain) (default "./cert.pem")
-  -enable-password-login
-        if set, enable password authentication (disabled by default)
-  -generate-selfsigned-cert
-        if set, generates a self-self-signed cerificate and key that will be stored
-        at the paths indicated by the -cert and -key args (they must not already exist)
   -key string
         the filename of the certificate private key (default "./priv.key")
+  -enable-password-login
+        if set, enable password authentication (disabled by default)
+  -generate-public-cert value
+        Automatically produce and use a valid public certificate usingLet's Encrypt for the provided domain name. The flag can be used several times to generate several certificates.If certificates have already been generated previously using this flag, they will simply be reused without being regenerated. The public certificates are automatically renewed as long as the server is running. Automatically-generated IP public certificates are not available yet.
+  -generate-selfsigned-cert
+        if set, generates a self-self-signed cerificate and key that will be stored at the paths indicated by the -cert and -key args (they must not already exist)
   -url-path string
         the secret URL path on which the ssh3 server listens (default "/ssh3-term")
   -v    verbose mode, if set
+  -version
+        if set, displays the software version on standard output and exit
 ```
 
-The following command starts a public SSH3 server on port 443 and answers to new
-sessions requests querying the `/ssh3` URL path:
+The following command starts a public SSH3 server on port 443 with a valid Let's Encrypt public certificate
+for domain `my-domain.example.org` and answers to new sessions requests querying the `/ssh3` URL path:
+
+    ssh3-server -generate-public-cert my-domain.example.org -url-path /ssh3
+
+If you don't have a public domain name (i.e. only an IP address), you can either use an existing certificate
+for your IP address using the `-cert` and `-key` arguments or generate a self-signed certificate using the
+`-generate-selfsigned-cert` argument.
+
+If you have existing certificates and keys, you can run the server as follows to use them=
 
     ssh3-server -cert /path/to/cert/or/fullchain -key /path/to/cert/private/key -url-path /ssh3
 
@@ -216,13 +227,17 @@ with the following command:
       ssh3 -use-password username@my-server.example.org/my-secret-path
 
 #### Config-based session establishment
-`ssh3` parses your OpenSSH config. Currently, it only handles the `Hostname`; `User`, `Port` and `IdentityFile` options.
+`ssh3` parses your OpenSSH config. Currently, it only handles the `Hostname`; `User`, `Port` and `IdentityFile` OpenSSH options.
+It also adds new option only used by SSH3, such as `URLPath` or `UDPProxyJump`. `URLPath` allows you to omit the secret URL path in your
+SSH3 command. `UDPProxyJump` allows you to perform SSH3 (#proxy-jump)[Proxy Jump] and has the same meaning as the `-proxy-jump` command-line argument.
 Let's say you have the following lines in your OpenSSH config located in `~/.ssh/config` :
 ```
+IgnoreUnknown URLPath
 Host my-server
   HostName 192.0.2.0
   User username
   IdentityFile ~/.ssh/id_rsa
+  URLPath /my-secret-path
 ```
 
 Similarly to what OpenSSH does, the following `ssh3` command will connect you to the SSH3 server running on 192.0.2.0 on UDP port 443 using public key authentication with the private key located in `.ssh/id_rsa` :

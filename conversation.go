@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/francoismichel/ssh3/util"
+	"golang.org/x/exp/slices"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -35,6 +36,7 @@ type Conversation struct {
 	context                   context.Context
 	cancelContext             context.CancelCauseFunc
 	conversationID            ConversationID // generated using TLS exporters
+	peerVersion               Version
 
 	channelsAcceptQueue *util.AcceptQueue[Channel]
 }
@@ -68,11 +70,13 @@ func NewClientConversation(maxPacketsize uint64, defaultDatagramsQueueSize uint6
 		context:                   backgroundCtx,
 		cancelContext:             backgroundCancelCauseFunc,
 		conversationID:            convID,
+
+		// peerVersion set afterwards
 	}
 	return conv, nil
 }
 
-func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripper *http3.RoundTripper) error {
+func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripper *http3.RoundTripper, supportedVersions []Version) error {
 
 	roundTripper.StreamHijacker = func(frameType http3.FrameType, qconn quic.Connection, stream quic.Stream, err error) (bool, error) {
 		if err != nil {
@@ -107,24 +111,73 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 		c.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
-	rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
+
+	doReq := func(version Version, req *http.Request) (*http.Response, Version, error) {
+		req.Header.Set("User-Agent", version.GetVersionString())
+		log.Debug().Msgf("send %s request on URL %s, User-Agent=\"%s\"", req.Method, req.URL, req.Header.Get("User-Agent"))
+		rsp, err := roundTripper.RoundTripOpt(req, http3.RoundTripOpt{DontCloseRequestStream: true})
+		if err != nil {
+			return rsp, Version{}, err
+		}
+
+		log.Debug().Msgf("got response with %s status code", rsp.Status)
+
+		serverVersionStr := rsp.Header.Get("Server")
+		serverVersion, err := ParseVersionString(serverVersionStr)
+		if err != nil {
+			log.Error().Msgf("Could not parse server version: \"%s\"", serverVersionStr)
+			if rsp.StatusCode == 200 {
+				return rsp, Version{}, InvalidSSHVersion{versionString: serverVersionStr}
+			}
+		} else {
+			log.Debug().Msgf("server has valid version \"%s\" (protocol version = %s, software version = %s)",
+				serverVersionStr, serverVersion.GetProtocolVersion(), serverVersion.GetSoftwareVersion())
+		}
+		return rsp, serverVersion, nil
+	}
+
+	rsp, serverVersion, err := doReq(ThisVersion(), req)
 	if err != nil {
 		return err
 	}
 
-	serverVersion := rsp.Header.Get("Server")
-	major, minor, patch, err := ParseVersionString(serverVersion)
-	if err != nil {
-		log.Error().Msgf("Could not parse server version: \"%s\"", serverVersion)
-		if rsp.StatusCode == 200 {
-			return InvalidSSHVersion{versionString: serverVersion}
+	serverProtocolVersion := serverVersion.GetProtocolVersion()
+	thisProtocolVersion := ThisVersion().GetProtocolVersion()
+	if rsp.StatusCode == http.StatusForbidden && serverProtocolVersion != thisProtocolVersion {
+		// This version negotiation code might feel a bit heavy but is only there for a smooth transition
+		// between early versions and versions coming from an actual IETF specification that include
+		// proper version negotiation. Older version of this implementation strictly check the exact protocol
+		// version (i.e. must be 3.0) and then check the software version. In next iterations, everything will be
+		// based on the protocol version for better interoperability.
+
+		// see if there is an exact version match (including software version, which is useful
+		// for old versions that do not support version negotiation based on the protocol version)
+		matchingVersionIndex := slices.Index(supportedVersions, serverVersion)
+
+		// there is no exact match, the implementation/software version might differ, but the
+		// protocol version may still match
+		if matchingVersionIndex == -1 {
+			matchingVersionIndex = slices.IndexFunc(supportedVersions, func(supportedVersion Version) bool {
+				return serverProtocolVersion == supportedVersion.GetProtocolVersion()
+			})
 		}
-	} else if major > MAJOR || minor > MINOR {
-		log.Warn().Msgf("The server runs a higher SSH version (%d.%d.%d), you may want to consider to update the client (currently %d.%d.%d)",
-			major, minor, patch, MAJOR, MINOR, PATCH)
+		if matchingVersionIndex != -1 {
+			log.Warn().Msgf("The server runs an old version of the protocol (%s). This software is still experimental, "+
+				"you may want to update the server version before support is removed. Also, note that connecting to old "+
+				"servers may increase the connection establishment time.", serverVersion.GetVersionString())
+			// now retry the request with the compatible version
+			rsp, serverVersion, err = doReq(supportedVersions[matchingVersionIndex], req)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	if rsp.StatusCode == 200 {
+		if !IsVersionSupported(serverVersion) {
+			log.Warn().Msgf("The server runs an unsupported SSH version (%s), you may want to consider to update the client (currently %s)",
+				serverVersion.GetProtocolVersion(), ThisVersion().GetProtocolVersion())
+		}
 		c.controlStream = rsp.Body.(http3.HTTPStreamer).HTTPStream()
 		c.streamCreator = rsp.Body.(http3.Hijacker).StreamCreator()
 		qconn := c.streamCreator.(quic.Connection)
@@ -159,6 +212,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 				}
 			}
 		}()
+		c.peerVersion = serverVersion
 		return nil
 	} else if rsp.StatusCode == http.StatusUnauthorized {
 		return util.Unauthorized{}
@@ -177,7 +231,7 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 	}
 }
 
-func NewServerConversation(ctx context.Context, controlStream http3.Stream, qconn quic.Connection, messageSender util.DatagramSender, maxPacketsize uint64) (*Conversation, error) {
+func NewServerConversation(ctx context.Context, controlStream http3.Stream, qconn quic.Connection, messageSender util.DatagramSender, maxPacketsize uint64, peerVersion Version) (*Conversation, error) {
 	backgroundContext, backgroundCancelFunc := context.WithCancelCause(ctx)
 
 	tls := qconn.ConnectionState().TLS
@@ -197,6 +251,7 @@ func NewServerConversation(ctx context.Context, controlStream http3.Stream, qcon
 		context:             backgroundContext,
 		cancelContext:       backgroundCancelFunc,
 		conversationID:      convID,
+		peerVersion:         peerVersion,
 	}
 	return conv, nil
 }

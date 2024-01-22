@@ -211,9 +211,9 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.Options, error) {
 	urlHostname, urlPort := hostUrl.Hostname(), hostUrl.Port()
 
-	configHostname, configPort, configUser, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	configHostname, configPort, configUser, configUrlPath, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
 	if err != nil {
-		log.Error().Msgf("could not get config for %s: %s", urlHostname, err)
+		log.Error().Msgf("Could not get config for %s: %s", urlHostname, err)
 		return nil, err
 	}
 
@@ -258,7 +258,12 @@ func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.O
 	if username == "" {
 		return nil, fmt.Errorf("no username could be found")
 	}
-	return client.NewOptions(username, hostname, port, hostUrl.Path, configAuthMethods)
+
+	urlPath := hostUrl.Path
+	if urlPath == "" {
+		urlPath = configUrlPath
+	}
+	return client.NewOptions(username, hostname, port, urlPath, configAuthMethods)
 }
 
 func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config, cliAuthMethods []interface{}) (agent.ExtendedAgent, *client.Options, error) {
@@ -593,12 +598,13 @@ func mainWithStatusCode() int {
 
 		if *pubkeyForAgent != "" {
 			log.Debug().Str("AgentPublicKeyFiles", *pubkeyForAgent).Msg("Checking for keys in agent")
+			pubkeyFileName := util.ExpandTildeWithHomeDir(*pubkeyForAgent)
 			if os.Getenv("SSH_AUTH_SOCK") == "" {
 				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
 			} else {
 				var pubkey ssh.PublicKey = nil
-				if *pubkeyForAgent != "" {
-					pubKeyBytes, err := os.ReadFile(*pubkeyForAgent)
+				if pubkeyFileName != "" {
+					pubKeyBytes, err := os.ReadFile(pubkeyFileName)
 					if err != nil {
 						log.Error().Msgf("could not load public key file: %s", err)
 						return -1
@@ -697,7 +703,7 @@ func mainWithStatusCode() int {
 
 		if qconn == nil {
 			if status != 0 {
-				log.Error().Msgf("could not setup transport for proxy client: %s", err)
+				log.Error().Msgf("could not setup transport for proxy client.")
 			}
 			return status
 		}

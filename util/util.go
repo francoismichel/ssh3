@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,14 @@ func ConfigureLogger(logLevel string) {
 	default:
 		zerolog.SetGlobalLevel(zerolog.WarnLevel)
 	}
+}
+
+func ExpandTildeWithHomeDir(filepath string) string {
+	if strings.HasPrefix(filepath, "~/") {
+		dirname, _ := os.UserHomeDir()
+		filepath = path.Join(dirname, filepath[2:])
+	}
+	return filepath
 }
 
 // Accept queue copied from https://github.com/quic-go/webtransport-go/blob/master/session.go

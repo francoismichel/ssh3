@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -22,7 +23,7 @@ const DEFAULT_URL_PATH = "/ssh3-tests"
 const DEFAULT_PROXY_URL_PATH = "/ssh3-tests-proxy"
 
 var serverCommand *exec.Cmd
-var serverSession *Session
+var serverSessions map[string]*Session = make(map[string]*Session) // bind address to session
 var proxyServerCommand *exec.Cmd
 var proxyServerSession *Session
 var rsaPrivKeyPath string
@@ -32,6 +33,11 @@ var username string
 
 const serverBind = "127.0.0.1:4433"
 const proxyServerBind = "127.0.0.1:4444"
+
+var oldServerBinds map[string]string = map[string]string{
+	"v0.1.5-rc1": "127.0.0.1:5000",
+	"v0.1.5-rc5": "127.0.0.1:5001",
+} // tag version to bind string
 
 func IPv6LoopbackAvailable(addrs []net.Addr) bool {
 	for _, addr := range addrs {
@@ -69,8 +75,33 @@ var _ = BeforeSuite(func() {
 			"-cert", os.Getenv("CERT_PEM"),
 			"-key", os.Getenv("CERT_PRIV_KEY"))
 		serverCommand.Env = append(serverCommand.Env, "SSH3_LOG_LEVEL=debug")
-		serverSession, err = Start(serverCommand, GinkgoWriter, GinkgoWriter)
+		session, err := Start(serverCommand, GinkgoWriter, GinkgoWriter)
 		Expect(err).ToNot(HaveOccurred())
+
+		serverSessions[serverBind] = session
+
+		for tag, bind := range oldServerBinds {
+			gobin, err := os.MkdirTemp("", fmt.Sprintf("ssh3-backwards-compatible-versions-%s", tag))
+			Expect(err).ToNot(HaveOccurred())
+			cmd := exec.Command("go", "install", fmt.Sprintf("github.com/francoismichel/ssh3/cmd/ssh3-server@%s", tag))
+			cmd.Env = os.Environ()
+			cmd.Env = append(cmd.Env, fmt.Sprintf("GOBIN=%s", gobin))
+			err = cmd.Run()
+			Expect(err).ToNot(HaveOccurred())
+			serverPath := path.Join(gobin, "ssh3-server")
+			Expect(err).ToNot(HaveOccurred())
+			backwardsCompatibleServerCommand := exec.Command(serverPath,
+				"-bind", bind,
+				"-v",
+				"-enable-password-login",
+				"-url-path", DEFAULT_URL_PATH,
+				"-cert", os.Getenv("CERT_PEM"),
+				"-key", os.Getenv("CERT_PRIV_KEY"))
+			serverCommand.Env = append(backwardsCompatibleServerCommand.Env, "SSH3_LOG_LEVEL=debug")
+			session, err = Start(backwardsCompatibleServerCommand, GinkgoWriter, GinkgoWriter)
+			Expect(err).ToNot(HaveOccurred())
+			serverSessions[bind] = session
+		}
 
 		proxyServerCommand = exec.Command(ssh3ServerPath,
 			"-bind", proxyServerBind,
@@ -82,6 +113,8 @@ var _ = BeforeSuite(func() {
 		proxyServerCommand.Env = append(proxyServerCommand.Env, "SSH3_LOG_LEVEL=debug")
 		proxyServerSession, err = Start(proxyServerCommand, GinkgoWriter, GinkgoWriter)
 		Expect(err).ToNot(HaveOccurred())
+
+		serverSessions[proxyServerBind] = proxyServerSession
 
 		rsaPrivKeyPath = os.Getenv("TESTUSER_PRIVKEY")
 		ed25519PrivKeyPath = os.Getenv("TESTUSER_ED25519_PRIVKEY")
@@ -96,7 +129,7 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	CleanupBuildArtifacts()
-	if serverSession != nil {
+	for _, serverSession := range serverSessions {
 		serverSession.Terminate()
 	}
 })
@@ -118,20 +151,23 @@ var _ = Describe("Testing the ssh3 cli", func() {
 			if os.Getenv("SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED") != "1" {
 				Skip("skipping integration tests")
 			}
-			Consistently(serverSession, "200ms").ShouldNot(Exit())
+			Consistently(serverSessions[serverBind], "200ms").ShouldNot(Exit())
 		})
 
 		Context("Insecure", func() {
 			var clientArgs []string
-			getClientArgs := func(privKeyPath string, additionalArgs ...string) []string {
+			getClientArgsWithBind := func(privKeyPath string, bind string, additionalArgs ...string) []string {
 				args := []string{
 					"-v",
 					"-insecure",
 					"-privkey", privKeyPath,
 				}
 				args = append(args, additionalArgs...)
-				args = append(args, fmt.Sprintf("%s@%s%s", username, serverBind, DEFAULT_URL_PATH))
+				args = append(args, fmt.Sprintf("%s@%s%s", username, bind, DEFAULT_URL_PATH))
 				return args
+			}
+			getClientArgs := func(privKeyPath string, additionalArgs ...string) []string {
+				return getClientArgsWithBind(privKeyPath, serverBind, additionalArgs...)
 			}
 
 			Context("Client behaviour", func() {
@@ -152,6 +188,21 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					Eventually(session).Should(Exit(0))
 					Eventually(session).Should(Say("Hello, World!\n"))
 				})
+
+				for key, val := range oldServerBinds {
+					// actually capture the values of key,val, as directly referring them in the code below will only keep the value of the last iteration
+					tag, bind := key, val
+					When("server version is"+tag+", bind is"+bind, func() {
+						It("Should connect using an RSA privkey to old supported server", func() {
+							clientArgs = append(getClientArgsWithBind(rsaPrivKeyPath, bind), "echo", "Hello, World!")
+							command := exec.Command(ssh3Path, clientArgs...)
+							session, err := Start(command, GinkgoWriter, GinkgoWriter)
+							Expect(err).ToNot(HaveOccurred())
+							Eventually(session).Should(Exit(0))
+							Eventually(session).Should(Say("Hello, World!\n"))
+						})
+					})
+				}
 
 				It("Should connect using an ed25519 privkey", func() {
 					clientArgs = append(getClientArgs(ed25519PrivKeyPath), "echo", "Hello, World!")
