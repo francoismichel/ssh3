@@ -31,6 +31,7 @@ var ed25519PrivKeyPath string
 var ecdsaPrivKeyPath string
 var attackerPrivKeyPath string
 var username string
+var ecdsaUsername string
 
 const serverBind = "127.0.0.1:4433"
 const proxyServerBind = "127.0.0.1:4444"
@@ -122,6 +123,7 @@ var _ = BeforeSuite(func() {
 		ecdsaPrivKeyPath = os.Getenv("TESTUSER_ECDSA_PRIVKEY")
 		attackerPrivKeyPath = os.Getenv("ATTACKER_PRIVKEY")
 		username = os.Getenv("TESTUSER_USERNAME")
+		ecdsaUsername = os.Getenv("ECDSATESTUSER_USERNAME")
 		Expect(fileExists(rsaPrivKeyPath)).To(BeTrue())
 		Expect(fileExists(attackerPrivKeyPath)).To(BeTrue())
 		err = os.WriteFile(fmt.Sprintf("/home/%s/.profile", username), []byte("echo 'hello from .profile'"), 0777)
@@ -216,7 +218,12 @@ var _ = Describe("Testing the ssh3 cli", func() {
 				})
 
 				It("Should connect using an ecdsa privkey", func() {
+					// for retrocopatibility integration tests with version 0.1.5, we must perform ecdsa tests
+					// for another user as ecdsa is not available on the server on older versions
+					savedUsername := username
+					username = ecdsaUsername
 					clientArgs = append(getClientArgs(ecdsaPrivKeyPath), "echo", "Hello, World!")
+					username = savedUsername
 					command := exec.Command(ssh3Path, clientArgs...)
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())
