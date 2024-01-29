@@ -51,7 +51,7 @@ jobs:
       - name: add the attacker's key as commented in testuser's authorzed identities
         run: echo "#" $(cat attacker_id_rsa.pub) | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Put test public keys in testuser's authorized_identities
-        run: cat /testuser_id_rsa.pub /testuser_id_ed25519.pub.pub | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
+        run: cat /testuser_id_rsa.pub /testuser_id_ed25519.pub | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Put ecdsa public key in ecdsatestuser's authorized_identities (currently needed for retrocompatibility integration tests, ecdsatestuser should be removed in the future)
         run: cat /testuser_id_ecdsa.pub | sudo tee -a ${{matrix.ecdsatestuserhome}}/.ssh3/authorized_identities
       - name: log authorized_identities
