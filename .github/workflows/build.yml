@@ -39,9 +39,9 @@ jobs:
       - name: Install
         run: make install
       - name: Add test user
-        run: sudo adduser -s /bin/bash -m ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
+        run: sudo adduser --shell /bin/bash ${{matrix.testuser}} && echo "${{matrix.testuser}}:${{matrix.testpasswd}}" | sudo chpasswd
       - name: Add ecdsa test user (should be removed in the future when support for 0.1.5 is removed)
-        run: sudo adduser -s /bin/bash -m ${{matrix.ecdsatestuser}} && echo "${{matrix.ecdsatestuser}}:${{matrix.ecdsatestpasswd}}" | sudo chpasswd
+        run: sudo adduser --shell /bin/bash ${{matrix.ecdsatestuser}} && echo "${{matrix.ecdsatestuser}}:${{matrix.ecdsatestpasswd}}" | sudo chpasswd
       - name: Create .ssh3 directory
         run: sudo su ${{matrix.testuser}} -c 'mkdir -p ${{matrix.testuserhome}}/.ssh ${{matrix.testuserhome}}/.ssh3'
       - name: Create .ssh3 directory for ecdsatestuser
