@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
@@ -176,6 +177,13 @@ func JWTSigningMethodFromCryptoPubkey(pubkey crypto.PublicKey) (jwt.SigningMetho
 	log.Debug().Type("SigningMethodType", pubkey).Msg("fetching singing method from crypto.PublicKey")
 
 	switch pubkey.(type) {
+	case *ecdsa.PublicKey:
+		log.
+			Trace().
+			Type("SigningMethodType", pubkey).
+			Str("FoundSigningMethod", "ECDSA").
+			Msg("found public key type")
+		return jwt.SigningMethodES256, nil
 	case *rsa.PublicKey:
 		log.
 			Trace().
