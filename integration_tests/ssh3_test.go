@@ -28,6 +28,7 @@ var proxyServerCommand *exec.Cmd
 var proxyServerSession *Session
 var rsaPrivKeyPath string
 var ed25519PrivKeyPath string
+var ecdsaPrivKeyPath string
 var attackerPrivKeyPath string
 var username string
 
@@ -118,6 +119,7 @@ var _ = BeforeSuite(func() {
 
 		rsaPrivKeyPath = os.Getenv("TESTUSER_PRIVKEY")
 		ed25519PrivKeyPath = os.Getenv("TESTUSER_ED25519_PRIVKEY")
+		ecdsaPrivKeyPath = os.Getenv("TESTUSER_ECDSA_PRIVKEY")
 		attackerPrivKeyPath = os.Getenv("ATTACKER_PRIVKEY")
 		username = os.Getenv("TESTUSER_USERNAME")
 		Expect(fileExists(rsaPrivKeyPath)).To(BeTrue())
@@ -206,6 +208,15 @@ var _ = Describe("Testing the ssh3 cli", func() {
 
 				It("Should connect using an ed25519 privkey", func() {
 					clientArgs = append(getClientArgs(ed25519PrivKeyPath), "echo", "Hello, World!")
+					command := exec.Command(ssh3Path, clientArgs...)
+					session, err := Start(command, GinkgoWriter, GinkgoWriter)
+					Expect(err).ToNot(HaveOccurred())
+					Eventually(session).Should(Exit(0))
+					Eventually(session).Should(Say("Hello, World!\n"))
+				})
+
+				It("Should connect using an ecdsa privkey", func() {
+					clientArgs = append(getClientArgs(ecdsaPrivKeyPath), "echo", "Hello, World!")
 					command := exec.Command(ssh3Path, clientArgs...)
 					session, err := Start(command, GinkgoWriter, GinkgoWriter)
 					Expect(err).ToNot(HaveOccurred())

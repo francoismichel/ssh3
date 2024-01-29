@@ -29,6 +29,8 @@ jobs:
         run: sudo ssh-keygen -b 4096 -t rsa -f /testuser_id_rsa -q -N ""
       - name: Generate testuser's ed25519 SSH key
         run: sudo ssh-keygen -t ed25519 -f /testuser_id_ed25519 -q -N ""
+      - name: Generate testuser's ecdsa SSH key
+        run: sudo ssh-keygen -t ecdsa -f /testuser_id_ecdsa -q -N ""
       - name: Generate attacker's SSH key
         run: sudo ssh-keygen -b 4096 -t rsa -f /attacker_id_rsa -q -N ""
       - name: Install
@@ -42,7 +44,7 @@ jobs:
       - name: add the attacker's key as commented in testuser's authorzed identities
         run: echo "#" $(cat attacker_id_rsa.pub) | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Put test public keys in testuser's authorized_identities
-        run: cat /testuser_id_rsa.pub /testuser_id_ed25519.pub | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
+        run: cat /testuser_id_rsa.pub /testuser_id_ed25519.pub /testuser_id_ecdsa.pub | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: log authorized_identities
         run: cat ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Integration tests
@@ -53,6 +55,7 @@ jobs:
           ATTACKER_PRIVKEY: /attacker_id_rsa
           TESTUSER_PRIVKEY: /testuser_id_rsa
           TESTUSER_ED25519_PRIVKEY: /testuser_id_ed25519
+          TESTUSER_ECDSA_PRIVKEY: /testuser_id_ecdsa
           TESTUSER_USERNAME: ${{matrix.testuser}}
           CC: ${{matrix.archparams.cc}}
           CGO_ENABLED: "1"
