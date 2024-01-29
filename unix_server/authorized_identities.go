@@ -136,6 +136,9 @@ func ParseIdentity(user *unix_util.User, identityStr string) (Identity, error) {
 			log.Debug().Msgf("parsing %s identity", out.Type())
 			cryptoPublicKey := out.(ssh.CryptoPublicKey)
 			return &PubKeyIdentity{username: user.Username, pubkey: cryptoPublicKey.CryptoPublicKey()}, nil
+
+		default:
+			return nil, fmt.Errorf("SSH authorized identity \"%s\" not implemented", out.Type())
 		}
 	}
 	// it is not an SSH key
