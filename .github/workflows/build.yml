@@ -46,6 +46,8 @@ jobs:
         run:  sudo rm -f ${{matrix.testuserhome}}/.profile ${{matrix.testuserhome}}/.bash_profile ${{matrix.testuserhome}}/.bash_login
       - name: Create .ssh3 directory
         run: sudo su ${{matrix.testuser}} -c 'mkdir ${{matrix.testuserhome}}/.ssh ${{matrix.testuserhome}}/.ssh3'
+      - name: Create .ssh3 directory for ecdsatestuser
+        run: sudo su ${{matrix.testuser}} -c 'mkdir ${{matrix.ecdsatestuserhome}}/.ssh ${{matrix.ecdsatestuserhome}}/.ssh3'
       - name: add the attacker's key as commented in testuser's authorzed identities
         run: echo "#" $(cat attacker_id_rsa.pub) | sudo tee -a ${{matrix.testuserhome}}/.ssh3/authorized_identities
       - name: Put test public keys in testuser's authorized_identities
