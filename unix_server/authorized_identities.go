@@ -46,9 +46,7 @@ func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64Conversation
 	case util.JWTTokenString:
 		token, err := jwt.Parse(candidate.Token, func(unvalidatedToken *jwt.Token) (interface{}, error) {
 			switch unvalidatedToken.Method.Alg() {
-			case "RS256":
-				return i.pubkey, nil
-			case "EdDSA":
+			case "RS256", "EdDSA", "ES256":
 				return i.pubkey, nil
 			}
 			return nil, fmt.Errorf("unsupported signature algorithm '%s' for %T", unvalidatedToken.Method.Alg(), i)
@@ -57,7 +55,7 @@ func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64Conversation
 			jwt.WithSubject("ssh3"),
 			jwt.WithIssuedAt(),
 			jwt.WithAudience("unused"),
-			jwt.WithValidMethods([]string{"RS256", "EdDSA"}))
+			jwt.WithValidMethods([]string{"RS256", "EdDSA", "ES256"}))
 		if err != nil || !token.Valid {
 			log.Error().Msgf("invalid private key token: %s", err)
 			return false
@@ -134,14 +132,10 @@ func ParseIdentity(user *unix_util.User, identityStr string) (Identity, error) {
 	if err == nil {
 		log.Debug().Msg("parsing ssh authorized key")
 		switch out.Type() {
-		case "ssh-rsa":
-			fallthrough
-		case "ssh-ed25519":
+		case "ssh-rsa", "ecdsa-sha2-nistp256", "ssh-ed25519":
 			log.Debug().Msgf("parsing %s identity", out.Type())
 			cryptoPublicKey := out.(ssh.CryptoPublicKey)
 			return &PubKeyIdentity{username: user.Username, pubkey: cryptoPublicKey.CryptoPublicKey()}, nil
-		case "ecdsa-sha2-nistp256":
-			panic("not implemented")
 		}
 	}
 	// it is not an SSH key
