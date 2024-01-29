@@ -45,7 +45,7 @@ jobs:
       - name: Create .ssh3 directory
         run: sudo su ${{matrix.testuser}} -c 'mkdir -p ${{matrix.testuserhome}}/.ssh ${{matrix.testuserhome}}/.ssh3'
       - name: Create .ssh3 directory for ecdsatestuser
-        run: sudo su ${{matrix.testuser}} -c 'mkdir -p ${{matrix.ecdsatestuserhome}}/.ssh ${{matrix.ecdsatestuserhome}}/.ssh3'
+        run: sudo su ${{matrix.ecdsatestuser}} -c 'mkdir -p ${{matrix.ecdsatestuserhome}}/.ssh ${{matrix.ecdsatestuserhome}}/.ssh3'
       - name: Ensure there are no existing .profile or similar files for testuser
         run:  sudo rm -f ${{matrix.testuserhome}}/.profile ${{matrix.testuserhome}}/.bash_profile ${{matrix.testuserhome}}/.bash_login
       - name: add the attacker's key as commented in testuser's authorzed identities
