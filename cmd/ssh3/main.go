@@ -293,7 +293,7 @@ func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config
 	return agentClient, options, nil
 }
 
-func mainWithStatusCode() int {
+func Main() int {
 	keyLogFile := flag.String("keylog", "", "Write QUIC TLS keys and master secret in the specified keylog file: only for debugging purpose")
 	privKeyFile := flag.String("privkey", "", "private key file")
 	pubkeyForAgent := flag.String("pubkey-for-agent", "", "if set, use an agent key whose public key matches the one in the specified path")
@@ -651,5 +651,5 @@ func mainWithStatusCode() int {
 }
 
 func main() {
-	os.Exit(mainWithStatusCode())
+	os.Exit(Main())
 }

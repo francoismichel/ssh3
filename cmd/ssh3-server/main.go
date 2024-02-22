@@ -15,7 +15,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"unsafe"
 
@@ -685,7 +684,7 @@ func (i *autogenCertificates) Set(value string) error {
 	return nil
 }
 
-func main() {
+func Main() int {
 	bindAddr := flag.String("bind", "[::]:443", "the address:port pair to listen to, e.g. 0.0.0.0:443")
 	verbose := flag.Bool("v", false, "verbose mode, if set")
 	displayVersion := flag.Bool("version", false, "if set, displays the software version on standard output and exit")
@@ -708,7 +707,7 @@ func main() {
 
 	if *displayVersion {
 		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
-		os.Exit(0)
+		return 0
 	}
 
 	if !enablePasswordLogin {
@@ -734,7 +733,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "If you have no certificate and want a security comparable to traditional SSH host keys, "+
 			"you can generate a self-signed certificate using the -generate-selfsigned-cert arg or using the following script:")
 		fmt.Fprintln(os.Stderr, "https://github.com/francoismichel/ssh3/blob/main/generate_openssl_selfsigned_certificate.sh")
-		os.Exit(-1)
+		return -1
 	} else if *generateSelfSignedCert {
 		if certPathExists {
 			fmt.Fprintf(os.Stderr, "asked for generating a certificate but the \"%s\" file already exists\n", *certPath)
@@ -743,23 +742,23 @@ func main() {
 			fmt.Fprintf(os.Stderr, "asked for generating a private key but the \"%s\" file already exists\n", *keyPath)
 		}
 		if certPathExists || keyPathExists {
-			os.Exit(-1)
+			return -1
 		}
 		pubkey, privkey, err := util.GenerateKey()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not generate private key: %s\n", err)
-			os.Exit(-1)
+			return -1
 		}
 		cert, err := util.GenerateCert(privkey)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not generate certificate: %s\n", err)
-			os.Exit(-1)
+			return -1
 		}
 
 		err = util.DumpCertAndKeyToFiles(cert, pubkey, privkey, *certPath, *keyPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not save certificate and key to files: %s\n", err)
-			os.Exit(-1)
+			return -1
 		}
 
 		certPathExists = true
@@ -779,7 +778,7 @@ func main() {
 		logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cannot open log file %s: %s\n", logFileName, err.Error())
-			return
+			return -1
 		}
 		log.Logger = log.Output(logFile)
 	}
@@ -811,7 +810,7 @@ func main() {
 		tlsConfig, err = certmagic.TLS(autogenCertificates)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not generate public certificates: %s\n", err)
-			os.Exit(-1)
+			return -1
 		}
 		fmt.Fprintln(os.Stderr, "Successfully generated public certificates")
 	}
@@ -820,7 +819,7 @@ func main() {
 		certificate, err := tls.LoadX509KeyPair(*certPath, *keyPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not load -cert and -key pair: %s\n", err)
-			os.Exit(-1)
+			return -1
 		}
 		tlsConfig.Certificates = append(tlsConfig.Certificates, certificate)
 	}
@@ -831,120 +830,121 @@ func main() {
 		Allow0RTT: true,
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		var err error
+	var err error
 
-		server := http3.Server{
-			Handler:         nil,
-			Addr:            *bindAddr,
-			QuicConfig:      quicConf,
-			EnableDatagrams: true,
-			TLSConfig:       tlsConfig,
+	server := http3.Server{
+		Handler:         nil,
+		Addr:            *bindAddr,
+		QuicConfig:      quicConf,
+		EnableDatagrams: true,
+		TLSConfig:       tlsConfig,
+	}
+
+	mux := http.NewServeMux()
+	ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
+		authenticatedUser, err := unix_util.GetUser(authenticatedUsername)
+		if err != nil {
+			return err
 		}
-
-		mux := http.NewServeMux()
-		ssh3Server := ssh3.NewServer(30000, 10, &server, func(authenticatedUsername string, conv *ssh3.Conversation) error {
-			authenticatedUser, err := unix_util.GetUser(authenticatedUsername)
+		for {
+			channel, err := conv.AcceptChannel(conv.Context())
 			if err != nil {
 				return err
 			}
-			for {
-				channel, err := conv.AcceptChannel(conv.Context())
-				if err != nil {
-					return err
-				}
 
-				switch c := channel.(type) {
-				case *ssh3.UDPForwardingChannelImpl:
-					handleUDPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
-				case *ssh3.TCPForwardingChannelImpl:
-					handleTCPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
-				default:
-					runningSessions.Insert(channel, &runningSession{
-						channelState: LARVAL,
-						pty:          nil,
-						runningCmd:   nil,
-					})
-					go func() {
-						// handle the main sessionChannel, once it ends, the whole conversation ends
-						defer channel.Close()
-						defer conv.Close()
-						for {
-							genericMessage, err := channel.NextMessage()
-							if errors.Is(err, net.ErrClosed) {
-								log.Debug().Msgf("the connection was closed by the application: %s", err)
-								return
-							} else if err != nil && !errors.Is(err, io.EOF) {
-								log.Error().Msgf("error when getting message: %s", err)
-								return
+			switch c := channel.(type) {
+			case *ssh3.UDPForwardingChannelImpl:
+				handleUDPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
+			case *ssh3.TCPForwardingChannelImpl:
+				handleTCPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
+			default:
+				runningSessions.Insert(channel, &runningSession{
+					channelState: LARVAL,
+					pty:          nil,
+					runningCmd:   nil,
+				})
+				go func() {
+					// handle the main sessionChannel, once it ends, the whole conversation ends
+					defer channel.Close()
+					defer conv.Close()
+					for {
+						genericMessage, err := channel.NextMessage()
+						if errors.Is(err, net.ErrClosed) {
+							log.Debug().Msgf("the connection was closed by the application: %s", err)
+							return
+						} else if err != nil && !errors.Is(err, io.EOF) {
+							log.Error().Msgf("error when getting message: %s", err)
+							return
+						}
+						if genericMessage == nil {
+							return
+						}
+						switch message := genericMessage.(type) {
+						case *ssh3Messages.ChannelRequestMessage:
+							switch requestMessage := message.ChannelRequest.(type) {
+							case *ssh3Messages.PtyRequest:
+								err = newPtyReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+							case *ssh3Messages.X11Request:
+								err = newX11Req(authenticatedUser, channel, *requestMessage, message.WantReply)
+							case *ssh3Messages.ShellRequest:
+								err = newShellReq(authenticatedUser, channel, message.WantReply)
+							case *ssh3Messages.ExecRequest:
+								err = newCommandInShellReq(authenticatedUser, channel, message.WantReply, requestMessage.Command)
+							case *ssh3Messages.SubsystemRequest:
+								err = newSubsystemReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+							case *ssh3Messages.WindowChangeRequest:
+								err = newWindowChangeReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+							case *ssh3Messages.SignalRequest:
+								err = newSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+							case *ssh3Messages.ExitStatusRequest:
+								err = newExitStatusReq(authenticatedUser, channel, *requestMessage, message.WantReply)
+							case *ssh3Messages.ExitSignalRequest:
+								err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
 							}
-							if genericMessage == nil {
-								return
-							}
-							switch message := genericMessage.(type) {
-							case *ssh3Messages.ChannelRequestMessage:
-								switch requestMessage := message.ChannelRequest.(type) {
-								case *ssh3Messages.PtyRequest:
-									err = newPtyReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.X11Request:
-									err = newX11Req(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.ShellRequest:
-									err = newShellReq(authenticatedUser, channel, message.WantReply)
-								case *ssh3Messages.ExecRequest:
-									err = newCommandInShellReq(authenticatedUser, channel, message.WantReply, requestMessage.Command)
-								case *ssh3Messages.SubsystemRequest:
-									err = newSubsystemReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.WindowChangeRequest:
-									err = newWindowChangeReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.SignalRequest:
-									err = newSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.ExitStatusRequest:
-									err = newExitStatusReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								case *ssh3Messages.ExitSignalRequest:
-									err = newExitSignalReq(authenticatedUser, channel, *requestMessage, message.WantReply)
-								}
-							case *ssh3Messages.DataOrExtendedDataMessage:
-								runningSession, ok := runningSessions.Get(channel)
-								if ok && runningSession.channelState == LARVAL {
-									if message.Data == string("forward-agent") {
-										runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(conv.Context(), conv, authenticatedUser)
-									} else {
-										// invalid data on larval state
-										err = fmt.Errorf("invalid data on ssh channel with LARVAL state")
-									}
+						case *ssh3Messages.DataOrExtendedDataMessage:
+							runningSession, ok := runningSessions.Get(channel)
+							if ok && runningSession.channelState == LARVAL {
+								if message.Data == string("forward-agent") {
+									runningSession.authAgentSocketPath, err = openAgentSocketAndForwardAgent(conv.Context(), conv, authenticatedUser)
 								} else {
-									err = newDataReq(authenticatedUser, channel, *message)
+									// invalid data on larval state
+									err = fmt.Errorf("invalid data on ssh channel with LARVAL state")
 								}
-							}
-							if err != nil {
-								log.Error().Msgf("error while processing message: %+v: %+v\n", genericMessage, err)
-								return
+							} else {
+								err = newDataReq(authenticatedUser, channel, *message)
 							}
 						}
-					}()
-				}
-
+						if err != nil {
+							log.Error().Msgf("error while processing message: %+v: %+v\n", genericMessage, err)
+							return
+						}
+					}
+				}()
 			}
-		})
-		ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
-		handler, err := unix_server.HandleAuths(context.Background(), enablePasswordLogin, 30000, ssh3Handler)
-		if err != nil {
-			log.Error().Msgf("Could not get authentication handlers: %s", err)
-			return
-		}
-		mux.HandleFunc(*urlPath, handler)
-		server.Handler = mux
-		outputMessage := fmt.Sprintf("Server started, listening on %s%s", *bindAddr, *urlPath)
-		fmt.Fprintln(os.Stderr, outputMessage)
-		log.Info().Msg(outputMessage)
-		err = server.ListenAndServe()
 
-		if err != nil {
-			log.Error().Msgf("error while serving HTTP connection: %s", err)
 		}
-		wg.Done()
-	}()
-	wg.Wait()
+	})
+	ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
+	handler, err := unix_server.HandleAuths(context.Background(), enablePasswordLogin, 30000, ssh3Handler)
+	if err != nil {
+		log.Error().Msgf("Could not get authentication handlers: %s", err)
+		return -1
+	}
+	mux.HandleFunc(*urlPath, handler)
+	server.Handler = mux
+	outputMessage := fmt.Sprintf("Server started, listening on %s%s", *bindAddr, *urlPath)
+	fmt.Fprintln(os.Stderr, outputMessage)
+	log.Info().Msg(outputMessage)
+	err = server.ListenAndServe()
+
+	if err != nil {
+		log.Error().Msgf("error while serving HTTP connection: %s", err)
+		return -1
+	}
+
+	return 0
+}
+
+func main() {
+	os.Exit(Main())
 }
