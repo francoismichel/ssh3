@@ -16,6 +16,7 @@ import (
 	osuser "os/user"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -59,7 +60,25 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 		}
 	}
 
-	udpConn, err := net.ListenUDP("udp", nil)
+	netString := "udp"
+	if runtime.GOOS == "darwin" {
+		// on MacOS, the don't fragment (DF) bit is not set on dual-stack socket ("udp")
+		// This causes quic-go to not perform MTU discovery which can prevent the proxy jump from working at all.
+		// cf: - https://github.com/francoismichel/ssh3/issues/129
+		//     - https://github.com/quic-go/quic-go/issues/3793
+		//
+		// The fix here is to not use a dual-stack socket on MacOS and detect the IP version from the resolved peer address.
+
+		if remoteAddr.IP.To4() != nil {
+			// it is a v4 address
+			netString = "udp4"
+		} else {
+			// it is a v6 address
+			netString = "udp6"
+		}
+	}
+
+	udpConn, err := net.ListenUDP(netString, nil)
 	if err != nil {
 		log.Error().Msgf("could not create UDP connection: %s", err)
 		return nil, -1
