@@ -382,7 +382,7 @@ func (c *Client) ForwardUDP(ctx context.Context, localUDPAddr *net.UDPAddr, remo
 	log.Debug().Msgf("start UDP forwarding from %s to %s", localUDPAddr, remoteUDPAddr)
 	conn, err := net.ListenUDP("udp", localUDPAddr)
 	if err != nil {
-		log.Error().Msgf("could listen on UDP socket: %s", err)
+		log.Error().Msgf("could not listen on UDP socket: %s", err)
 		return nil, err
 	}
 	forwardings := make(map[string]ssh3.Channel)
@@ -391,7 +391,7 @@ func (c *Client) ForwardUDP(ctx context.Context, localUDPAddr *net.UDPAddr, remo
 		for {
 			n, addr, err := conn.ReadFromUDP(buf)
 			if err != nil {
-				log.Error().Msgf("could read on UDP socket: %s", err)
+				log.Error().Msgf("could not read on UDP socket: %s", err)
 				return
 			}
 			channel, ok := forwardings[addr.String()]
