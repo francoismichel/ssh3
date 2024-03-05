@@ -6,7 +6,8 @@
 
 # SSH3: faster and rich secure shell using HTTP/3
 SSH3 is a complete revisit of the SSH
-protocol, mapping its semantics on top of the HTTP mechanisms.
+protocol, mapping its semantics on top of the HTTP mechanisms. It comes from our research work and we (researchers) recently proposed it as [draft-michel-ssh3-00](https://www.ietf.org/archive/id/draft-michel-ssh3-00.html) at IETF.
+
 In a nutshell, SSH3 uses [QUIC](https://datatracker.ietf.org/doc/html/rfc9000)+[TLS1.3](https://datatracker.ietf.org/doc/html/rfc8446) for
 secure channel establishment and the [HTTP Authorization](https://www.rfc-editor.org/rfc/rfc9110.html#name-authorization) mechanisms for user authentication.
 Among others, SSH3 allows the following improvements:
