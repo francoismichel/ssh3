@@ -20,8 +20,6 @@ Among others, SSH3 allows the following improvements:
 > [!TIP]
 > Quickly want to get started ? Checkout how to [install SSH3](#installing-ssh3). You will learn to [setup an SSH3 server](#deploying-an-ssh3-server) and [use the SSH3 client](#using-the-ssh3-client).
 
-*SSH3* stands for the concatenation of *SSH* and *H3*.
-
 ## ⚡ SSH3 is faster
 Faster for session establishment, not throughput ! SSH3 offers a significantly faster session establishment than SSHv2. Establishing a new session with SSHv2 can take 5 to 7 network round-trip times, which can easily be noticed by the user. SSH3 only needs 3 round-trip times. The keystroke latency in a running session is unchanged.
 
