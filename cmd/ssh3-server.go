@@ -28,6 +28,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	ssh3 "github.com/francoismichel/ssh3"
+	"github.com/francoismichel/ssh3/internal"
 	ssh3Messages "github.com/francoismichel/ssh3/message"
 	"github.com/francoismichel/ssh3/server_auth"
 	util "github.com/francoismichel/ssh3/util"
@@ -707,6 +708,8 @@ func ServerMain() int {
 		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
 		return 0
 	}
+
+	internal.CloseRegistry()
 
 	if !enablePasswordLogin {
 		fmt.Fprintln(os.Stderr, "password login is disabled")

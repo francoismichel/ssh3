@@ -24,6 +24,7 @@ import (
 	"github.com/francoismichel/ssh3"
 	"github.com/francoismichel/ssh3/auth"
 	"github.com/francoismichel/ssh3/client"
+	"github.com/francoismichel/ssh3/internal"
 	"github.com/francoismichel/ssh3/util"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -329,6 +330,8 @@ func ClientMain() int {
 	proxyJump := flag.String("proxy-jump", "", "if set, performs a proxy jump using the specified remote host as proxy (requires server with version >= 0.1.5)")
 	flag.Parse()
 	args := flag.Args()
+
+	internal.CloseRegistry()
 
 	if *displayVersion {
 		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
