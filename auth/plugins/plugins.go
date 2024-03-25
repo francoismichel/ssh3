@@ -1,8 +1,8 @@
 package plugins
 
 import (
-	"github.com/francoismichel/ssh3/server_auth"
 	"github.com/francoismichel/ssh3/internal"
+	"github.com/francoismichel/ssh3/server_auth"
 )
 
 // Registers a new server-side auth plugin

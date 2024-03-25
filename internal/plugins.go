@@ -8,13 +8,13 @@ import (
 )
 
 type serverPluginsRegistry struct {
-	registrationsOpen 	   bool
+	registrationsOpen      bool
 	serverPluginIdentities map[string]server_auth.Identity
 }
 
 var (
 	serverPluginsMutex sync.RWMutex
-	serverRegistry = &serverPluginsRegistry{ registrationsOpen: true, serverPluginIdentities: make(map[string]server_auth.Identity) }
+	serverRegistry     = &serverPluginsRegistry{registrationsOpen: true, serverPluginIdentities: make(map[string]server_auth.Identity)}
 )
 
 // Registers a new server-side auth plugin
