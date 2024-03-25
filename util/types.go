@@ -79,7 +79,6 @@ func (e InvalidConfig) Error() string {
 }
 
 type ClosedPluginsRegistry struct {
-
 }
 
 func (e ClosedPluginsRegistry) Error() string {
