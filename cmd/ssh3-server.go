@@ -29,7 +29,7 @@ import (
 
 	ssh3 "github.com/francoismichel/ssh3"
 	ssh3Messages "github.com/francoismichel/ssh3/message"
-	"github.com/francoismichel/ssh3/unix_server"
+	"github.com/francoismichel/ssh3/server_auth"
 	util "github.com/francoismichel/ssh3/util"
 	"github.com/francoismichel/ssh3/util/unix_util"
 )
@@ -923,7 +923,7 @@ func ServerMain() int {
 		}
 	})
 	ssh3Handler := ssh3Server.GetHTTPHandlerFunc(context.Background())
-	handler, err := unix_server.HandleAuths(context.Background(), enablePasswordLogin, 30000, ssh3Handler)
+	handler, err := server_auth.HandleAuths(context.Background(), enablePasswordLogin, 30000, ssh3Handler)
 	if err != nil {
 		log.Error().Msgf("Could not get authentication handlers: %s", err)
 		return -1

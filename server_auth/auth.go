@@ -1,4 +1,4 @@
-package unix_server
+package server_auth
 
 import (
 	"context"
