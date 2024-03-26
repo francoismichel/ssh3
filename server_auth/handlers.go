@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/francoismichel/ssh3"
+	"github.com/francoismichel/ssh3/auth"
 	"github.com/francoismichel/ssh3/util"
 	"github.com/francoismichel/ssh3/util/unix_util"
 
@@ -55,7 +56,7 @@ func HandleJWTAuth(username string, newConv *ssh3.Conversation, handlerFunc ssh3
 		}
 
 		filenames := DefaultIdentitiesFileNames(user)
-		var identities []Identity
+		var identities []auth.Identity
 		for _, filename := range filenames {
 			identitiesFile, err := os.Open(filename)
 			if err == nil {
