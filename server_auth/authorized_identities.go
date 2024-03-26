@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/internal"
 	"github.com/francoismichel/ssh3/util"
 	"github.com/francoismichel/ssh3/util/unix_util"
 
@@ -19,18 +20,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 )
-
-/*
- * In ssh3, authorized_keys are replaced by authorized_identities where a use can specify classical
- * public keys as well as other authentication and authorization methods such as OAUTH2 and SAML 2.0
- *
- */
-
-type Identity interface {
-	// returns whether those the provided candidate contains a sufficient proof to
-	// be considered as equivalent to this identity
-	Verify(candidate interface{}, base64ConversationID string) bool
-}
 
 type PubKeyIdentity struct {
 	username string
@@ -127,7 +116,13 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 	}
 }
 
-func ParseIdentity(user *unix_util.User, identityStr string) (Identity, error) {
+func ParseIdentity(user *unix_util.User, identityStr string) (auth.Identity, error) {
+	identities := internal.FindIdentitiesFromAuthorizedIdentityString(user.Username, identityStr)
+	log.Debug().Msgf("found %d identities from plugins", len(identities))
+	if len(identities) > 0 {
+		log.Debug().Msgf("apply the first found identity")
+		return identities[0], nil
+	}
 	out, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
 	if err == nil {
 		log.Debug().Msg("parsing ssh authorized key")
@@ -166,7 +161,7 @@ func ParseIdentity(user *unix_util.User, identityStr string) (Identity, error) {
 	return nil, fmt.Errorf("unknown identity format")
 }
 
-func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []Identity, err error) {
+func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []auth.Identity, err error) {
 	scanner := bufio.NewScanner(file)
 	lineNumber := 0
 	for scanner.Scan() {
