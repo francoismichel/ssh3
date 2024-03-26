@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/auth"
 	"github.com/francoismichel/ssh3/util/unix_util"
 
 	"github.com/quic-go/quic-go"
@@ -82,7 +81,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 		// first, handle the HTTP request verifiers (often plugins)
 		for _, abstractVerifier := range identityVerifiers {
 			switch verifier := abstractVerifier.(type) {
-			case auth.RequestIdentityVerifier:
+			case *WrappedPluginVerifier:
 				if verifier.Verify(r, base64ConvID) {
 					handlerFunc(username, conv, w, r)
 					return
