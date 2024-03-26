@@ -2,14 +2,10 @@ package server_auth
 
 import (
 	"net/http"
-	"os"
 
 	"github.com/francoismichel/ssh3"
 	"github.com/francoismichel/ssh3/auth"
 	"github.com/francoismichel/ssh3/util"
-	"github.com/francoismichel/ssh3/util/unix_util"
-
-	"github.com/rs/zerolog/log"
 )
 
 // BearerAuth returns the bearer token
@@ -47,34 +43,8 @@ func HandleBearerAuth(username string, base64ConversationID string, handlerFunc 
 }
 
 // currently only supports RS256 and EdDSA signing algorithms
-func HandleJWTAuth(username string, newConv *ssh3.Conversation, handlerFunc ssh3.AuthenticatedHandlerFunc) ssh3.UnauthenticatedBearerFunc {
+func HandleJWTAuth(username string, newConv *ssh3.Conversation, identities []auth.IdentityVerifier, handlerFunc ssh3.AuthenticatedHandlerFunc) ssh3.UnauthenticatedBearerFunc {
 	return func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request) {
-		user, err := unix_util.GetUser(username)
-		if err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-
-		filenames := DefaultIdentitiesFileNames(user)
-		var identities []auth.Identity
-		for _, filename := range filenames {
-			identitiesFile, err := os.Open(filename)
-			if err == nil {
-				newIdentities, err := ParseAuthorizedIdentitiesFile(user, identitiesFile)
-				if err != nil {
-					// TODO: logging
-					log.Error().Msgf("error when parsing authorized identities: %s", err)
-					w.WriteHeader(http.StatusUnauthorized)
-					return
-				}
-				identities = append(identities, newIdentities...)
-			} else if !os.IsNotExist(err) {
-				log.Error().Msgf("error could not open %s: %s", filename, err)
-				w.WriteHeader(http.StatusUnauthorized)
-				return
-			}
-		}
-
 		for _, identity := range identities {
 			verified := identity.Verify(util.JWTTokenString{Token: unauthenticatedBearerString}, base64ConversationID)
 			if verified {

@@ -36,7 +36,7 @@ func RegisterServerAuthPlugin(name string, plugin auth.ServerAuthPlugin) error {
 	return nil
 }
 
-func FindIdentitiesFromAuthorizedIdentityString(username string, authorizedIdentityString string) (identities []auth.Identity) {
+func FindIdentitiesFromAuthorizedIdentityString(username string, authorizedIdentityString string) (identities []auth.RequestIdentityVerifier) {
 	serverPluginsMutex.RLock()
 	for name, parseIdentityPlugin := range serverRegistry.serverAuthPlugins {
 		identity, err := parseIdentityPlugin(username, authorizedIdentityString)

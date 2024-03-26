@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -116,12 +117,24 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 	}
 }
 
-func ParseIdentity(user *unix_util.User, identityStr string) (auth.Identity, error) {
+type WrappedPluginIdentity struct {
+	auth.RequestIdentityVerifier
+}
+
+func (w *WrappedPluginIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
+	switch candidate := genericCandidate.(type) {
+	case *http.Request:
+		return w.RequestIdentityVerifier.Verify(candidate, base64ConversationID)
+	}
+	return false
+}
+
+func ParseIdentity(user *unix_util.User, identityStr string) (auth.IdentityVerifier, error) {
 	identities := internal.FindIdentitiesFromAuthorizedIdentityString(user.Username, identityStr)
 	log.Debug().Msgf("found %d identities from plugins", len(identities))
 	if len(identities) > 0 {
 		log.Debug().Msgf("apply the first found identity")
-		return identities[0], nil
+		return &WrappedPluginIdentity{RequestIdentityVerifier: identities[0]}, nil
 	}
 	out, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
 	if err == nil {
@@ -161,7 +174,7 @@ func ParseIdentity(user *unix_util.User, identityStr string) (auth.Identity, err
 	return nil, fmt.Errorf("unknown identity format")
 }
 
-func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []auth.Identity, err error) {
+func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []auth.IdentityVerifier, err error) {
 	scanner := bufio.NewScanner(file)
 	lineNumber := 0
 	for scanner.Scan() {
@@ -180,6 +193,27 @@ func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identit
 			identities = append(identities, identity)
 		} else {
 			log.Error().Msgf("cannot parse identity line: %s: %s", err.Error(), line)
+		}
+	}
+	return identities, nil
+}
+
+func GetAuthorizedIdentities(user *unix_util.User) ([]auth.IdentityVerifier, error) {
+	filenames := DefaultIdentitiesFileNames(user)
+	var identities []auth.IdentityVerifier
+	for _, filename := range filenames {
+		identitiesFile, err := os.Open(filename)
+		if err == nil {
+			newIdentities, err := ParseAuthorizedIdentitiesFile(user, identitiesFile)
+			if err != nil {
+				// TODO: logging
+				log.Error().Msgf("error when parsing authorized identities: %s", err)
+				return nil, err
+			}
+			identities = append(identities, newIdentities...)
+		} else if !os.IsNotExist(err) {
+			log.Error().Msgf("error could not open %s: %s", filename, err)
+			return nil, err
 		}
 	}
 	return identities, nil
