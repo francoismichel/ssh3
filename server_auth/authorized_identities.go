@@ -117,11 +117,11 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 	}
 }
 
-type WrappedPluginIdentity struct {
+type WrappedPluginVerifier struct {
 	auth.RequestIdentityVerifier
 }
 
-func (w *WrappedPluginIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
+func (w *WrappedPluginVerifier) Verify(genericCandidate interface{}, base64ConversationID string) bool {
 	switch candidate := genericCandidate.(type) {
 	case *http.Request:
 		return w.RequestIdentityVerifier.Verify(candidate, base64ConversationID)
@@ -134,7 +134,7 @@ func ParseIdentity(user *unix_util.User, identityStr string) (auth.IdentityVerif
 	log.Debug().Msgf("found %d identities from plugins", len(identities))
 	if len(identities) > 0 {
 		log.Debug().Msgf("apply the first found identity")
-		return &WrappedPluginIdentity{RequestIdentityVerifier: identities[0]}, nil
+		return &WrappedPluginVerifier{RequestIdentityVerifier: identities[0]}, nil
 	}
 	out, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
 	if err == nil {
