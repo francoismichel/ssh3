@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/auth/oidc"
 	"github.com/francoismichel/ssh3/internal"
 	"github.com/francoismichel/ssh3/util"
 	"github.com/francoismichel/ssh3/util/unix_util"
@@ -83,7 +84,7 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 	log.Debug().Msgf("verifying openid connect idenitity")
 	switch candidate := genericCandidate.(type) {
 	case util.JWTTokenString:
-		token, err := auth.VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.Token)
+		token, err := oidc.VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.Token)
 		if err != nil {
 			log.Error().Msgf("cannot verify raw token: %s", err.Error())
 			return false

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/auth/oidc"
 	"github.com/francoismichel/ssh3/util"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -22,10 +22,10 @@ import (
 type PasswordAuthMethod struct{}
 type OidcAuthMethod struct {
 	doPKCE bool
-	config *auth.OIDCConfig
+	config *oidc.OIDCConfig
 }
 
-func (m *OidcAuthMethod) OIDCConfig() *auth.OIDCConfig {
+func (m *OidcAuthMethod) OIDCConfig() *oidc.OIDCConfig {
 	return m.config
 }
 
@@ -48,7 +48,7 @@ func (m *PasswordAuthMethod) IntoIdentity(password string) Identity {
 	return passwordIdentity(password)
 }
 
-func NewOidcAuthMethod(doPKCE bool, config *auth.OIDCConfig) *OidcAuthMethod {
+func NewOidcAuthMethod(doPKCE bool, config *oidc.OIDCConfig) *OidcAuthMethod {
 	return &OidcAuthMethod{
 		doPKCE: doPKCE,
 		config: config,

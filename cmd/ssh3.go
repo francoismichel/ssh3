@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/auth/oidc"
 	"github.com/francoismichel/ssh3/client"
 	"github.com/francoismichel/ssh3/internal"
 	"github.com/francoismichel/ssh3/util"
@@ -49,7 +49,7 @@ func homedir() string {
 // If non-nil, use udpConn as transport (can be used for proxy jump)
 // Otherwise, create a UDPConn from udp://host:port
 func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog io.Writer, ssh3Dir string, certPool *x509.CertPool, knownHostsPath string, knownHosts ssh3.KnownHosts,
-	oidcConfig []*auth.OIDCConfig, options *client.Options, proxyRemoteAddr *net.UDPAddr, tty *os.File) (quic.EarlyConnection, int) {
+	oidcConfig []*oidc.OIDCConfig, options *client.Options, proxyRemoteAddr *net.UDPAddr, tty *os.File) (quic.EarlyConnection, int) {
 
 	var err error
 	remoteAddr := proxyRemoteAddr
@@ -452,7 +452,7 @@ func ClientMain() int {
 	}
 
 	// default to oidc if no password or privkey
-	var oidcConfig auth.OIDCIssuerConfig = nil
+	var oidcConfig oidc.OIDCIssuerConfig = nil
 	var oidcConfigFile *os.File = nil
 	if *oidcConfigFileName == "" {
 		defaultFileName := path.Join(ssh3Dir, "oidc_config.json")

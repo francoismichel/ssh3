@@ -23,7 +23,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/auth/oidc"
 	"github.com/francoismichel/ssh3/client/winsize"
 	ssh3Messages "github.com/francoismichel/ssh3/message"
 	"github.com/francoismichel/ssh3/util"
@@ -338,7 +338,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 			identity = m.IntoIdentity(sshAgent)
 		case *ssh3.OidcAuthMethod:
 			log.Debug().Msgf("try OIDC auth to issuer %s", m.OIDCConfig().IssuerUrl)
-			token, err := auth.Connect(context.Background(), m.OIDCConfig(), m.OIDCConfig().IssuerUrl, m.DoPKCE())
+			token, err := oidc.Connect(context.Background(), m.OIDCConfig(), m.OIDCConfig().IssuerUrl, m.DoPKCE())
 			if err != nil {
 				log.Error().Msgf("could not get token: %s", err)
 				return nil, err
