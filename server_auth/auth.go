@@ -61,15 +61,39 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 		}
 		convID := conv.ConversationID()
 		base64ConvID := base64.StdEncoding.EncodeToString(convID[:])
+
+		username := r.URL.User.Username()
+		if username == "" {
+			username = r.URL.Query().Get("user")
+		}
+		user, err := unix_util.GetUser(username)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		identityVerifiers, err := GetAuthorizedIdentities(user)
+		if err != nil {
+			log.Error().Msgf("error in JWT auth handling when retrieving authorized identities: %s", err)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		// first, handle the HTTP request verifiers (often plugins)
+		for _, abstractVerifier := range identityVerifiers {
+			switch verifier := abstractVerifier.(type) {
+			case *WrappedPluginVerifier:
+				if verifier.Verify(r, base64ConvID) {
+					handlerFunc(username, conv, w, r)
+					return
+				}
+			}
+		}
+
 		authorization := r.Header.Get("Authorization")
 		if enablePasswordLogin && strings.HasPrefix(authorization, "Basic ") {
 			HandleBasicAuth(handlerFunc, conv)(w, r)
 		} else if strings.HasPrefix(authorization, "Bearer ") {
-			username := r.URL.User.Username()
-			if username == "" {
-				username = r.URL.Query().Get("user")
-			}
-			HandleBearerAuth(username, base64ConvID, HandleJWTAuth(username, conv, handlerFunc))(w, r)
+			HandleBearerAuth(username, base64ConvID, HandleJWTAuth(username, conv, identityVerifiers, handlerFunc))(w, r)
 		} else {
 			w.WriteHeader(http.StatusUnauthorized)
 		}

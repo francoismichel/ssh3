@@ -5,11 +5,14 @@ import (
 	"context"
 	"crypto"
 	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"strings"
 
 	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/auth/oidc"
+	"github.com/francoismichel/ssh3/internal"
 	"github.com/francoismichel/ssh3/util"
 	"github.com/francoismichel/ssh3/util/unix_util"
 
@@ -19,18 +22,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 )
-
-/*
- * In ssh3, authorized_keys are replaced by authorized_identities where a use can specify classical
- * public keys as well as other authentication and authorization methods such as OAUTH2 and SAML 2.0
- *
- */
-
-type Identity interface {
-	// returns whether those the provided candidate contains a sufficient proof to
-	// be considered as equivalent to this identity
-	Verify(candidate interface{}, base64ConversationID string) bool
-}
 
 type PubKeyIdentity struct {
 	username string
@@ -93,7 +84,7 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 	log.Debug().Msgf("verifying openid connect idenitity")
 	switch candidate := genericCandidate.(type) {
 	case util.JWTTokenString:
-		token, err := auth.VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.Token)
+		token, err := oidc.VerifyRawToken(context.Background(), i.clientID, i.issuerURL, candidate.Token)
 		if err != nil {
 			log.Error().Msgf("cannot verify raw token: %s", err.Error())
 			return false
@@ -127,7 +118,25 @@ func (i *OpenIDConnectIdentity) Verify(genericCandidate interface{}, base64Conve
 	}
 }
 
-func ParseIdentity(user *unix_util.User, identityStr string) (Identity, error) {
+type WrappedPluginVerifier struct {
+	auth.RequestIdentityVerifier
+}
+
+func (w *WrappedPluginVerifier) Verify(genericCandidate interface{}, base64ConversationID string) bool {
+	switch candidate := genericCandidate.(type) {
+	case *http.Request:
+		return w.RequestIdentityVerifier.Verify(candidate, base64ConversationID)
+	}
+	return false
+}
+
+func ParseIdentity(user *unix_util.User, identityStr string) (auth.IdentityVerifier, error) {
+	identities := internal.FindIdentitiesFromAuthorizedIdentityString(user.Username, identityStr)
+	log.Debug().Msgf("found %d identities from plugins", len(identities))
+	if len(identities) > 0 {
+		log.Debug().Msgf("apply the first found identity")
+		return &WrappedPluginVerifier{RequestIdentityVerifier: identities[0]}, nil
+	}
 	out, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
 	if err == nil {
 		log.Debug().Msg("parsing ssh authorized key")
@@ -166,7 +175,7 @@ func ParseIdentity(user *unix_util.User, identityStr string) (Identity, error) {
 	return nil, fmt.Errorf("unknown identity format")
 }
 
-func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []Identity, err error) {
+func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []auth.IdentityVerifier, err error) {
 	scanner := bufio.NewScanner(file)
 	lineNumber := 0
 	for scanner.Scan() {
@@ -185,6 +194,27 @@ func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identit
 			identities = append(identities, identity)
 		} else {
 			log.Error().Msgf("cannot parse identity line: %s: %s", err.Error(), line)
+		}
+	}
+	return identities, nil
+}
+
+func GetAuthorizedIdentities(user *unix_util.User) ([]auth.IdentityVerifier, error) {
+	filenames := DefaultIdentitiesFileNames(user)
+	var identities []auth.IdentityVerifier
+	for _, filename := range filenames {
+		identitiesFile, err := os.Open(filename)
+		if err == nil {
+			newIdentities, err := ParseAuthorizedIdentitiesFile(user, identitiesFile)
+			if err != nil {
+				// TODO: logging
+				log.Error().Msgf("error when parsing authorized identities: %s", err)
+				return nil, err
+			}
+			identities = append(identities, newIdentities...)
+		} else if !os.IsNotExist(err) {
+			log.Error().Msgf("error could not open %s: %s", filename, err)
+			return nil, err
 		}
 	}
 	return identities, nil
