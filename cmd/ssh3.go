@@ -331,7 +331,8 @@ func ClientMain() int {
 	flag.Parse()
 	args := flag.Args()
 
-	internal.CloseRegistry()
+	internal.CloseClientPluginsRegistry()
+	internal.CloseServerPluginsRegistry()
 
 	if *displayVersion {
 		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
