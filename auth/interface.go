@@ -1,6 +1,10 @@
 package auth
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/quic-go/quic-go/http3"
+)
 
 /*
  * In ssh3, authorized_keys are replaced by authorized_identities where a use can specify classical
@@ -23,3 +27,7 @@ type RequestIdentityVerifier interface {
 //
 // plugins are currently a single function so that they are completely stateless
 type ServerAuthPlugin func(username string, identityStr string) (RequestIdentityVerifier, error)
+
+// Updates `request` with the correct authentication material so that an SSH3 conversation
+// can be established by performing the request
+type ClientAuthPlugin func(request *http.Request, roundTripper *http3.RoundTripper) error

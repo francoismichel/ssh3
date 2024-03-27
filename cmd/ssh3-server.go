@@ -709,7 +709,8 @@ func ServerMain() int {
 		return 0
 	}
 
-	internal.CloseRegistry()
+	internal.CloseClientPluginsRegistry()
+	internal.CloseServerPluginsRegistry()
 
 	if !enablePasswordLogin {
 		fmt.Fprintln(os.Stderr, "password login is disabled")
