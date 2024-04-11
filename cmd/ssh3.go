@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/francoismichel/ssh3"
@@ -195,7 +196,8 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					log.Error().Msgf("could not append known host to %s: %s", knownHostsPath, err)
 					return nil, -1
 				}
-				tty.WriteString(fmt.Sprintf("Successfully added the certificate to %s, please rerun the command\n\r", knownHostsPath))
+				tty.WriteString(fmt.Sprintf("Successfully added the certificate to %s\n\r", knownHostsPath))
+				syscall.Exec(os.Args[0], os.Args, os.Environ())
 				return nil, 0
 			}
 		}
