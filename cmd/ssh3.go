@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"os/exec"
 	"flag"
 	"fmt"
 	"io"
@@ -517,6 +518,17 @@ func ClientMain() int {
 					}
 					cliAuthMethods = append(cliAuthMethods, ssh3.NewAgentAuthMethod(pubkey))
 				}
+			}
+		}
+
+		out, _ := exec.Command("ssh-add", "-L").Output()
+		keys := strings.Split(string(out), "\n")
+		for _, key := range keys {
+			pubkey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key))
+			if err == nil {
+				cliAuthMethods = append(cliAuthMethods, ssh3.NewAgentAuthMethod(pubkey))
+			} else if len(key) > 0 {
+				log.Error().Msgf("can not parse key %s", key)
 			}
 		}
 

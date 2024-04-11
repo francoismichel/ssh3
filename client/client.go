@@ -215,6 +215,20 @@ type Client struct {
 func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	roundTripper *http3.RoundTripper,
 	sshAgent agent.ExtendedAgent) (*Client, error) {
+	for _, method := range options.authMethods {
+		methods := []interface{}{method}
+		res, err := dial(ctx, options, qconn, roundTripper, sshAgent, methods)
+		if err == nil {
+			return res, nil
+		}
+	}
+	return nil, NoSuitableIdentity{}
+}
+
+func dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
+	roundTripper *http3.RoundTripper,
+	sshAgent agent.ExtendedAgent,
+	authMethods []interface{}) (*Client, error) {
 
 	hostUrl := url.URL{}
 	hostUrl.Scheme = "https"
@@ -270,7 +284,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	req.Proto = "ssh3"
 
 	var identity ssh3.Identity
-	for _, method := range options.authMethods {
+	for _, method := range authMethods {
 		switch m := method.(type) {
 		case *ssh3.PasswordAuthMethod:
 			log.Debug().Msgf("try password-based auth")
