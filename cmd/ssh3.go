@@ -197,7 +197,11 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					return nil, -1
 				}
 				tty.WriteString(fmt.Sprintf("Successfully added the certificate to %s\n\r", knownHostsPath))
-				syscall.Exec(os.Args[0], os.Args, os.Environ())
+				path, err := exec.LookPath(os.Args[0])
+				if err == nil {
+					// best effort
+					syscall.Exec(path, os.Args, os.Environ())
+				}
 				return nil, 0
 			}
 		}
