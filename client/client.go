@@ -221,6 +221,11 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 		if err == nil {
 			return res, nil
 		}
+		if errors.Is(err, util.Unauthorized{}) {
+			// will retry
+		} else {
+			return nil, err
+		}
 	}
 	return nil, NoSuitableIdentity{}
 }
@@ -379,7 +384,7 @@ func dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	log.Debug().Msgf("establish conversation with the server")
 	err = conv.EstablishClientConversation(req, roundTripper, ssh3.AVAILABLE_CLIENT_VERSIONS)
 	if errors.Is(err, util.Unauthorized{}) {
-		log.Error().Msgf("Access denied from the server: unauthorized")
+		log.Debug().Msgf("Access denied from the server: unauthorized")
 		return nil, err
 	} else if err != nil {
 		log.Error().Msgf("Could not establish conversation: %+v", err)
