@@ -113,9 +113,12 @@ type Size interface {
 	Size() int64
 }
 
-func setupEnv(user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string) {
+func setupEnv(user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string, opty *openPty) {
 	// TODO: set the environment like in do_setup_env of https://github.com/openssh/openssh-portable/blob/master/session.c
 	runningCommand.Cmd.Env = append(runningCommand.Cmd.Env, os.Environ()...)
+	if opty != nil {
+		runningCommand.Cmd.Env = append(runningCommand.Cmd.Env, fmt.Sprintf("TERM=%s", opty.term))
+	}
 	runningCommand.Cmd.Env = append(runningCommand.Cmd.Env,
 		fmt.Sprintf("HOME=%s", user.Dir),
 		fmt.Sprintf("USER=%s", user.Username),
@@ -249,7 +252,7 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 }
 
 func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string) error {
-	setupEnv(user, runningCommand, authAgentSocketPath)
+	setupEnv(user, runningCommand, authAgentSocketPath, openPty)
 	if openPty != nil {
 		err := unix_util.StartWithSizeAndPty(&runningCommand.Cmd, openPty.winSize, openPty.pty, openPty.tty)
 		if err != nil {
