@@ -115,10 +115,10 @@ type Size interface {
 
 func setupEnv(user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string) {
 	// TODO: set the environment like in do_setup_env of https://github.com/openssh/openssh-portable/blob/master/session.c
+	runningCommand.Cmd.Env = append(runningCommand.Cmd.Env, os.Environ()...)
 	runningCommand.Cmd.Env = append(runningCommand.Cmd.Env,
 		fmt.Sprintf("HOME=%s", user.Dir),
 		fmt.Sprintf("USER=%s", user.Username),
-		fmt.Sprintf("PATH=%s", "/usr/bin:/bin:/usr/sbin:/sbin"),
 	)
 	if authAgentSocketPath != "" {
 		runningCommand.Cmd.Env = append(runningCommand.Cmd.Env, fmt.Sprintf("SSH_AUTH_SOCK=%s", authAgentSocketPath))
