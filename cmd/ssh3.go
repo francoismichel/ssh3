@@ -202,6 +202,7 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 					// best effort
 					syscall.Exec(path, os.Args, os.Environ())
 				}
+				tty.WriteString(fmt.Sprintf("Please rerun the command\n\r"))
 				return nil, 0
 			}
 		}
