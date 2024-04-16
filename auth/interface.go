@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 
+	"github.com/francoismichel/ssh3/client"
 	"github.com/quic-go/quic-go/http3"
 )
 
@@ -30,4 +31,15 @@ type ServerAuthPlugin func(username string, identityStr string) (RequestIdentity
 
 // Updates `request` with the correct authentication material so that an SSH3 conversation
 // can be established by performing the request
-type ClientAuthPlugin func(request *http.Request, roundTripper *http3.RoundTripper) error
+type ClientAuthPluginFunc func(request *http.Request, clientOpts *client.Options, roundTripper *http3.RoundTripper) error
+
+type ClientAuthPlugin struct {
+	// A plugin can define one or more new SSH3 config options.
+	// A new option is defined by providing a dedicated option parser.
+	// The key in PluginOptions must be a unique name for each option
+	// and must not confict with any existing option
+	// (good practice: "<your_repo_name>[-<option_name>]")
+	PluginOptions map[string]client.OptionParser
+
+	PluginFunc ClientAuthPluginFunc
+}
