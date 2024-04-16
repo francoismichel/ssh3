@@ -6,11 +6,13 @@ import (
 )
 
 type Options struct {
-	username    string
-	hostname    string
-	port        int
-	urlPath     string
-	authMethods []interface{}
+	username string
+	hostname string
+	port     int
+	urlPath  string
+
+	options     map[string]Option
+	authMethods []interface{} // soon deprecated or heaviy modified
 }
 
 func NewOptions(username string, hostname string, port int, urlPath string, authMethods []interface{}) (*Options, error) {
@@ -67,4 +69,36 @@ func (o *Options) CanonicalHostFormat() string {
 
 func (o *Options) AuthMethods() []interface{} {
 	return o.authMethods
+}
+
+// Option defnes a generic client option that can be manipulated by the client
+// and by different auth plugins. Plugins can define their own option types
+type Option any
+
+// StringOptions is a client option whose value is a string
+type StringOption interface {
+	Option
+	Value() string
+}
+
+// OptionParser allows parsing an client config option from a string.
+type OptionParser interface {
+	// returns the option config keyword
+	// This keyword is used when parsing the SSH config.
+	OptionConfigName() string
+
+	// returns the Option[T] represented by this CLI argument.
+	// Option() will always be called *after* having parsed the CLI args using flag.Parse()
+	Parse(string) Option
+}
+
+// CLIOptionParser defines a parser that can be hooked in the CLI flags
+
+type CLIOptionParser interface {
+	OptionParser
+	FlagName() string
+	Usage() string
+	// returns whether it should be considered as a boolean flag (parsed using flag.Bool(), with no flag value)
+	// or as a flag with a value
+	IsBoolFlag() bool
 }
