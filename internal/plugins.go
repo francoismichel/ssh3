@@ -1,9 +1,11 @@
 package internal
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/francoismichel/ssh3/auth"
+	client_options "github.com/francoismichel/ssh3/client/options"
 	"github.com/francoismichel/ssh3/util"
 	"github.com/rs/zerolog/log"
 )
@@ -75,4 +77,33 @@ func FindIdentitiesFromAuthorizedIdentityString(username string, authorizedIdent
 		}
 	}
 	return identities
+}
+
+// the map key is the plugin option name (see `auth.ClientAuthPlugin`)
+func GetPluginsCLIArgs() (args map[client_options.PluginOptionName]client_options.CLIOptionParser, err error) {
+	args = make(map[client_options.PluginOptionName]client_options.CLIOptionParser)
+	for _, plugin := range clientRegistry.plugins {
+		for optionName, optionParser := range plugin.PluginOptions {
+			if cliParser, ok := optionParser.(client_options.CLIOptionParser); ok {
+				if _, ok := args[optionName]; ok {
+					return nil, fmt.Errorf("duplicate option name in client plugins registry")
+				}
+				args[optionName] = cliParser
+			}
+		}
+	}
+	return args, nil
+}
+
+func GetPluginsClientOptionsParsers() (parsers map[client_options.PluginOptionName]client_options.OptionParser, err error) {
+	parsers = make(map[client_options.PluginOptionName]client_options.OptionParser)
+	for _, plugin := range clientRegistry.plugins {
+		for optionName, optionParser := range plugin.PluginOptions {
+			if _, ok := parsers[optionName]; ok {
+				return nil, fmt.Errorf("duplicate option name in client plugins registry")
+			}
+			parsers[optionName] = optionParser
+		}
+	}
+	return parsers, nil
 }

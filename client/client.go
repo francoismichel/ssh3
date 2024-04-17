@@ -24,6 +24,7 @@ import (
 
 	"github.com/francoismichel/ssh3"
 	"github.com/francoismichel/ssh3/auth/oidc"
+	client_options "github.com/francoismichel/ssh3/client/options"
 	"github.com/francoismichel/ssh3/client/winsize"
 	ssh3Messages "github.com/francoismichel/ssh3/message"
 	"github.com/francoismichel/ssh3/util"
@@ -212,7 +213,7 @@ type Client struct {
 	*ssh3.Conversation
 }
 
-func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
+func Dial(ctx context.Context, options *client_options.Options, qconn quic.EarlyConnection,
 	roundTripper *http3.RoundTripper,
 	sshAgent agent.ExtendedAgent) (*Client, error) {
 
@@ -270,7 +271,7 @@ func Dial(ctx context.Context, options *Options, qconn quic.EarlyConnection,
 	req.Proto = "ssh3"
 
 	var identity ssh3.Identity
-	for _, method := range options.authMethods {
+	for _, method := range options.AuthMethods() {
 		switch m := method.(type) {
 		case *ssh3.PasswordAuthMethod:
 			log.Debug().Msgf("try password-based auth")

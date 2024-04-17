@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/francoismichel/ssh3/auth/oidc"
+	client_options "github.com/francoismichel/ssh3/client/options"
 	"github.com/francoismichel/ssh3/util"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -253,7 +254,7 @@ func (i rawBearerTokenIdentity) String() string {
 	return "raw-bearer-identity"
 }
 
-func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, port int, user string, urlPath string, authMethodsToTry []interface{}, err error) {
+func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsParsers map[client_options.PluginOptionName]client_options.OptionParser) (hostname string, port int, user string, urlPath string, authMethodsToTry []interface{}, pluginOptions map[client_options.PluginOptionName]client_options.Option, err error) {
 	port = -1
 	if config == nil {
 		return
@@ -298,7 +299,30 @@ func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, 
 	for _, identityFile := range identityFiles {
 		authMethodsToTry = append(authMethodsToTry, NewPrivkeyFileAuthMethod(identityFile))
 	}
-	return hostname, port, user, urlPath, authMethodsToTry, nil
+
+	pluginOptions = make(map[client_options.PluginOptionName]client_options.Option)
+	log.Debug().Msgf("parsing options using option parsers")
+	for optionName, optionParser := range pluginsOptionsParsers {
+		log.Debug().Msgf("search for option %s (%s) in config", optionName, optionParser.OptionConfigName())
+		var optionValue string
+		optionValue, err = config.Get(host, optionParser.OptionConfigName())
+		if err != nil {
+			log.Error().Msgf("config.Get returned an error: %s", err)
+			return
+		}
+		if optionValue != "" {
+			var option client_options.Option
+			log.Debug().Msgf("found value for %s: %s", optionParser.OptionConfigName(), optionValue)
+			option, err = optionParser.Parse(optionValue)
+			if err != nil {
+				log.Error().Msgf("config option parser returned an error: %s", err)
+				return
+			}
+			pluginOptions[optionName] = option
+		}
+	}
+
+	return hostname, port, user, urlPath, authMethodsToTry, pluginOptions, nil
 }
 
 func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation) (string, error) {
