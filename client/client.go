@@ -24,7 +24,7 @@ import (
 
 	"github.com/francoismichel/ssh3"
 	"github.com/francoismichel/ssh3/auth/oidc"
-	client_options "github.com/francoismichel/ssh3/client/options"
+	client_config "github.com/francoismichel/ssh3/client/config"
 	"github.com/francoismichel/ssh3/client/winsize"
 	ssh3Messages "github.com/francoismichel/ssh3/message"
 	"github.com/francoismichel/ssh3/util"
@@ -213,7 +213,7 @@ type Client struct {
 	*ssh3.Conversation
 }
 
-func Dial(ctx context.Context, options *client_options.Options, qconn quic.EarlyConnection,
+func Dial(ctx context.Context, options *client_config.Config, qconn quic.EarlyConnection,
 	roundTripper *http3.RoundTripper,
 	sshAgent agent.ExtendedAgent) (*Client, error) {
 

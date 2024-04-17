@@ -24,7 +24,7 @@ import (
 	"github.com/francoismichel/ssh3"
 	"github.com/francoismichel/ssh3/auth/oidc"
 	"github.com/francoismichel/ssh3/client"
-	client_options "github.com/francoismichel/ssh3/client/options"
+	client_config "github.com/francoismichel/ssh3/client/config"
 	"github.com/francoismichel/ssh3/internal"
 	"github.com/francoismichel/ssh3/util"
 	"github.com/quic-go/quic-go"
@@ -50,7 +50,7 @@ func homedir() string {
 // If non-nil, use udpConn as transport (can be used for proxy jump)
 // Otherwise, create a UDPConn from udp://host:port
 func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog io.Writer, ssh3Dir string, certPool *x509.CertPool, knownHostsPath string, knownHosts ssh3.KnownHosts,
-	oidcConfig []*oidc.OIDCConfig, options *client_options.Options, proxyRemoteAddr *net.UDPAddr, tty *os.File) (quic.EarlyConnection, int) {
+	oidcConfig []*oidc.OIDCConfig, options *client_config.Config, proxyRemoteAddr *net.UDPAddr, tty *os.File) (quic.EarlyConnection, int) {
 
 	var err error
 	remoteAddr := proxyRemoteAddr
@@ -229,7 +229,7 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 	return localPort, remoteIP, remotePort, err
 }
 
-func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config, optionParsers map[client_options.PluginOptionName]client_options.OptionParser) (*client_options.Options, error) {
+func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config, optionParsers map[client_config.OptionName]client_config.OptionParser) (*client_config.Config, error) {
 	urlHostname, urlPort := hostUrl.Hostname(), hostUrl.Port()
 
 	configHostname, configPort, configUser, configUrlPath, configAuthMethods, pluginOptions, err := ssh3.GetConfigForHost(urlHostname, sshConfig, optionParsers)
@@ -284,10 +284,10 @@ func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config, optionPars
 	if urlPath == "" {
 		urlPath = configUrlPath
 	}
-	return client_options.NewOptions(username, hostname, port, urlPath, configAuthMethods, pluginOptions)
+	return client_config.NewConfig(username, hostname, port, urlPath, configAuthMethods, pluginOptions)
 }
 
-func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config, cliAuthMethods []interface{}, cliOptions map[client_options.PluginOptionName]client_options.Option, optionParsers map[client_options.PluginOptionName]client_options.OptionParser) (agent.ExtendedAgent, *client_options.Options, error) {
+func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config, cliAuthMethods []interface{}, cliOptions map[client_config.OptionName]client_config.Option, optionParsers map[client_config.OptionName]client_config.OptionParser) (agent.ExtendedAgent, *client_config.Config, error) {
 	configOptions, err := getConfigOptions(hostUrl, sshConfig, optionParsers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not apply config to %s: %s", hostUrl, err)
@@ -315,7 +315,7 @@ func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config
 		}
 	}
 
-	options, err := client_options.NewOptions(configOptions.Username(), configOptions.Hostname(), configOptions.Port(), configOptions.UrlPath(), authMethods, configOptions.Options())
+	options, err := client_config.NewConfig(configOptions.Username(), configOptions.Hostname(), configOptions.Port(), configOptions.UrlPath(), authMethods, configOptions.Options())
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not instantiate invalid options: %s", err)
 	}
@@ -323,13 +323,13 @@ func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config
 }
 
 type FlagValue struct {
-	pluginOptionName client_options.PluginOptionName
+	pluginOptionName client_config.OptionName
 	val              string
-	parsedOption     client_options.Option
-	client_options.CLIOptionParser
+	parsedOption     client_config.Option
+	client_config.CLIOptionParser
 }
 
-func NewFlagValue(optionName client_options.PluginOptionName, parser client_options.CLIOptionParser) *FlagValue {
+func NewFlagValue(optionName client_config.OptionName, parser client_config.CLIOptionParser) *FlagValue {
 	return &FlagValue{
 		pluginOptionName: optionName,
 		CLIOptionParser:  parser,
@@ -406,7 +406,7 @@ func ClientMain() int {
 		return 0
 	}
 
-	cliOptions := make(map[client_options.PluginOptionName]client_options.Option)
+	cliOptions := make(map[client_config.OptionName]client_config.Option)
 	// gather the parsed CLI options
 	for _, v := range flagValues {
 		cliOptions[v.pluginOptionName] = v.parsedOption
