@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/francoismichel/ssh3/auth/oidc"
-	client_options "github.com/francoismichel/ssh3/client/options"
+	client_config "github.com/francoismichel/ssh3/client/config"
 	"github.com/francoismichel/ssh3/util"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -254,7 +254,7 @@ func (i rawBearerTokenIdentity) String() string {
 	return "raw-bearer-identity"
 }
 
-func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsParsers map[client_options.PluginOptionName]client_options.OptionParser) (hostname string, port int, user string, urlPath string, authMethodsToTry []interface{}, pluginOptions map[client_options.PluginOptionName]client_options.Option, err error) {
+func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsParsers map[client_config.OptionName]client_config.OptionParser) (hostname string, port int, user string, urlPath string, authMethodsToTry []interface{}, pluginOptions map[client_config.OptionName]client_config.Option, err error) {
 	port = -1
 	if config == nil {
 		return
@@ -300,7 +300,7 @@ func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsPars
 		authMethodsToTry = append(authMethodsToTry, NewPrivkeyFileAuthMethod(identityFile))
 	}
 
-	pluginOptions = make(map[client_options.PluginOptionName]client_options.Option)
+	pluginOptions = make(map[client_config.OptionName]client_config.Option)
 	log.Debug().Msgf("parsing options using option parsers")
 	for optionName, optionParser := range pluginsOptionsParsers {
 		log.Debug().Msgf("search for option %s (%s) in config", optionName, optionParser.OptionConfigName())
@@ -311,7 +311,7 @@ func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsPars
 			return
 		}
 		if optionValue != "" {
-			var option client_options.Option
+			var option client_config.Option
 			log.Debug().Msgf("found value for %s: %s", optionParser.OptionConfigName(), optionValue)
 			option, err = optionParser.Parse(optionValue)
 			if err != nil {
