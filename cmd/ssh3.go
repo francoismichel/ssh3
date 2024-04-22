@@ -311,8 +311,8 @@ func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config
 	for k, v := range cliOptions {
 		if _, ok := pluginOptionsFromConfig[k]; ok {
 			log.Debug().Msgf("override config option %s by the value provided by the CLI", k)
-			pluginOptionsFromConfig[k] = v
 		}
+		pluginOptionsFromConfig[k] = v
 	}
 
 	options, err := client_config.NewConfig(configOptions.Username(), configOptions.Hostname(), configOptions.Port(), configOptions.UrlPath(), authMethods, configOptions.Options())
@@ -355,7 +355,7 @@ func (v *FlagValue) Set(s string) (err error) {
 		}
 	}
 	v.val = s
-	v.parsedOption, err = v.CLIOptionParser.Parse(s)
+	v.parsedOption, err = v.CLIOptionParser.Parse([]string{s})
 	if err != nil {
 		return err
 	}
