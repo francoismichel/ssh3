@@ -33,7 +33,8 @@ type ServerAuthPlugin func(username string, identityStr string) (RequestIdentity
 
 // Updates `request` with the correct authentication material so that an SSH3 conversation
 // can be established by performing the request
-type GetAuthMethodsFunc func(request *http.Request, clientConfig *client_config.Config, roundTripper *http3.RoundTripper) ([]ClientAuthMethod, error)
+// if no SSH agent socket if found, sshAgent is nil
+type GetAuthMethodsFunc func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *client_config.Config, roundTripper *http3.RoundTripper) ([]ClientAuthMethod, error)
 
 type ClientAuthMethod interface {
 	// PrepareRequestForAuth updated the provided request with the needed headers

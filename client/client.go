@@ -275,7 +275,7 @@ func Dial(ctx context.Context, config *client_config.Config, qconn quic.EarlyCon
 	foundSuitableAuthPlugin := false
 	plugins := internal.GetClientAuthPlugins()
 	for _, plugin := range plugins {
-		authMethods, err := plugin.PluginFunc(req, config, roundTripper)
+		authMethods, err := plugin.PluginFunc(req, sshAgent, config, roundTripper)
 		if err != nil {
 			return nil, err
 		}
