@@ -3,8 +3,10 @@ package auth
 import (
 	"net/http"
 
+	"github.com/francoismichel/ssh3"
 	client_config "github.com/francoismichel/ssh3/client/config"
 	"github.com/quic-go/quic-go/http3"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 /*
@@ -31,7 +33,20 @@ type ServerAuthPlugin func(username string, identityStr string) (RequestIdentity
 
 // Updates `request` with the correct authentication material so that an SSH3 conversation
 // can be established by performing the request
-type ClientAuthPluginFunc func(request *http.Request, clientOpts *client_config.Config, roundTripper *http3.RoundTripper) error
+type GetAuthMethodsFunc func(request *http.Request, clientConfig *client_config.Config, roundTripper *http3.RoundTripper) ([]ClientAuthMethod, error)
+
+type ClientAuthMethod interface {
+	// PrepareRequestForAuth updated the provided request with the needed headers
+	// for authentication.
+	// The method must not alter the request method (must always be CONNECT) nor the
+	// Host/:origin, User-Agent or :path headers.
+	// The agent is the connected SSH agent if it exists, nil otherwise
+	// The provided roundTripper can be used to perform requests with the server to prepare
+	// the authentication process.
+	// username is the username to authenticate
+	// conversation is the Conversation we want to establish
+	PrepareRequestForAuth(request *http.Request, sshAgent agent.ExtendedAgent, roundTripper *http3.RoundTripper, username string, conversation *ssh3.Conversation) error
+}
 
 type ClientAuthPlugin struct {
 	// A plugin can define one or more new SSH3 config options.
@@ -41,5 +56,5 @@ type ClientAuthPlugin struct {
 	// (good practice: "<your_repo_name>[-<option_name>]")
 	PluginOptions map[client_config.OptionName]client_config.OptionParser
 
-	PluginFunc ClientAuthPluginFunc
+	PluginFunc GetAuthMethodsFunc
 }

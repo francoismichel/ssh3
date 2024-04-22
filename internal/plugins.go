@@ -107,3 +107,10 @@ func GetPluginsClientOptionsParsers() (parsers map[client_config.OptionName]clie
 	}
 	return parsers, nil
 }
+
+func GetClientAuthPlugins() (plugins []auth.ClientAuthPlugin) {
+	for _, plugin := range clientRegistry.plugins {
+		plugins = append(plugins, plugin)
+	}
+	return plugins
+}

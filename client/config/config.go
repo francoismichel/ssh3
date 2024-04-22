@@ -1,4 +1,4 @@
-package options
+package config
 
 import (
 	"fmt"
@@ -94,9 +94,11 @@ type OptionParser interface {
 	// This keyword is used when parsing the SSH config.
 	OptionConfigName() string
 
-	// returns the Option[T] represented by this CLI argument.
-	// Option() will always be called *after* having parsed the CLI args using flag.Parse()
-	Parse(string) (Option, error)
+	// returns the Option represented by this list of config values
+	// the values are all retrieved from the config.
+	// values contain several entries if the keyword (see `OptionConfigName`) is
+	// present several times in the config.
+	Parse(values []string) (Option, error)
 }
 
 // CLIOptionParser defines a parser that can be hooked in the CLI flags

@@ -145,7 +145,7 @@ type privkeyFileIdentity struct {
 }
 
 func (i *privkeyFileIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
-	bearerToken, err := buildJWTBearerToken(i.signingMethod, i.privkey, username, conversation)
+	bearerToken, err := BuildJWTBearerToken(i.signingMethod, i.privkey, username, conversation)
 	if err != nil {
 		return err
 	}
@@ -204,7 +204,7 @@ func (i *agentBasedIdentity) SetAuthorizationHeader(req *http.Request, username 
 		Key:   i.pubkey,
 	}
 
-	bearerToken, err := buildJWTBearerToken(signingMethod, i.pubkey, username, conversation)
+	bearerToken, err := BuildJWTBearerToken(signingMethod, i.pubkey, username, conversation)
 	if err != nil {
 		return err
 	}
@@ -301,19 +301,19 @@ func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsPars
 	}
 
 	pluginOptions = make(map[client_config.OptionName]client_config.Option)
-	log.Debug().Msgf("parsing options using option parsers")
+	log.Debug().Msgf("parsing options using option parsers: %+v", pluginsOptionsParsers)
 	for optionName, optionParser := range pluginsOptionsParsers {
 		log.Debug().Msgf("search for option %s (%s) in config", optionName, optionParser.OptionConfigName())
-		var optionValue string
-		optionValue, err = config.Get(host, optionParser.OptionConfigName())
+		var optionValues []string
+		optionValues, err = config.GetAll(host, optionParser.OptionConfigName())
 		if err != nil {
 			log.Error().Msgf("config.Get returned an error: %s", err)
 			return
 		}
-		if optionValue != "" {
+		if optionValues != nil {
 			var option client_config.Option
-			log.Debug().Msgf("found value for %s: %s", optionParser.OptionConfigName(), optionValue)
-			option, err = optionParser.Parse(optionValue)
+			log.Debug().Msgf("found value(s) for %s: %s", optionParser.OptionConfigName(), optionValues)
+			option, err = optionParser.Parse(optionValues)
 			if err != nil {
 				log.Error().Msgf("config option parser returned an error: %s", err)
 				return
@@ -325,7 +325,7 @@ func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsPars
 	return hostname, port, user, urlPath, authMethodsToTry, pluginOptions, nil
 }
 
-func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation) (string, error) {
+func BuildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation) (string, error) {
 	convID := conversation.ConversationID()
 	b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
 	token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
