@@ -29,7 +29,6 @@ import (
 	"github.com/francoismichel/ssh3/util"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/kevinburke/ssh_config"
@@ -370,9 +369,8 @@ func ClientMain() int {
 	internal.CloseClientPluginsRegistry()
 	internal.CloseServerPluginsRegistry()
 
+	// for other auth-related CLI args, go see auth/plugins, as they define plugin-specific auth CLI args and config options, such a pubkey/privkey-based auth
 	keyLogFile := flag.String("keylog", "", "Write QUIC TLS keys and master secret in the specified keylog file: only for debugging purpose")
-	privKeyFile := flag.String("privkey", "", "private key file")
-	pubkeyForAgent := flag.String("pubkey-for-agent", "", "if set, use an agent key whose public key matches the one in the specified path")
 	passwordAuthentication := flag.Bool("use-password", false, "if set, do classical password authentication")
 	insecure := flag.Bool("insecure", false, "if set, skip server certificate verification")
 	issuerUrl := flag.String("use-oidc", "", "if set, force the use of OpenID Connect with the specified issuer url as parameter (it opens a browser window)")
@@ -571,36 +569,9 @@ func ClientMain() int {
 	var cliAuthMethods []interface{}
 	// Only do privkey and agent auth if OIDC is not asked explicitly
 	if !useOIDC {
-		if *privKeyFile != "" {
-			cliAuthMethods = append(cliAuthMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
-		}
-
-		if *pubkeyForAgent != "" {
-			pubkeyFileName := util.ExpandTildeWithHomeDir(*pubkeyForAgent)
-			if os.Getenv("SSH_AUTH_SOCK") == "" {
-				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
-			} else {
-				var pubkey ssh.PublicKey = nil
-				if pubkeyFileName != "" {
-					pubKeyBytes, err := os.ReadFile(pubkeyFileName)
-					if err != nil {
-						log.Error().Msgf("could not load public key file: %s", err)
-						return -1
-					}
-					pubkey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
-					if err != nil {
-						log.Error().Msgf("could not parse public key: %s", err)
-						return -1
-					}
-					cliAuthMethods = append(cliAuthMethods, ssh3.NewAgentAuthMethod(pubkey))
-				}
-			}
-		}
-
 		if *passwordAuthentication {
 			cliAuthMethods = append(cliAuthMethods, ssh3.NewPasswordAuthMethod())
 		}
-
 	} else {
 		// for now, only perform OIDC if it was explicitly asked by the user
 		if *issuerUrl != "" {
