@@ -3,7 +3,6 @@ package server_auth
 import (
 	"bufio"
 	"context"
-	"crypto"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,58 +15,17 @@ import (
 	"github.com/francoismichel/ssh3/util"
 	"github.com/francoismichel/ssh3/util/unix_util"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog/log"
 )
 
-type PubKeyIdentity struct {
-	username string
-	pubkey   crypto.PublicKey
+type IdentityVerifier interface {
+	// returns whether the provided candidate contains a sufficient proof to
+	// be considered as equivalent to this identity
+	Verify(candidate interface{}, base64ConversationID string) bool
 }
 
 func DefaultIdentitiesFileNames(user *unix_util.User) []string {
 	return []string{path.Join(user.Dir, ".ssh3", "authorized_identities"), path.Join(user.Dir, ".ssh", "authorized_keys")}
-}
-
-func (i *PubKeyIdentity) Verify(genericCandidate interface{}, base64ConversationID string) bool {
-	switch candidate := genericCandidate.(type) {
-	case util.JWTTokenString:
-		token, err := jwt.Parse(candidate.Token, func(unvalidatedToken *jwt.Token) (interface{}, error) {
-			switch unvalidatedToken.Method.Alg() {
-			case "RS256", "EdDSA", "ES256":
-				return i.pubkey, nil
-			}
-			return nil, fmt.Errorf("unsupported signature algorithm '%s' for %T", unvalidatedToken.Method.Alg(), i)
-		},
-			jwt.WithIssuer(i.username),
-			jwt.WithSubject("ssh3"),
-			jwt.WithIssuedAt(),
-			jwt.WithAudience("unused"),
-			jwt.WithValidMethods([]string{"RS256", "EdDSA", "ES256"}))
-		if err != nil || !token.Valid {
-			log.Error().Msgf("invalid private key token: %s", err)
-			return false
-		}
-		if claims, ok := token.Claims.(jwt.MapClaims); ok {
-			if _, ok = claims["exp"]; !ok {
-				return false
-			}
-			if clientId, ok := claims["client_id"]; !ok || clientId != fmt.Sprintf("ssh3-%s", i.username) {
-				return false
-			}
-			if jti, ok := claims["jti"]; !ok || jti != base64ConversationID {
-				log.Error().Msgf("rsa verification failed: the jti claim does not contain the base64-encoded conversation ID")
-				return false
-			}
-			// jti not checked yet
-		} else {
-			fmt.Println(err)
-		}
-
-		return true
-	default:
-		return false
-	}
 }
 
 type OpenIDConnectIdentity struct {
@@ -127,7 +85,7 @@ func (w *WrappedPluginVerifier) Verify(genericCandidate interface{}, base64Conve
 	return false
 }
 
-func ParseIdentity(user *unix_util.User, identityStr string) (ret []auth.IdentityVerifier, err error) {
+func ParseIdentity(user *unix_util.User, identityStr string) (ret []IdentityVerifier, err error) {
 	pluginIdentities := internal.FindIdentitiesFromAuthorizedIdentityString(user.Username, identityStr)
 	log.Debug().Msgf("found %d identities from plugins", len(pluginIdentities))
 	for _, pluginIdentity := range pluginIdentities {
@@ -161,7 +119,7 @@ func ParseIdentity(user *unix_util.User, identityStr string) (ret []auth.Identit
 	return ret, nil
 }
 
-func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []auth.IdentityVerifier, err error) {
+func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []IdentityVerifier, err error) {
 	scanner := bufio.NewScanner(file)
 	lineNumber := 0
 	for scanner.Scan() {
@@ -185,9 +143,9 @@ func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identit
 	return identities, nil
 }
 
-func GetAuthorizedIdentities(user *unix_util.User) ([]auth.IdentityVerifier, error) {
+func GetAuthorizedIdentities(user *unix_util.User) ([]IdentityVerifier, error) {
 	filenames := DefaultIdentitiesFileNames(user)
-	var identities []auth.IdentityVerifier
+	var identities []IdentityVerifier
 	for _, filename := range filenames {
 		identitiesFile, err := os.Open(filename)
 		if err == nil {

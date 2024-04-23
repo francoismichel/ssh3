@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/auth"
 	"github.com/francoismichel/ssh3/util"
 )
 
@@ -43,7 +42,7 @@ func HandleBearerAuth(username string, base64ConversationID string, handlerFunc 
 }
 
 // currently only supports RS256 and EdDSA signing algorithms
-func HandleJWTAuth(username string, newConv *ssh3.Conversation, identities []auth.IdentityVerifier, handlerFunc ssh3.AuthenticatedHandlerFunc) ssh3.UnauthenticatedBearerFunc {
+func HandleJWTAuth(username string, newConv *ssh3.Conversation, identities []IdentityVerifier, handlerFunc ssh3.AuthenticatedHandlerFunc) ssh3.UnauthenticatedBearerFunc {
 	return func(unauthenticatedBearerString string, base64ConversationID string, w http.ResponseWriter, r *http.Request) {
 		for _, identity := range identities {
 			verified := identity.Verify(util.JWTTokenString{Token: unauthenticatedBearerString}, base64ConversationID)
