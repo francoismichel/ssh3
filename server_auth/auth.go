@@ -83,11 +83,14 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 			switch verifier := abstractVerifier.(type) {
 			case *WrappedPluginVerifier:
 				if verifier.Verify(r, base64ConvID) {
+					log.Debug().Msgf("request for user %s successfully verified by plugin", username)
 					handlerFunc(username, conv, w, r)
 					return
 				}
 			}
 		}
+
+		log.Debug().Msgf("no suitable plugin found to authenticate the request")
 
 		authorization := r.Header.Get("Authorization")
 		if enablePasswordLogin && strings.HasPrefix(authorization, "Basic ") {

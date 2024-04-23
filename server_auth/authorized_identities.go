@@ -16,11 +16,8 @@ import (
 	"github.com/francoismichel/ssh3/util"
 	"github.com/francoismichel/ssh3/util/unix_util"
 
-	"github.com/rs/zerolog/log"
-
-	"golang.org/x/crypto/ssh"
-
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rs/zerolog/log"
 )
 
 type PubKeyIdentity struct {
@@ -130,27 +127,13 @@ func (w *WrappedPluginVerifier) Verify(genericCandidate interface{}, base64Conve
 	return false
 }
 
-func ParseIdentity(user *unix_util.User, identityStr string) (auth.IdentityVerifier, error) {
-	identities := internal.FindIdentitiesFromAuthorizedIdentityString(user.Username, identityStr)
-	log.Debug().Msgf("found %d identities from plugins", len(identities))
-	if len(identities) > 0 {
-		log.Debug().Msgf("apply the first found identity")
-		return &WrappedPluginVerifier{RequestIdentityVerifier: identities[0]}, nil
+func ParseIdentity(user *unix_util.User, identityStr string) (ret []auth.IdentityVerifier, err error) {
+	pluginIdentities := internal.FindIdentitiesFromAuthorizedIdentityString(user.Username, identityStr)
+	log.Debug().Msgf("found %d identities from plugins", len(pluginIdentities))
+	for _, pluginIdentity := range pluginIdentities {
+		ret = append(ret, &WrappedPluginVerifier{RequestIdentityVerifier: pluginIdentity})
 	}
-	out, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
-	if err == nil {
-		log.Debug().Msg("parsing ssh authorized key")
-		switch out.Type() {
-		case "ssh-rsa", "ecdsa-sha2-nistp256", "ssh-ed25519":
-			log.Debug().Msgf("parsing %s identity", out.Type())
-			cryptoPublicKey := out.(ssh.CryptoPublicKey)
-			return &PubKeyIdentity{username: user.Username, pubkey: cryptoPublicKey.CryptoPublicKey()}, nil
-
-		default:
-			return nil, fmt.Errorf("SSH authorized identity \"%s\" not implemented", out.Type())
-		}
-	}
-	// it is not an SSH key
+	// now parse the oidc identity which is not implemented by a plugin yet
 	if strings.HasPrefix(identityStr, "oidc") {
 		nExpectedTokens := 4
 		log.Debug().Msg("parsing oidc identity")
@@ -165,14 +148,17 @@ func ParseIdentity(user *unix_util.User, identityStr string) (auth.IdentityVerif
 		issuerURL := tokens[2]
 		email := tokens[3]
 		log.Debug().Msgf("oidc identity parsing success: client_id: %s, issuer_url: %s, email: %s", clientID, issuerURL, email)
-		return &OpenIDConnectIdentity{
+		ret = append(ret, &OpenIDConnectIdentity{
 			clientID:  clientID,
 			issuerURL: issuerURL,
 			email:     email,
-		}, nil
+		})
 	}
-	// either error or identity not implemented
-	return nil, fmt.Errorf("unknown identity format")
+	if len(ret) == 0 {
+		// either error or identity not implemented
+		return nil, fmt.Errorf("unknown identity format")
+	}
+	return ret, nil
 }
 
 func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identities []auth.IdentityVerifier, err error) {
@@ -189,9 +175,9 @@ func ParseAuthorizedIdentitiesFile(user *unix_util.User, file *os.File) (identit
 			log.Info().Msgf("%s:%d: skip commented identity", file.Name(), lineNumber)
 			continue
 		}
-		identity, err := ParseIdentity(user, line)
+		parsedIdentities, err := ParseIdentity(user, line)
 		if err == nil {
-			identities = append(identities, identity)
+			identities = append(identities, parsedIdentities...)
 		} else {
 			log.Error().Msgf("cannot parse identity line: %s: %s", err.Error(), line)
 		}
