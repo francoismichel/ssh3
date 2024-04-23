@@ -9,12 +9,12 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-/*
- * In ssh3, authorized_keys are replaced by authorized_identities where a use can specify classical
- * public keys as well as other authentication and authorization methods such as OAUTH2 and SAML 2.0
- *
- */
+/////////////////////////////////////
+//		 Server auth plugins	   //
+/////////////////////////////////////
 
+// In ssh3, authorized_keys are replaced by authorized_identities where a use can specify classical
+// public keys as well as other authentication and authorization methods such as OAUTH2 and SAML 2.0
 type RequestIdentityVerifier interface {
 	Verify(request *http.Request, base64ConversationID string) bool
 }
@@ -25,6 +25,10 @@ type RequestIdentityVerifier interface {
 //
 // plugins are currently a single function so that they are completely stateless
 type ServerAuthPlugin func(username string, identityStr string) (RequestIdentityVerifier, error)
+
+/////////////////////////////////////
+//		 Client auth plugins	   //
+/////////////////////////////////////
 
 // Updates `request` with the correct authentication material so that an SSH3 conversation
 // can be established by performing the request
