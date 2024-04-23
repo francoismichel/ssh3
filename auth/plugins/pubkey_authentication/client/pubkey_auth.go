@@ -127,7 +127,7 @@ func (m *PubkeyAuthMethod) PrepareRequestForAuth(request *http.Request, sshAgent
 	return nil
 }
 
-var pubkeyPluginFunc auth.GetAuthMethodsFunc = func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *config.Config, roundTripper *http3.RoundTripper) ([]auth.ClientAuthMethod, error) {
+var pubkeyPluginFunc auth.GetClientAuthMethodsFunc = func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *config.Config, roundTripper *http3.RoundTripper) ([]auth.ClientAuthMethod, error) {
 	var agentKeys []*agent.Key
 	var err error
 	if sshAgent != nil {

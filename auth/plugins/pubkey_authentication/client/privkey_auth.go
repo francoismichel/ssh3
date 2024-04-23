@@ -189,7 +189,7 @@ func (m *PrivkeyFileAuthMethod) PrepareRequestForAuth(request *http.Request, ssh
 
 var _ auth.ClientAuthMethod = &PrivkeyFileAuthMethod{}
 
-var privkeyPluginFunc auth.GetAuthMethodsFunc = func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *config.Config, roundTripper *http3.RoundTripper) ([]auth.ClientAuthMethod, error) {
+var privkeyPluginFunc auth.GetClientAuthMethodsFunc = func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *config.Config, roundTripper *http3.RoundTripper) ([]auth.ClientAuthMethod, error) {
 	for _, opt := range clientConfig.Options() {
 		if o, ok := opt.(*PrivkeyAuthOption); ok {
 			var methods []auth.ClientAuthMethod
