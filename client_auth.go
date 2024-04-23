@@ -255,6 +255,7 @@ func (i rawBearerTokenIdentity) String() string {
 }
 
 func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsParsers map[client_config.OptionName]client_config.OptionParser) (hostname string, port int, user string, urlPath string, authMethodsToTry []interface{}, pluginOptions map[client_config.OptionName]client_config.Option, err error) {
+	pluginOptions = make(map[client_config.OptionName]client_config.Option)
 	port = -1
 	if config == nil {
 		return
@@ -300,7 +301,6 @@ func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsPars
 		authMethodsToTry = append(authMethodsToTry, NewPrivkeyFileAuthMethod(identityFile))
 	}
 
-	pluginOptions = make(map[client_config.OptionName]client_config.Option)
 	log.Debug().Msgf("parsing options using option parsers: %+v", pluginsOptionsParsers)
 	for optionName, optionParser := range pluginsOptionsParsers {
 		log.Debug().Msgf("search for option %s (%s) in config", optionName, optionParser.OptionConfigName())
