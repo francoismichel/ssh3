@@ -14,11 +14,6 @@ import (
  * public keys as well as other authentication and authorization methods such as OAUTH2 and SAML 2.0
  *
  */
-type IdentityVerifier interface {
-	// returns whether the provided candidate contains a sufficient proof to
-	// be considered as equivalent to this identity
-	Verify(candidate interface{}, base64ConversationID string) bool
-}
 
 type RequestIdentityVerifier interface {
 	Verify(request *http.Request, base64ConversationID string) bool
