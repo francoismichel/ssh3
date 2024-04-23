@@ -1,4 +1,4 @@
-package pubkey_authentication
+package server_pubkey_authentication
 
 import (
 	"crypto"

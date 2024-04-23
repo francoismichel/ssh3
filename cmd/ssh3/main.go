@@ -5,7 +5,7 @@ import (
 	"os"
 
 	// authentication plugins
-	_ "github.com/francoismichel/ssh3/auth/plugins/pubkey_authentication"
+	_ "github.com/francoismichel/ssh3/auth/plugins/pubkey_authentication/client"
 )
 
 func main() {
