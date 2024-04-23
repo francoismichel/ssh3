@@ -1,4 +1,4 @@
-package pubkey_authentication
+package client_pubkey_authentication
 
 import (
 	"bytes"
