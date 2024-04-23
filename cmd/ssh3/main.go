@@ -1,9 +1,11 @@
 package main
 
 import (
-	_ "github.com/francoismichel/ssh3/auth/plugins/pubkey_authentication"
 	"github.com/francoismichel/ssh3/cmd"
 	"os"
+
+	// authentication plugins
+	_ "github.com/francoismichel/ssh3/auth/plugins/pubkey_authentication"
 )
 
 func main() {

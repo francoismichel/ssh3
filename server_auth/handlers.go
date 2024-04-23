@@ -16,11 +16,11 @@ func BearerAuth(r *http.Request) (bearer string, ok bool) {
 	if auth == "" {
 		return "", false
 	}
-	return parseBearerAuth(auth)
+	return ParseBearerAuth(auth)
 }
 
-// parseBearerAuth parses an HTTP Bearer Authentication string.
-func parseBearerAuth(auth string) (bearer string, ok bool) {
+// ParseBearerAuth parses an HTTP Bearer Authentication string.
+func ParseBearerAuth(auth string) (bearer string, ok bool) {
 	const prefix = "Bearer "
 	// Case insensitive prefix match. See Issue 22736.
 	if len(auth) < len(prefix) || !util.EqualFold(auth[:len(prefix)], prefix) {
