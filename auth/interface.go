@@ -29,7 +29,7 @@ type ServerAuthPlugin func(username string, identityStr string) (RequestIdentity
 // Updates `request` with the correct authentication material so that an SSH3 conversation
 // can be established by performing the request
 // if no SSH agent socket if found, sshAgent is nil
-type GetAuthMethodsFunc func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *client_config.Config, roundTripper *http3.RoundTripper) ([]ClientAuthMethod, error)
+type GetClientAuthMethodsFunc func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *client_config.Config, roundTripper *http3.RoundTripper) ([]ClientAuthMethod, error)
 
 type ClientAuthMethod interface {
 	// PrepareRequestForAuth updated the provided request with the needed headers
@@ -52,5 +52,5 @@ type ClientAuthPlugin struct {
 	// (good practice: "<your_repo_name>[-<option_name>]")
 	PluginOptions map[client_config.OptionName]client_config.OptionParser
 
-	PluginFunc GetAuthMethodsFunc
+	PluginFunc GetClientAuthMethodsFunc
 }
