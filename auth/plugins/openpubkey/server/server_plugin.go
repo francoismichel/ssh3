@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
-	"github.com/lestrrat-go/jwx/v2/jws"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/openpubkey/openpubkey/pktoken"
 	"github.com/openpubkey/openpubkey/providers"
 	"github.com/openpubkey/openpubkey/verifier"
@@ -13,7 +14,6 @@ import (
 	"github.com/francoismichel/ssh3/auth"
 	"github.com/francoismichel/ssh3/auth/plugins"
 	"github.com/francoismichel/ssh3/server_auth"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog/log"
 )
 
@@ -26,31 +26,84 @@ func init() {
 }
 
 type OpenPubkeyIdentityVerifier struct {
-	username string
-	// pubkey   crypto.PublicKey
+	username     string
+	clientIdOidc string
+	issuerOidc   string
+	email        string
 }
 
 func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64ConversationID string) bool {
-	jwtToken, wellFormattedB64Token := server_auth.ParseBearerAuth(request.Header.Get("Authorization"))
+	authStr, wellFormattedB64Token := server_auth.ParseBearerAuth(request.Header.Get("Authorization"))
 	if !wellFormattedB64Token {
 		return false
 	}
 
-	claims := jwt.MapClaims{}
-	parser := jwt.NewParser(
+	authStrArr := strings.Split(authStr, "#")
+	if len(authStrArr) != 2 {
+		log.Error().Msgf("authStr not properly formed")
+		return false
+	}
+	jwtToken := authStrArr[0]
+	pktCom := authStrArr[1]
+
+	// Construct this using clientId
+	opOptions := providers.GetDefaultGoogleOpOptions()
+	opOptions.GQSign = false
+	op := providers.NewGoogleOpWithOptions(opOptions)
+	opkVerifier, err := verifier.New(op)
+
+	if err != nil {
+		log.Error().Msgf("failed to configure openpubkey verifier: %s", err)
+		return false
+	}
+	pkt, err := pktoken.NewFromCompact([]byte(pktCom))
+	if err != nil {
+		log.Error().Msgf("failed to deserialize compact PK Token: %s", err)
+		return false
+	}
+	err = opkVerifier.VerifyPKToken(context.Background(), pkt)
+	if err != nil {
+		log.Error().Msgf("failed to verify PK Token: %s", err)
+		return false
+	}
+
+	if _, err := pkt.VerifySignedMessage([]byte(jwtToken)); err != nil {
+		log.Error().Msgf("OpenPubkey JWT signature verification failed: %s", err)
+		return false
+	}
+
+	cic, err := pkt.GetCicValues()
+	if err != nil {
+		log.Error().Msgf("OpenPubkey CIC is wrong: %s", err)
+		return false
+	}
+
+	upk := cic.PublicKey()
+	var rawkey interface{} // This is the raw key, like *rsa.PrivateKey or *ecdsa.PrivateKey
+	if err := upk.Raw(&rawkey); err != nil {
+		log.Error().Msgf("OpenPubkey CIC is wrong: %s", err)
+		return false
+	}
+
+	token, err := jwt.Parse(jwtToken,
+		func(unvalidatedToken *jwt.Token) (interface{}, error) {
+			log.Debug().Msgf("token method: %s, pubkey = %T %+v", unvalidatedToken.Method.Alg(), rawkey, rawkey)
+			switch unvalidatedToken.Method.Alg() {
+			case "RS256", "EdDSA", "ES256":
+				return rawkey, nil
+			}
+			return nil, fmt.Errorf("unsupported signature algorithm '%s' for %T", unvalidatedToken.Method.Alg(), v)
+		},
 		jwt.WithIssuer(v.username),
 		jwt.WithSubject("ssh3"),
 		jwt.WithIssuedAt(),
 		jwt.WithAudience("unused"),
-		jwt.WithValidMethods([]string{"RS256", "EdDSA", "ES256"}),
-	)
-
-	unvalidatedToken, _, err := parser.ParseUnverified(jwtToken, claims)
-	if err != nil {
-		log.Error().Msgf("invalid OpenPubkey JWT: %s", err)
+		jwt.WithValidMethods([]string{"RS256", "EdDSA", "ES256"}))
+	if err != nil || !token.Valid {
+		log.Error().Msgf("invalid private key token: %s", err)
 		return false
 	}
-	if claims, ok := unvalidatedToken.Claims.(jwt.MapClaims); ok {
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		if _, ok = claims["exp"]; !ok {
 			return false
 		}
@@ -61,55 +114,8 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 			log.Error().Msgf("rsa verification failed: the jti claim does not contain the base64-encoded conversation ID")
 			return false
 		}
-		if pktCom, ok := claims["pkt"]; ok {
-			// TODO: determine OP to use from config rather than just assume Google
-			opOptions := providers.GetDefaultGoogleOpOptions()
-			opOptions.GQSign = false
-			op := providers.NewGoogleOpWithOptions(opOptions)
-			opkVerifier, err := verifier.New(op)
-
-			if err != nil {
-				log.Error().Msgf("failed to configure openpubkey verifier: %s", err)
-				return false
-			}
-			pkt, err := pktoken.NewFromCompact([]byte(pktCom.(string)))
-			if err != nil {
-				log.Error().Msgf("failed to deserialize compact PK Token: %s", err)
-				return false
-			}
-			err = opkVerifier.VerifyPKToken(context.Background(), pkt)
-			if err != nil {
-				log.Error().Msgf("failed to verify PK Token: %s", err)
-				return false
-			}
-
-			// _, err = pkt.VerifySignedMessage([]byte(jwtToken))
-			// if err != nil {
-			// 	log.Error().Msgf("JWT verification failure: %s", err)
-			// 	return false
-			// }
-
-			cic, err := pkt.GetCicValues()
-			if err != nil {
-				log.Error().Msgf("OpenPubkey CIC deserialization failure: %s", err)
-				return false
-			}
-
-			//TODO: Check algorithm
-			//TODO: Verify this inside OpenPubkey
-			_, err = jws.Verify([]byte(jwtToken), jws.WithKey(cic.PublicKey().Algorithm(), cic.PublicKey()))
-			if err != nil {
-				log.Error().Msgf("OpenPubkey JWT signature verification failed: %s", err)
-				return false
-			}
-
-			log.Debug().Msgf("PK Token verified")
-
-		} else {
-			return false
-		}
 	} else {
-		log.Error().Msgf("bad JWT claims type: %T", unvalidatedToken.Claims)
+		log.Error().Msgf("bad JWT claims type: %T", token.Claims)
 		return false
 	}
 
@@ -119,7 +125,17 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 }
 
 func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIdentityVerifier, error) {
-	log.Debug().Msgf("OpenPubkey auth plugin: parse identity string")
+	log.Debug().Msgf("OpenPubkey auth plugin: parse identity string %s", identityStr)
+
+	identityStrArr := strings.Split(identityStr, " ")
+	// TODO: "opk" should be a constant
+	if len(identityStrArr) != 4 || identityStrArr[0] != "opk" {
+		return nil, fmt.Errorf("incorrect authorized identity, %s", identityStr)
+	}
+	clientId := identityStrArr[1]
+	issuer := identityStrArr[2]
+	email := identityStrArr[3]
+
 	// pubkey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
 	// // we should not return an error when the format does not match a public key, we should just return a nil RequestIdentityVerifier
 	// if err != nil {
@@ -138,8 +154,10 @@ func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIden
 	// 	}, nil
 
 	return &OpenPubkeyIdentityVerifier{
-		// pubkey:   cryptoPublicKey.CryptoPublicKey(),
-		username: username,
+		username:     username,
+		clientIdOidc: clientId,
+		issuerOidc:   issuer,
+		email:        email,
 	}, nil
 
 	// default:

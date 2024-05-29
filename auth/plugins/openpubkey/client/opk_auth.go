@@ -2,8 +2,11 @@ package openpubkey_authentication
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/francoismichel/ssh3"
 	"github.com/francoismichel/ssh3/auth"
@@ -104,22 +107,47 @@ func (*OpenPubkeyAuthMethod) PrepareRequestForAuth(request *http.Request, sshAge
 		return err
 	}
 
-	jwtBearerKey := opkClient.GetSigner()
-	signingMethod := jwt.SigningMethodES256
+	// jwtBearerKey := opkClient.GetSigner()
+	// signingMethod := jwt.SigningMethodES256
 	pktCom, err := pkt.Compact()
 	if err != nil {
 		return err
 	}
+	convID := conversation.ConversationID()
+	b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
 
-	kid, err := pkt.Hash()
+	claims := jwt.MapClaims{
+		"iss":       username,
+		"iat":       jwt.NewNumericDate(time.Now()),
+		"exp":       jwt.NewNumericDate(time.Now().Add(10 * time.Second)),
+		"sub":       "ssh3",
+		"aud":       "unused",
+		"client_id": fmt.Sprintf("ssh3-%s", username),
+		"jti":       b64ConvID,
+	}
+	msg, err := json.Marshal(claims)
 	if err != nil {
 		return err
 	}
-	bearerToken, err := ssh3.BuildOPKBearerToken(signingMethod, jwtBearerKey, username, conversation, string(pktCom), kid)
+
+	// // TODO: message should include username as well
+	// msg := []byte(b64ConvID)
+
+	osm, err := pkt.NewSignedMessage(msg, opkClient.GetSigner())
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", bearerToken))
+
+	// kid, err := pkt.Hash()
+	// if err != nil {
+	// 	return err
+	// }
+
+	// bearerToken, err := ssh3.BuildOPKBearerToken(signingMethod, jwtBearerKey, username, conversation, string(pktCom), kid)
+	// if err != nil {
+	// 	return err
+	// }
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s#%s", osm, pktCom))
 
 	return nil
 }

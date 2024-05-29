@@ -370,3 +370,28 @@ func BuildOPKBearerToken(signingMethod jwt.SigningMethod, key interface{}, usern
 	}
 	return signedString, nil
 }
+
+func BuildOPKBearerToken2(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation, pkToken string, kid string) (string, error) {
+	convID := conversation.ConversationID()
+	b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
+	token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
+		"iss":       username,
+		"iat":       jwt.NewNumericDate(time.Now()),
+		"exp":       jwt.NewNumericDate(time.Now().Add(10 * time.Second)),
+		"sub":       "ssh3",
+		"aud":       "unused",
+		"client_id": fmt.Sprintf("ssh3-%s", username),
+		"jti":       b64ConvID,
+		"pkt":       pkToken,
+		"typ":       "osm", // OSM (OpenPubkey Signed Message)
+	})
+	token.Header["typ"] = "osm"
+	token.Header["kid"] = kid
+
+	// the jwt lib handles "any kind" of crypto signer
+	signedString, err := token.SignedString(key)
+	if err != nil {
+		return "", fmt.Errorf("could not sign token: %s", err)
+	}
+	return signedString, nil
+}
