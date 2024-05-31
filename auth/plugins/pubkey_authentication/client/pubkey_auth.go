@@ -72,8 +72,25 @@ var _ config.CLIOptionParser = &PrivkeyOptionParser{}
 
 // agentSigningMethod implements jwt.SigningMethod to use the SSH agent with the jwt lib
 type agentSigningMethod struct {
-	Agent agent.ExtendedAgent
-	Key   ssh.PublicKey
+	agent agent.ExtendedAgent
+	key   ssh.PublicKey
+	alg   string
+}
+
+func NewAgentSigningMethod(agent agent.ExtendedAgent, key ssh.PublicKey) (*agentSigningMethod, error) {
+	ret := &agentSigningMethod{
+		key:   key,
+		agent: agent,
+	}
+	switch key.Type() {
+	case "ssh-rsa":
+		ret.alg = "RS256"
+	case "ssh-ed25519":
+		ret.alg = "EdDSA"
+	default:
+		return nil, fmt.Errorf("unsupported key type for agent signing method")
+	}
+	return ret, nil
 }
 
 func (m *agentSigningMethod) Verify(signingString string, sig []byte, key interface{}) error {
@@ -85,7 +102,7 @@ func (m *agentSigningMethod) Sign(signingString string, key interface{}) ([]byte
 	if !ok {
 		return nil, fmt.Errorf("bad key type: %T instead of ssh.PublicKey", pk)
 	}
-	signature, err := m.Agent.SignWithFlags(pk, []byte(signingString), agent.SignatureFlagRsaSha256)
+	signature, err := m.agent.SignWithFlags(pk, []byte(signingString), agent.SignatureFlagRsaSha256)
 	if err != nil {
 		return nil, err
 	}
@@ -93,13 +110,7 @@ func (m *agentSigningMethod) Sign(signingString string, key interface{}) ([]byte
 }
 
 func (m *agentSigningMethod) Alg() string {
-	switch m.Key.Type() {
-	case "ssh-rsa":
-		return "RS256"
-	case "ssh-ed25519":
-		return "EdDSA"
-	}
-	return ""
+	return m.alg
 }
 
 type PubkeyAuthMethod struct {
@@ -114,9 +125,9 @@ func NewPubkeyAuthMethod(pubkey *agent.Key) *PubkeyAuthMethod {
 func (m *PubkeyAuthMethod) PrepareRequestForAuth(request *http.Request, sshAgent agent.ExtendedAgent, roundTripper *http3.RoundTripper, username string, conversation *ssh3.Conversation) error {
 	log.Debug().Msgf("try agent-based pubkey auth using pubkey %s", m.Key.String())
 
-	signingMethod := &agentSigningMethod{
-		Agent: sshAgent,
-		Key:   m.Key,
+	signingMethod, err := NewAgentSigningMethod(sshAgent, m.Key)
+	if err != nil {
+		return err
 	}
 
 	bearerToken, err := ssh3.BuildJWTBearerToken(signingMethod, m.Key, username, conversation)

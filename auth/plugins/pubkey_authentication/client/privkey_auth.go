@@ -132,6 +132,8 @@ func (m *PrivkeyFileAuthMethod) PrepareRequestForAuth(request *http.Request, ssh
 				filePubkey, _, _, _, err := ssh.ParseAuthorizedKey(pubkeyBytes)
 				if err == nil {
 					pubkey = filePubkey
+				} else {
+					log.Warn().Msgf("an error happened when trying to parse the %s.pub file for agent-based authentication: %s", m.Filename(), err)
 				}
 			}
 		}
@@ -145,7 +147,6 @@ func (m *PrivkeyFileAuthMethod) PrepareRequestForAuth(request *http.Request, ssh
 			}
 		}
 		// now, try to see of the agent manages this key
-		foundAgentKey := false
 		if pubkey != nil {
 			for _, agentKey := range agentKeys {
 				if bytes.Equal(agentKey.Marshal(), pubkey.Marshal()) {
@@ -158,22 +159,20 @@ func (m *PrivkeyFileAuthMethod) PrepareRequestForAuth(request *http.Request, ssh
 		}
 
 		// key not handled by agent, let's try to decrypt it ourselves
-		if !foundAgentKey {
-			fmt.Printf("passphrase for private key stored in %s:", m.Filename())
-			var passphraseBytes []byte
-			passphraseBytes, err = term.ReadPassword(int(syscall.Stdin))
-			fmt.Println()
-			if err != nil {
-				log.Error().Msgf("could not get passphrase: %s", err)
-				return err
-			}
-			passphrase := string(passphraseBytes)
-			m.passphrase = &passphrase
-			jwtBearerKey, signingMethod, err = m.getCryptoMaterial()
-			if err != nil {
-				log.Error().Msgf("could not load private key: %s", err)
-				return err
-			}
+		fmt.Printf("passphrase for private key stored in %s:", m.Filename())
+		var passphraseBytes []byte
+		passphraseBytes, err = term.ReadPassword(int(syscall.Stdin))
+		fmt.Println()
+		if err != nil {
+			log.Error().Msgf("could not get passphrase: %s", err)
+			return err
+		}
+		passphrase := string(passphraseBytes)
+		m.passphrase = &passphrase
+		jwtBearerKey, signingMethod, err = m.getCryptoMaterial()
+		if err != nil {
+			log.Error().Msgf("could not load private key: %s", err)
+			return err
 		}
 	} else if err != nil {
 		log.Warn().Msgf("Could not load private key: %s", err)
