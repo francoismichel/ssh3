@@ -52,7 +52,7 @@ type ClientAuthPlugin struct {
 	// A plugin can define one or more new SSH3 config options.
 	// A new option is defined by providing a dedicated option parser.
 	// The key in PluginOptions must be a unique name for each option
-	// and must not confict with any existing option
+	// and must not conflict with any existing option
 	// (good practice: "<your_repo_name>[-<option_name>]")
 	PluginOptions map[client_config.OptionName]client_config.OptionParser
 
