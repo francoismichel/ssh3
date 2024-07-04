@@ -6,7 +6,6 @@ require (
 	github.com/creack/pty v1.1.18
 	github.com/golang-jwt/jwt/v5 v5.0.0
 	github.com/kevinburke/ssh_config v1.2.0
-	github.com/lestrrat-go/jwx/v2 v2.0.21
 	github.com/onsi/ginkgo/v2 v2.13.0
 	github.com/onsi/gomega v1.29.0
 	github.com/openpubkey/openpubkey v0.3.1
@@ -41,6 +40,7 @@ require (
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/httprc v1.0.5 // indirect
 	github.com/lestrrat-go/iter v1.0.2 // indirect
+	github.com/lestrrat-go/jwx/v2 v2.0.21 // indirect
 	github.com/lestrrat-go/option v1.0.1 // indirect
 	github.com/libdns/libdns v0.2.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -74,4 +74,4 @@ require (
 
 go 1.21
 
-replace github.com/openpubkey/openpubkey v0.3.1 => github.com/openpubkey/openpubkey v0.3.1-0.20240511120348-024d958d6c26
+replace github.com/openpubkey/openpubkey v0.3.1 => github.com/openpubkey/openpubkey v0.3.1-0.20240609005634-cbc0eb2f8989
