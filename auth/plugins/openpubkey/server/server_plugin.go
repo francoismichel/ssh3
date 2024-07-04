@@ -35,6 +35,7 @@ type OpenPubkeyIdentityVerifier struct {
 func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64ConversationID string) bool {
 	authStr, wellFormattedB64Token := server_auth.ParseBearerAuth(request.Header.Get("Authorization"))
 	if !wellFormattedB64Token {
+		log.Error().Msgf("!wellFormattedB64Token %s ", request.Header.Get("Authorization"))
 		return false
 	}
 
@@ -85,6 +86,8 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 		return false
 	}
 
+	log.Error().Msgf("OpenPubkey: Parsing JWT")
+
 	token, err := jwt.Parse(jwtToken,
 		func(unvalidatedToken *jwt.Token) (interface{}, error) {
 			log.Debug().Msgf("token method: %s, pubkey = %T %+v", unvalidatedToken.Method.Alg(), rawkey, rawkey)
@@ -105,9 +108,12 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 	}
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		if _, ok = claims["exp"]; !ok {
+			log.Error().Msgf("missing exp")
+
 			return false
 		}
 		if clientId, ok := claims["client_id"]; !ok || clientId != fmt.Sprintf("ssh3-%s", v.username) {
+			log.Error().Msgf("invalid client_id %s", clientId)
 			return false
 		}
 		if jti, ok := claims["jti"]; !ok || jti != base64ConversationID {
@@ -130,7 +136,9 @@ func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIden
 	identityStrArr := strings.Split(identityStr, " ")
 	// TODO: "opk" should be a constant
 	if len(identityStrArr) != 4 || identityStrArr[0] != "opk" {
-		return nil, fmt.Errorf("incorrect authorized identity, %s", identityStr)
+		log.Debug().Msgf("the identity string is not a compatiable openpubkey string, %s", identityStr)
+		// we should not return an error when the format does not match a public key, we should just return a nil RequestIdentityVerifier
+		return nil, fmt.Errorf("the identity string is not a compatiable openpubkey string, %s", identityStr)
 	}
 	clientId := identityStrArr[1]
 	issuer := identityStrArr[2]
@@ -144,6 +152,8 @@ func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIden
 	// }
 
 	log.Debug().Msg("parsing OpenPubkey config")
+	// TODO: Maybe construct the verifier here?
+
 	// switch pubkey.Type() {
 	// case "ssh-rsa", "ecdsa-sha2-nistp256", "ssh-ed25519":
 	// 	log.Debug().Msgf("parsing %s identity", pubkey.Type())

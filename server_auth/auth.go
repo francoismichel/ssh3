@@ -82,7 +82,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 		for _, abstractVerifier := range identityVerifiers {
 			switch verifier := abstractVerifier.(type) {
 			case *WrappedPluginVerifier:
-				log.Debug().Msgf("Testing verifier: %s,%T ", username, verifier)
+				log.Debug().Msgf("Testing verifier (username, verifier type): %s,%T ", username, verifier.RequestIdentityVerifier)
 
 				if verifier.Verify(r, base64ConvID) {
 					log.Debug().Msgf("request for user %s successfully verified by plugin", username)
