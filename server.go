@@ -91,6 +91,19 @@ func NewServer(maxPacketSize uint64, defaultDatagramQueueSize uint64, h3Server *
 				return false, err
 			}
 			newChannel = &TCPForwardingChannelImpl{Channel: newChannel, RemoteAddr: tcpAddr}
+
+		case "request-reverse-tcp":
+			tcpAddrLocal, tcpAddrRemote, err := parseTCPRequestReverseHeader(channelInfo.ChannelID, &StreamByteReader{stream})
+			if err != nil {
+				return false, err
+			}
+
+			newChannel = &TCPReverseForwardingChannelImpl{Channel: newChannel, RemoteAddr: tcpAddrRemote, LocalAddr: tcpAddrLocal}
+			//The channel is only used to receive the data featuring the reverse proxy and is closed afterwards
+			//In OpenSSH, the client does this by sendinng a GLOBAL_REQUEST "tcpip-forward", but I think in SSH3 global messages are not implemented
+
+			//tcpAddrLocal: Local socket within the server machine where will be proxied a local service at reach of the ssh3 client
+			//tcpAddrRemote: The remote socket at reach of the SSH3 client to be proxied within the machine hosting the ssh3 server
 		}
 		conversation.channelsAcceptQueue.Add(newChannel)
 		return true, nil
