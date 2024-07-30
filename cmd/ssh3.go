@@ -322,7 +322,7 @@ func ClientMain() int {
 	oidcConfigFileName := flag.String("oidc-config", "", "OpenID Connect json config file containing the \"client_id\" and \"client_secret\" fields needed for most identity providers")
 	verbose := flag.Bool("v", false, "if set, enable verbose mode")
 	displayVersion := flag.Bool("version", false, "if set, displays the software version on standard output and exit")
-	doPKCE := flag.Bool("do-pkce", false, "if set perform PKCE challenge-response with oidc")
+	noPKCE := flag.Bool("no-pkce", false, "if set perform PKCE challenge-response with oidc")
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
@@ -354,6 +354,10 @@ func ClientMain() int {
 	}
 
 	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
+
+	if *noPKCE {
+		log.Warn().Msgf("Disabling PKCE is considered insecure to machine-in-the-middle attacks. Consider enabling PKCE by default!")
+	}
 
 	knownHostsPath := path.Join(ssh3Dir, "known_hosts")
 	knownHosts, skippedLines, err := ssh3.ParseKnownHosts(knownHostsPath)
@@ -531,7 +535,7 @@ func ClientMain() int {
 			for _, issuerConfig := range oidcConfig {
 				if *issuerUrl == issuerConfig.IssuerUrl {
 					log.Debug().Msgf("found issuer %s matching the issuer specified in the command-line", issuerConfig.IssuerUrl)
-					cliAuthMethods = append(cliAuthMethods, ssh3.NewOidcAuthMethod(*doPKCE, issuerConfig))
+					cliAuthMethods = append(cliAuthMethods, ssh3.NewOidcAuthMethod(!*noPKCE, issuerConfig))
 				} else {
 					log.Debug().Msgf("issuer %s does not match issuer URL %s specified in the command-line", issuerConfig.IssuerUrl, *issuerUrl)
 				}
