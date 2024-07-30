@@ -3,6 +3,7 @@ on:
   pull_request:
     paths-ignore:
       - '**/README.md'
+  workflow_dispatch:
 jobs:
   build-linux:
     strategy:
