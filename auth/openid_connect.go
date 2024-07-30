@@ -65,7 +65,7 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPK
 		return "", fmt.Errorf("error when generating random verifier: %s", err.Error())
 	}
 
-	verifier := string(challengeVerifierBytes[:])
+	verifier := oauth2.GenerateVerifier()
 
 	tokenChannel := make(chan string)
 	mux := http.NewServeMux()
