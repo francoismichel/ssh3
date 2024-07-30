@@ -355,6 +355,10 @@ func ClientMain() int {
 
 	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
 
+	if *noPKCE {
+		log.Warn().Msgf("Disabling PKCE is considered insecure to machine-in-the-middle attacks. Consider enabling PKCE by default!")
+	}
+
 	knownHostsPath := path.Join(ssh3Dir, "known_hosts")
 	knownHosts, skippedLines, err := ssh3.ParseKnownHosts(knownHostsPath)
 	if len(skippedLines) != 0 {
