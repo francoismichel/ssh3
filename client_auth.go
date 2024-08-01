@@ -9,7 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/auth/oidc"
+	client_config "github.com/francoismichel/ssh3/client/config"
 	"github.com/francoismichel/ssh3/util"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -22,10 +23,10 @@ import (
 type PasswordAuthMethod struct{}
 type OidcAuthMethod struct {
 	doPKCE bool
-	config *auth.OIDCConfig
+	config *oidc.OIDCConfig
 }
 
-func (m *OidcAuthMethod) OIDCConfig() *auth.OIDCConfig {
+func (m *OidcAuthMethod) OIDCConfig() *oidc.OIDCConfig {
 	return m.config
 }
 
@@ -48,7 +49,7 @@ func (m *PasswordAuthMethod) IntoIdentity(password string) Identity {
 	return passwordIdentity(password)
 }
 
-func NewOidcAuthMethod(doPKCE bool, config *auth.OIDCConfig) *OidcAuthMethod {
+func NewOidcAuthMethod(doPKCE bool, config *oidc.OIDCConfig) *OidcAuthMethod {
 	return &OidcAuthMethod{
 		doPKCE: doPKCE,
 		config: config,
@@ -144,7 +145,7 @@ type privkeyFileIdentity struct {
 }
 
 func (i *privkeyFileIdentity) SetAuthorizationHeader(req *http.Request, username string, conversation *Conversation) error {
-	bearerToken, err := buildJWTBearerToken(i.signingMethod, i.privkey, username, conversation)
+	bearerToken, err := BuildJWTBearerToken(i.signingMethod, i.privkey, username, conversation)
 	if err != nil {
 		return err
 	}
@@ -203,7 +204,7 @@ func (i *agentBasedIdentity) SetAuthorizationHeader(req *http.Request, username 
 		Key:   i.pubkey,
 	}
 
-	bearerToken, err := buildJWTBearerToken(signingMethod, i.pubkey, username, conversation)
+	bearerToken, err := BuildJWTBearerToken(signingMethod, i.pubkey, username, conversation)
 	if err != nil {
 		return err
 	}
@@ -253,7 +254,8 @@ func (i rawBearerTokenIdentity) String() string {
 	return "raw-bearer-identity"
 }
 
-func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, port int, user string, urlPath string, authMethodsToTry []interface{}, err error) {
+func GetConfigForHost(host string, config *ssh_config.Config, pluginsOptionsParsers map[client_config.OptionName]client_config.OptionParser) (hostname string, port int, user string, urlPath string, authMethodsToTry []interface{}, pluginOptions map[client_config.OptionName]client_config.Option, err error) {
+	pluginOptions = make(map[client_config.OptionName]client_config.Option)
 	port = -1
 	if config == nil {
 		return
@@ -298,10 +300,32 @@ func GetConfigForHost(host string, config *ssh_config.Config) (hostname string, 
 	for _, identityFile := range identityFiles {
 		authMethodsToTry = append(authMethodsToTry, NewPrivkeyFileAuthMethod(identityFile))
 	}
-	return hostname, port, user, urlPath, authMethodsToTry, nil
+
+	log.Debug().Msgf("parsing options using option parsers: %+v", pluginsOptionsParsers)
+	for optionName, optionParser := range pluginsOptionsParsers {
+		log.Debug().Msgf("search for option %s (%s) in config", optionName, optionParser.OptionConfigName())
+		var optionValues []string
+		optionValues, err = config.GetAll(host, optionParser.OptionConfigName())
+		if err != nil {
+			log.Error().Msgf("config.Get returned an error: %s", err)
+			return
+		}
+		if optionValues != nil {
+			var option client_config.Option
+			log.Debug().Msgf("found value(s) for %s: %s", optionParser.OptionConfigName(), optionValues)
+			option, err = optionParser.Parse(optionValues)
+			if err != nil {
+				log.Error().Msgf("config option parser returned an error: %s", err)
+				return
+			}
+			pluginOptions[optionName] = option
+		}
+	}
+
+	return hostname, port, user, urlPath, authMethodsToTry, pluginOptions, nil
 }
 
-func buildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation) (string, error) {
+func BuildJWTBearerToken(signingMethod jwt.SigningMethod, key interface{}, username string, conversation *Conversation) (string, error) {
 	convID := conversation.ConversationID()
 	b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
 	token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
