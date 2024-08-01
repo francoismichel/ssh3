@@ -248,6 +248,84 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 }
 
+func forwardReverseTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
+	go func() {
+		defer channel.Close()
+		defer conn.CloseRead()
+		buf := make([]byte, channel.MaxPacketSize())
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			n, err := conn.Read(buf)
+			if err != nil && err != io.EOF {
+				log.Error().Msgf("could read data on TCP socket: %s", err)
+				return
+			}
+			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if errWrite != nil {
+				switch quicErr := errWrite.(type) {
+				case *quic.StreamError:
+					if quicErr.Remote && quicErr.ErrorCode == 42 {
+						log.Info().Msgf("writing was canceled by the remote, closing the socket: %s", errWrite)
+					} else {
+						log.Error().Msgf("unhandled quic stream error: %+v", quicErr)
+					}
+				default:
+					log.Error().Msgf("could send data on channel: %s", errWrite)
+				}
+				return
+			}
+			if err == io.EOF {
+				return
+			}
+		}
+	}()
+
+	go func() {
+		defer conn.CloseWrite()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			genericMessage, err := channel.NextMessage()
+			if err == io.EOF {
+				log.Info().Msgf("eof on reverse-tcp-forwarding channel %d", channel.ChannelID())
+			} else if err != nil {
+				log.Error().Msgf("could get message from tcp forwarding channel: %s", err)
+				return
+			}
+
+			// nothing to process
+			if genericMessage == nil {
+				return
+			}
+
+			switch message := genericMessage.(type) {
+			case *ssh3Messages.DataOrExtendedDataMessage:
+				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
+					_, err := conn.Write([]byte(message.Data))
+					if err != nil {
+						log.Error().Msgf("could not write data on TCP socket: %s", err)
+						// signal the write error to the peer
+						channel.CancelRead()
+						return
+					}
+				} else {
+					log.Warn().Msgf("ignoring message data of unexpected type %d on TCP forwarding channel %d", message.DataType, channel.ChannelID())
+				}
+			default:
+				log.Warn().Msgf("ignoring message of type %T on TCP forwarding channel %d", message, channel.ChannelID())
+			}
+		}
+	}()
+
+}
+
 func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string) error {
 	setupEnv(user, runningCommand, authAgentSocketPath)
 	if openPty != nil {
@@ -548,6 +626,32 @@ func handleTCPForwardingChannel(ctx context.Context, user *unix_util.User, conv 
 		return err
 	}
 	forwardTCPInBackground(ctx, channel, conn)
+	return nil
+}
+
+func handleTCPReverseForwardingChannel(ctx context.Context, user *unix_util.User, conv *ssh3.Conversation, channel *ssh3.TCPReverseForwardingChannelImpl) error {
+	conn, err := net.ListenTCP("tcp", channel.LocalAddr)
+	if err != nil {
+		log.Error().Msgf("could listen on TCP socket: %s", err)
+		return nil
+	}
+
+	go func() {
+		for {
+			conn, err := conn.AcceptTCP()
+			if err != nil {
+				log.Error().Msgf("could read on UDP socket: %s", err)
+				return
+			}
+
+			forwardingChannel, err := conv.OpenTCPReverseForwardingChannel(30000, 10, channel.RemoteAddr)
+			if err != nil {
+				log.Error().Msgf("could not open new TCP reverse forwarding channel: %s", err)
+				return
+			}
+			forwardReverseTCPInBackground(ctx, forwardingChannel, conn)
+		}
+	}()
 	return nil
 }
 
@@ -855,6 +959,8 @@ func ServerMain() int {
 				handleUDPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
 			case *ssh3.TCPForwardingChannelImpl:
 				handleTCPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
+			case *ssh3.TCPReverseForwardingChannelImpl:
+				handleTCPReverseForwardingChannel(conv.Context(), authenticatedUser, conv, c)
 			default:
 				runningSessions.Insert(channel, &runningSession{
 					channelState: LARVAL,
