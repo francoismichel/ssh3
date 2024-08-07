@@ -47,12 +47,19 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 	jwtToken := authStrArr[0]
 	pktCom := authStrArr[1]
 
-	// Construct this using clientId
-	opOptions := providers.GetDefaultGoogleOpOptions()
-	opOptions.GQSign = false
-	op := providers.NewGoogleOpWithOptions(opOptions)
+	var op providers.OpenIdProvider
+	// Add new openID Provider support here
+	switch v.issuerOidc {
+	case "https://accounts.google.com":
+		opOptions := providers.GetDefaultGoogleOpOptions()
+		opOptions.ClientID = v.clientIdOidc
+		opOptions.GQSign = false
+		op = providers.NewGoogleOpWithOptions(opOptions)
+	default:
+		log.Error().Msgf("openID Provider is not supported: issuer=%s", v.issuerOidc)
+		return false
+	}
 	opkVerifier, err := verifier.New(op)
-
 	if err != nil {
 		log.Error().Msgf("failed to configure openpubkey verifier: %s", err)
 		return false
@@ -130,6 +137,8 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 	return true
 }
 
+// OpenPubkeyAuthPlugin takes a username and identityStr from the authorizedIdentity file
+// and either rejects the identity string or returns a verifier.
 func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIdentityVerifier, error) {
 	log.Debug().Msgf("OpenPubkey auth plugin: parse identity string %s", identityStr)
 
@@ -144,24 +153,7 @@ func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIden
 	issuer := identityStrArr[2]
 	email := identityStrArr[3]
 
-	// pubkey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(identityStr))
-	// // we should not return an error when the format does not match a public key, we should just return a nil RequestIdentityVerifier
-	// if err != nil {
-	// 	log.Debug().Msgf("the identity string is not a compatible pubkey string")
-	// 	return nil, nil
-	// }
-
 	log.Debug().Msg("parsing OpenPubkey config")
-	// TODO: Maybe construct the verifier here?
-
-	// switch pubkey.Type() {
-	// case "ssh-rsa", "ecdsa-sha2-nistp256", "ssh-ed25519":
-	// 	log.Debug().Msgf("parsing %s identity", pubkey.Type())
-	// 	cryptoPublicKey := pubkey.(ssh.CryptoPublicKey)
-	// 	return &OpenPubkeyIdentityVerifier{
-	// 		pubkey:   cryptoPublicKey.CryptoPublicKey(),
-	// 		username: username,
-	// 	}, nil
 
 	return &OpenPubkeyIdentityVerifier{
 		username:     username,
@@ -169,8 +161,4 @@ func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIden
 		issuerOidc:   issuer,
 		email:        email,
 	}, nil
-
-	// default:
-	// 	return nil, fmt.Errorf("SSH authorized identity \"%s\" not implemented", pubkey.Type())
-	// }
 }
