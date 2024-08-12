@@ -272,11 +272,15 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					Eventually(session).Should(Exit(0))
 				})
 
-				// It checks that upon executing the client with the -forward-tcp,
-				// a TCP socket is indeed well open on the client and is indeed forwarded
-				// through the SSH3 connection towards the specified remote IP and port.
+				// It checks the client with the -forward-tcp or -reverse-tcp forwarding options.
+				// As forward-tcp, a TCP socket is indeed well open on the client and is forwarded
+				// through the SSH3 connection towards the specified remote IP and port at server´s reach.
+				// When reverse-tcp is specified, a TCP socket is open on the server and forwarded through
+				// the SSH3 connection towards the specified remote IP and port at client's reach.
+				// As the server and the client are run on the same machine the same test can be reused
+				// for both cases.
 				Context("TCP port forwarding", func() {
-					testTCPPortForwarding := func(localPort uint16, proxyJump bool, remoteAddr *net.TCPAddr, messageFromClient string, messageFromServer string) {
+					testTCPPortForwarding := func(localPort uint16, proxyJump bool, remoteAddr *net.TCPAddr, messageFromClient string, messageFromServer string, forwardingType string) {
 						localIP := "[::1]"
 						if remoteAddr.IP.To4() != nil {
 							localIP = "127.0.0.1"
@@ -320,7 +324,7 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						if proxyJump {
 							additionalArgs = append(additionalArgs, "-proxy-jump", fmt.Sprintf("%s@%s%s", username, proxyServerBind, DEFAULT_PROXY_URL_PATH))
 						}
-						additionalArgs = append(additionalArgs, "-forward-tcp", fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
+						additionalArgs = append(additionalArgs, forwardingType, fmt.Sprintf("%d/%s@%d", localPort, remoteAddr.IP, remoteAddr.Port))
 						clientArgs := getClientArgs(rsaPrivKeyPath, additionalArgs...)
 						command := exec.Command(ssh3Path, clientArgs...)
 						session, err := Start(command, GinkgoWriter, GinkgoWriter)
@@ -363,11 +367,13 @@ var _ = Describe("Testing the ssh3 cli", func() {
 					}
 
 					It("works with small messages", func() {
-						testTCPPortForwarding(8080, false, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server")
+						testTCPPortForwarding(8080, false, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server", "-forward-tcp")
+						testTCPPortForwarding(8090, false, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server", "-reverse-tcp")
 					})
 
 					It("works through proxy jump", func() {
-						testTCPPortForwarding(8080, true, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server")
+						testTCPPortForwarding(8080, true, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server", "-forward-tcp")
+						testTCPPortForwarding(8091, true, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, "hello from client", "hello from server", "-reverse-tcp")
 					})
 
 					It("works with messages larger than a typical MTU", func() {
@@ -380,7 +386,8 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						n, err = rng.Read(messageFromServer)
 						Expect(n).To(Equal(len(messageFromServer)))
 						Expect(err).ToNot(HaveOccurred())
-						testTCPPortForwarding(8081, false, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer))
+						testTCPPortForwarding(8081, false, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer), "-forward-tcp")
+						testTCPPortForwarding(8092, false, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9090}, string(messageFromClient), string(messageFromServer), "-reverse-tcp")
 					})
 
 					It("works with IPv6 addresses", func() {
@@ -391,7 +398,8 @@ var _ = Describe("Testing the ssh3 cli", func() {
 						if !IPv6LoopbackAvailable(addrs) {
 							Skip("IPv6 not available on this host")
 						}
-						testTCPPortForwarding(8082, false, &net.TCPAddr{IP: net.ParseIP("::1"), Port: 9091}, "hello from client", "hello from server")
+						testTCPPortForwarding(8082, false, &net.TCPAddr{IP: net.ParseIP("::1"), Port: 9090}, "hello from client", "hello from server", "-forward-tcp")
+						testTCPPortForwarding(8093, false, &net.TCPAddr{IP: net.ParseIP("::1"), Port: 9090}, "hello from client", "hello from server", "-reverse-tcp")
 					})
 				})
 			})
