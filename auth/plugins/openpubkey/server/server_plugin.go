@@ -108,7 +108,7 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 		jwt.WithIssuer(v.username),
 		jwt.WithSubject("ssh3"),
 		jwt.WithIssuedAt(),
-		jwt.WithLeeway(30*time.Second), // Be forgiving of small clock differences
+		jwt.WithLeeway(120*time.Second), // Be forgiving of small clock differences
 		jwt.WithAudience("unused"),
 		jwt.WithValidMethods([]string{"RS256", "EdDSA", "ES256"}))
 	if err != nil || !token.Valid {
