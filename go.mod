@@ -8,7 +8,7 @@ require (
 	github.com/kevinburke/ssh_config v1.2.0
 	github.com/onsi/ginkgo/v2 v2.13.0
 	github.com/onsi/gomega v1.29.0
-	github.com/openpubkey/openpubkey v0.3.1
+	github.com/openpubkey/openpubkey v0.4.0
 	github.com/quic-go/quic-go v0.40.1-0.20240102075208-1083d1fb8f98
 	github.com/rs/zerolog v1.31.0
 	go.uber.org/zap v1.24.0
@@ -73,5 +73,3 @@ require (
 )
 
 go 1.21
-
-replace github.com/openpubkey/openpubkey v0.3.1 => github.com/openpubkey/openpubkey v0.3.1-0.20240609005634-cbc0eb2f8989

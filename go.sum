@@ -98,8 +98,8 @@ github.com/onsi/ginkgo/v2 v2.13.0 h1:0jY9lJquiL8fcf3M4LAXN5aMlS/b2BV86HFFPCPMgE4
 github.com/onsi/ginkgo/v2 v2.13.0/go.mod h1:TE309ZR8s5FsKKpuB1YAQYBzCaAfUgatB/xlT/ETL/o=
 github.com/onsi/gomega v1.29.0 h1:KIA/t2t5UBzoirT4H9tsML45GEbo3ouUnBHsCfD2tVg=
 github.com/onsi/gomega v1.29.0/go.mod h1:9sxs+SwGrKI0+PWe4Fxa9tFQQBG5xSsSbMXOI8PPpoQ=
-github.com/openpubkey/openpubkey v0.3.1-0.20240609005634-cbc0eb2f8989 h1:1A52US79yJR1JG4I5yRhtOG6FyUFYmCeFkFkUAVnJu4=
-github.com/openpubkey/openpubkey v0.3.1-0.20240609005634-cbc0eb2f8989/go.mod h1:p7TJUmAhQlxa87UwM41Ro2W3BRp2H+bCwlQQzlyXPnU=
+github.com/openpubkey/openpubkey v0.4.0 h1:qI4T/a3+C7q8OJTkfFzq7oS9wvkJZaxfGgkRwDMqn4k=
+github.com/openpubkey/openpubkey v0.4.0/go.mod h1:p7TJUmAhQlxa87UwM41Ro2W3BRp2H+bCwlQQzlyXPnU=
 github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e/go.mod h1:pJLUxLENpZxwdsKMEsNbx1VGcRFpLqf3715MtcvvzbA=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
