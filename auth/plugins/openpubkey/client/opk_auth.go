@@ -35,20 +35,18 @@ const OPENPUBKEY_OPTION_NAME = "github.com/openpubkey/ssh3-openpubkey_auth"
 // impements client-side pubkey-based authentication
 
 type OpenPubkeyAuthOption struct {
-	filenames []string
+	issuer string
 }
 
-// impements client-side pubkey-based authentication
-
-func (o *OpenPubkeyAuthOption) Filenames() []string {
-	return o.filenames
+func (o *OpenPubkeyAuthOption) Issuer() string {
+	return o.issuer
 }
 
 type OpenPubkeyOptionParser struct{}
 
 // FlagName implements config.CLIOptionParser.
 func (*OpenPubkeyOptionParser) FlagName() string {
-	return "opk"
+	return "openpubkey"
 }
 
 // IsBoolFlag implements config.CLIOptionParser.
@@ -58,64 +56,71 @@ func (*OpenPubkeyOptionParser) IsBoolFlag() bool {
 
 // OptionConfigName implements config.OptionParser.
 func (*OpenPubkeyOptionParser) OptionConfigName() string {
-	return "IdentityFile"
+	return "OpenPubkey"
 }
 
 // Parse implements config.OptionParser.
 func (*OpenPubkeyOptionParser) Parse(values []string) (config.Option, error) {
+	fmt.Println("OpenPubkeyOptionParser.Parse", values)
+
 	return &OpenPubkeyAuthOption{
-		filenames: values,
+		issuer: values[0],
 	}, nil
 }
 
 // Usage implements config.CLIOptionParser.
 func (*OpenPubkeyOptionParser) Usage() string {
-	return "private key file"
+	return "OpenID Provider to use"
 }
 
 var _ config.CLIOptionParser = &OpenPubkeyOptionParser{}
 
 var openpubkeyPluginFunc auth.GetClientAuthMethodsFunc = func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *config.Config, roundTripper *http3.RoundTripper) ([]auth.ClientAuthMethod, error) {
-	// for _, opt := range clientConfig.Options() {
-	// 	if o, ok := opt.(*OpenPubkeyAuthOption); ok {
-	// 		var methods []auth.ClientAuthMethod
-	// 		for _, filename := range o.Filenames() {
-	// 			methods = append(methods, &PrivkeyFileAuthMethod{filename: filename})
-	// 		}
-	// 		return methods, nil
-	// 	}
-	// }
-	// return nil, nil
-	methods := []auth.ClientAuthMethod{&OpenPubkeyAuthMethod{}}
-	return methods, nil
+	for _, opt := range clientConfig.Options() {
+		if o, ok := opt.(*OpenPubkeyAuthOption); ok {
+			// We currently only support Google right now
+			if o.Issuer() == "https://accounts.google.com" {
+				opOptions := providers.GetDefaultGoogleOpOptions()
+				opOptions.GQSign = false
+				op := providers.NewGoogleOpWithOptions(opOptions)
+
+				methods := []auth.ClientAuthMethod{
+					&OpenPubkeyAuthMethod{
+						Issuer:   o.Issuer(),
+						Provider: op,
+					}}
+				return methods, nil
+
+			} else {
+				log.Error().Msgf("OpenID Provider %s not supported", o.Issuer())
+			}
+		}
+	}
+
+	return nil, nil
 }
 
 type OpenPubkeyAuthMethod struct {
+	Issuer   string
+	Provider providers.OpenIdProvider
 }
 
-func (*OpenPubkeyAuthMethod) PrepareRequestForAuth(request *http.Request, sshAgent agent.ExtendedAgent, roundTripper *http3.RoundTripper, username string, conversation *ssh3.Conversation) error {
-	opOptions := providers.GetDefaultGoogleOpOptions()
-	opOptions.GQSign = false
-	op := providers.NewGoogleOpWithOptions(opOptions)
+func (o *OpenPubkeyAuthMethod) PrepareRequestForAuth(request *http.Request, sshAgent agent.ExtendedAgent, roundTripper *http3.RoundTripper, username string, conversation *ssh3.Conversation) error {
+	op := o.Provider
 	opkClient, err := client.New(op)
 	if err != nil {
 		return err
 	}
-
 	pkt, err := opkClient.Auth(context.Background())
 	if err != nil {
 		return err
 	}
-
-	// jwtBearerKey := opkClient.GetSigner()
-	// signingMethod := jwt.SigningMethodES256
 	pktCom, err := pkt.Compact()
 	if err != nil {
 		return err
 	}
 	convID := conversation.ConversationID()
 	b64ConvID := base64.StdEncoding.EncodeToString(convID[:])
-
 	claims := jwt.MapClaims{
 		"iss":       username,
 		"iat":       jwt.NewNumericDate(time.Now()),
@@ -130,24 +135,10 @@ func (*OpenPubkeyAuthMethod) PrepareRequestForAuth(request *http.Request, sshAge
 		return err
 	}
 
-	// // TODO: message should include username as well
-	// msg := []byte(b64ConvID)
-
 	osm, err := pkt.NewSignedMessage(msg, opkClient.GetSigner())
 	if err != nil {
 		return err
 	}
-
-	// kid, err := pkt.Hash()
-	// if err != nil {
-	// 	return err
-	// }
-
-	// bearerToken, err := ssh3.BuildOPKBearerToken(signingMethod, jwtBearerKey, username, conversation, string(pktCom), kid)
-	// if err != nil {
-	// 	return err
-	// }
 	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s#%s", osm, pktCom))
-
 	return nil
 }
