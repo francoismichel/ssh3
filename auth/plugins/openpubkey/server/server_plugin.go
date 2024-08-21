@@ -48,19 +48,19 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 	jwtToken := authStrArr[0]
 	pktCom := authStrArr[1]
 
-	var op providers.OpenIdProvider
+	var provider providers.OpenIdProvider
 	// Add new openID Provider support here
 	switch v.issuerOidc {
 	case "https://accounts.google.com":
-		opOptions := providers.GetDefaultGoogleOpOptions()
-		opOptions.ClientID = v.clientIdOidc
-		opOptions.GQSign = false
-		op = providers.NewGoogleOpWithOptions(opOptions)
+		providerOpts := providers.GetDefaultGoogleOpOptions()
+		providerOpts.ClientID = v.clientIdOidc
+		providerOpts.GQSign = false
+		provider = providers.NewGoogleOpWithOptions(providerOpts)
 	default:
 		log.Error().Msgf("openID Provider is not supported: issuer=%s", v.issuerOidc)
 		return false
 	}
-	opkVerifier, err := verifier.New(op)
+	opkVerifier, err := verifier.New(provider)
 	if err != nil {
 		log.Error().Msgf("failed to configure openpubkey verifier: %s", err)
 		return false
@@ -77,28 +77,25 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 	}
 
 	if _, err := pkt.VerifySignedMessage([]byte(jwtToken)); err != nil {
-		log.Error().Msgf("OpenPubkey JWT signature verification failed: %s", err)
+		log.Error().Msgf("openPubkey JWT signature verification failed: %s", err)
 		return false
 	}
 
 	cic, err := pkt.GetCicValues()
 	if err != nil {
-		log.Error().Msgf("OpenPubkey CIC is wrong: %s", err)
+		log.Error().Msgf("openPubkey CIC is wrong: %s", err)
 		return false
 	}
 
 	upk := cic.PublicKey()
 	var rawkey interface{} // This is the raw key, like *rsa.PrivateKey or *ecdsa.PrivateKey
 	if err := upk.Raw(&rawkey); err != nil {
-		log.Error().Msgf("OpenPubkey CIC is wrong: %s", err)
+		log.Error().Msgf("openPubkey CIC is wrong: %s", err)
 		return false
 	}
 
-	log.Error().Msgf("OpenPubkey: Parsing JWT")
-
 	token, err := jwt.Parse(jwtToken,
 		func(unvalidatedToken *jwt.Token) (interface{}, error) {
-			log.Debug().Msgf("token method: %s, pubkey = %T %+v", unvalidatedToken.Method.Alg(), rawkey, rawkey)
 			switch unvalidatedToken.Method.Alg() {
 			case "RS256", "EdDSA", "ES256":
 				return rawkey, nil
@@ -118,7 +115,6 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		if _, ok = claims["exp"]; !ok {
 			log.Error().Msgf("missing exp")
-
 			return false
 		}
 		if clientId, ok := claims["client_id"]; !ok || clientId != fmt.Sprintf("ssh3-%s", v.username) {
@@ -133,9 +129,6 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 		log.Error().Msgf("bad JWT claims type: %T", token.Claims)
 		return false
 	}
-
-	log.Info().Msgf("Passed verification")
-
 	return true
 }
 

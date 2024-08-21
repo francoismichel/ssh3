@@ -25,8 +25,6 @@ func init() {
 		PluginOptions: map[config.OptionName]config.OptionParser{OPENPUBKEY_OPTION_NAME: &OpenPubkeyOptionParser{}},
 		PluginFunc:    openpubkeyPluginFunc,
 	}
-	log.Info().Msgf("Registering OpenPubkey")
-
 	plugins.RegisterClientAuthPlugin("openpubkey_auth", plugin)
 }
 
@@ -61,8 +59,6 @@ func (*OpenPubkeyOptionParser) OptionConfigName() string {
 
 // Parse implements config.OptionParser.
 func (*OpenPubkeyOptionParser) Parse(values []string) (config.Option, error) {
-	fmt.Println("OpenPubkeyOptionParser.Parse", values)
-
 	return &OpenPubkeyAuthOption{
 		issuer: values[0],
 	}, nil
@@ -78,36 +74,33 @@ var _ config.CLIOptionParser = &OpenPubkeyOptionParser{}
 var openpubkeyPluginFunc auth.GetClientAuthMethodsFunc = func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *config.Config, roundTripper *http3.RoundTripper) ([]auth.ClientAuthMethod, error) {
 	for _, opt := range clientConfig.Options() {
 		if o, ok := opt.(*OpenPubkeyAuthOption); ok {
-			// We currently only support Google right now
-			if o.Issuer() == "https://accounts.google.com" {
-				opOptions := providers.GetDefaultGoogleOpOptions()
-				opOptions.GQSign = false
-				op := providers.NewGoogleOpWithOptions(opOptions)
 
+			switch o.Issuer() {
+			// We currently only support Google right now
+			case "https://accounts.google.com":
+				providerOpts := providers.GetDefaultGoogleOpOptions()
+				providerOpts.GQSign = false
+				provider := providers.NewGoogleOpWithOptions(providerOpts)
 				methods := []auth.ClientAuthMethod{
 					&OpenPubkeyAuthMethod{
-						Issuer:   o.Issuer(),
-						Provider: op,
+						provider: provider,
 					}}
 				return methods, nil
-
-			} else {
-				log.Error().Msgf("OpenID Provider %s not supported", o.Issuer())
+			default:
+				log.Error().Msgf("openID Provider is not supported: issuer=%s", o.Issuer())
+				return nil, nil
 			}
 		}
 	}
-
 	return nil, nil
 }
 
 type OpenPubkeyAuthMethod struct {
-	Issuer   string
-	Provider providers.OpenIdProvider
+	provider providers.OpenIdProvider
 }
 
 func (o *OpenPubkeyAuthMethod) PrepareRequestForAuth(request *http.Request, sshAgent agent.ExtendedAgent, roundTripper *http3.RoundTripper, username string, conversation *ssh3.Conversation) error {
-	op := o.Provider
-	opkClient, err := client.New(op)
+	opkClient, err := client.New(o.provider)
 	if err != nil {
 		return err
 	}
