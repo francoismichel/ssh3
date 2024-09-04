@@ -22,12 +22,13 @@ import (
 	"time"
 
 	"github.com/francoismichel/ssh3"
-	"github.com/francoismichel/ssh3/auth"
+	"github.com/francoismichel/ssh3/auth/oidc"
 	"github.com/francoismichel/ssh3/client"
+	client_config "github.com/francoismichel/ssh3/client/config"
+	"github.com/francoismichel/ssh3/internal"
 	"github.com/francoismichel/ssh3/util"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/kevinburke/ssh_config"
@@ -48,7 +49,7 @@ func homedir() string {
 // If non-nil, use udpConn as transport (can be used for proxy jump)
 // Otherwise, create a UDPConn from udp://host:port
 func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog io.Writer, ssh3Dir string, certPool *x509.CertPool, knownHostsPath string, knownHosts ssh3.KnownHosts,
-	oidcConfig []*auth.OIDCConfig, options *client.Options, proxyRemoteAddr *net.UDPAddr, tty *os.File) (quic.EarlyConnection, int) {
+	oidcConfig []*oidc.OIDCConfig, options *client_config.Config, proxyRemoteAddr *net.UDPAddr, tty *os.File) (quic.EarlyConnection, int) {
 
 	var err error
 	remoteAddr := proxyRemoteAddr
@@ -227,10 +228,10 @@ func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort 
 	return localPort, remoteIP, remotePort, err
 }
 
-func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.Options, error) {
+func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config, optionParsers map[client_config.OptionName]client_config.OptionParser) (*client_config.Config, error) {
 	urlHostname, urlPort := hostUrl.Hostname(), hostUrl.Port()
 
-	configHostname, configPort, configUser, configUrlPath, configAuthMethods, err := ssh3.GetConfigForHost(urlHostname, sshConfig)
+	configHostname, configPort, configUser, configUrlPath, configAuthMethods, pluginOptions, err := ssh3.GetConfigForHost(urlHostname, sshConfig, optionParsers)
 	if err != nil {
 		log.Error().Msgf("Could not get config for %s: %s", urlHostname, err)
 		return nil, err
@@ -282,11 +283,11 @@ func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config) (*client.O
 	if urlPath == "" {
 		urlPath = configUrlPath
 	}
-	return client.NewOptions(username, hostname, port, urlPath, configAuthMethods)
+	return client_config.NewConfig(username, hostname, port, urlPath, configAuthMethods, pluginOptions)
 }
 
-func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config, cliAuthMethods []interface{}) (agent.ExtendedAgent, *client.Options, error) {
-	configOptions, err := getConfigOptions(hostUrl, sshConfig)
+func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config, cliAuthMethods []interface{}, cliOptions map[client_config.OptionName]client_config.Option, optionParsers map[client_config.OptionName]client_config.OptionParser) (agent.ExtendedAgent, *client_config.Config, error) {
+	configOptions, err := getConfigOptions(hostUrl, sshConfig, optionParsers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not apply config to %s: %s", hostUrl, err)
 	}
@@ -296,7 +297,7 @@ func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config
 	if socketPath != "" {
 		conn, err := net.Dial("unix", socketPath)
 		if err != nil {
-			return nil, nil, fmt.Errorf("cailed to open SSH_AUTH_SOCK: %s", err)
+			return nil, nil, fmt.Errorf("failed to open SSH_AUTH_SOCK: %s", err)
 		}
 		agentClient = agent.NewClient(conn)
 	}
@@ -305,17 +306,71 @@ func getConnectionMaterialFromURL(hostUrl *url.URL, sshConfig *ssh_config.Config
 	authMethods = append(authMethods, cliAuthMethods...)
 	authMethods = append(authMethods, configOptions.AuthMethods()...)
 
-	options, err := client.NewOptions(configOptions.Username(), configOptions.Hostname(), configOptions.Port(), configOptions.UrlPath(), authMethods)
+	pluginOptionsFromConfig := configOptions.Options()
+	for k, v := range cliOptions {
+		if _, ok := pluginOptionsFromConfig[k]; ok {
+			log.Debug().Msgf("override config option %s by the value provided by the CLI", k)
+		}
+		pluginOptionsFromConfig[k] = v
+	}
+
+	options, err := client_config.NewConfig(configOptions.Username(), configOptions.Hostname(), configOptions.Port(), configOptions.UrlPath(), authMethods, configOptions.Options())
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not instantiate invalid options: %s", err)
 	}
 	return agentClient, options, nil
 }
 
+type FlagValue struct {
+	pluginOptionName client_config.OptionName
+	val              string
+	parsedOption     client_config.Option
+	client_config.CLIOptionParser
+}
+
+func NewFlagValue(optionName client_config.OptionName, parser client_config.CLIOptionParser) *FlagValue {
+	return &FlagValue{
+		pluginOptionName: optionName,
+		CLIOptionParser:  parser,
+	}
+}
+
+func (v *FlagValue) String() string {
+	if v == nil {
+		return ""
+	}
+	return v.val
+}
+
+func (v *FlagValue) Set(s string) (err error) {
+	if v.CLIOptionParser.IsBoolFlag() {
+		switch s {
+		case "true":
+			s = "yes"
+		case "false":
+			s = "no"
+		default:
+			return fmt.Errorf("when parsing a boolean flag, the input should be \"true\" or \"false\"")
+		}
+	}
+	v.val = s
+	v.parsedOption, err = v.CLIOptionParser.Parse([]string{s})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *FlagValue) IsBoolFlag() bool {
+	return v.CLIOptionParser.IsBoolFlag()
+}
+
 func ClientMain() int {
+	internal.CloseClientPluginsRegistry()
+	internal.CloseServerPluginsRegistry()
+
+	// for other auth-related CLI args, go see auth/plugins, as they define plugin-specific auth CLI args and config options, such a pubkey/privkey-based auth
 	keyLogFile := flag.String("keylog", "", "Write QUIC TLS keys and master secret in the specified keylog file: only for debugging purpose")
-	privKeyFile := flag.String("privkey", "", "private key file")
-	pubkeyForAgent := flag.String("pubkey-for-agent", "", "if set, use an agent key whose public key matches the one in the specified path")
 	passwordAuthentication := flag.Bool("use-password", false, "if set, do classical password authentication")
 	insecure := flag.Bool("insecure", false, "if set, skip server certificate verification")
 	issuerUrl := flag.String("use-oidc", "", "if set, force the use of OpenID Connect with the specified issuer url as parameter (it opens a browser window)")
@@ -327,12 +382,32 @@ func ClientMain() int {
 	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	proxyJump := flag.String("proxy-jump", "", "if set, performs a proxy jump using the specified remote host as proxy (requires server with version >= 0.1.5)")
+
+	var flagValues []*FlagValue
+	cliParsers, err := internal.GetPluginsCLIArgs()
+	if err != nil {
+		log.Error().Msgf("error when retrieving plugins-defined CLI args: %s", err)
+		return -1
+	}
+	for name, parser := range cliParsers {
+		log.Debug().Msgf("Adding plugin-provided CLI arg: \"%s\"", parser.FlagName())
+		flagValue := NewFlagValue(name, parser)
+		flagValues = append(flagValues, flagValue)
+		flag.Var(flagValue, parser.FlagName(), parser.Usage())
+	}
+
 	flag.Parse()
 	args := flag.Args()
 
 	if *displayVersion {
 		fmt.Fprintln(os.Stdout, filepath.Base(os.Args[0]), "version", ssh3.GetCurrentSoftwareVersion())
 		return 0
+	}
+
+	cliOptions := make(map[client_config.OptionName]client_config.Option)
+	// gather the parsed CLI options
+	for _, v := range flagValues {
+		cliOptions[v.pluginOptionName] = v.parsedOption
 	}
 
 	useOIDC := *issuerUrl != ""
@@ -452,7 +527,7 @@ func ClientMain() int {
 	}
 
 	// default to oidc if no password or privkey
-	var oidcConfig auth.OIDCIssuerConfig = nil
+	var oidcConfig oidc.OIDCIssuerConfig = nil
 	var oidcConfigFile *os.File = nil
 	if *oidcConfigFileName == "" {
 		defaultFileName := path.Join(ssh3Dir, "oidc_config.json")
@@ -498,36 +573,9 @@ func ClientMain() int {
 	var cliAuthMethods []interface{}
 	// Only do privkey and agent auth if OIDC is not asked explicitly
 	if !useOIDC {
-		if *privKeyFile != "" {
-			cliAuthMethods = append(cliAuthMethods, ssh3.NewPrivkeyFileAuthMethod(*privKeyFile))
-		}
-
-		if *pubkeyForAgent != "" {
-			pubkeyFileName := util.ExpandTildeWithHomeDir(*pubkeyForAgent)
-			if os.Getenv("SSH_AUTH_SOCK") == "" {
-				log.Warn().Msgf("specified a public key (%s) but no agent is running", *pubkeyForAgent)
-			} else {
-				var pubkey ssh.PublicKey = nil
-				if pubkeyFileName != "" {
-					pubKeyBytes, err := os.ReadFile(pubkeyFileName)
-					if err != nil {
-						log.Error().Msgf("could not load public key file: %s", err)
-						return -1
-					}
-					pubkey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
-					if err != nil {
-						log.Error().Msgf("could not parse public key: %s", err)
-						return -1
-					}
-					cliAuthMethods = append(cliAuthMethods, ssh3.NewAgentAuthMethod(pubkey))
-				}
-			}
-		}
-
 		if *passwordAuthentication {
 			cliAuthMethods = append(cliAuthMethods, ssh3.NewPasswordAuthMethod())
 		}
-
 	} else {
 		// for now, only perform OIDC if it was explicitly asked by the user
 		if *issuerUrl != "" {
@@ -559,7 +607,12 @@ func ClientMain() int {
 		log.Fatal().Msgf("%s", err)
 	}
 
-	agentClient, options, err := getConnectionMaterialFromURL(parsedUrl, sshConfig, cliAuthMethods)
+	optionsParsers, err := internal.GetPluginsClientOptionsParsers()
+	if err != nil {
+		log.Error().Msgf("Could not get plugins options parsers: %s", err)
+		return -1
+	}
+	agentClient, options, err := getConnectionMaterialFromURL(parsedUrl, sshConfig, cliAuthMethods, cliOptions, optionsParsers)
 	if err != nil {
 		log.Error().Msgf("Could not get connection material for %s: %s", parsedUrl, err)
 		return -1
@@ -583,7 +636,7 @@ func ClientMain() int {
 			log.Error().Msgf("Could not parse proxy host URL %s: %s", *proxyJump, err)
 			return -1
 		}
-		proxyAgentClient, proxyOptions, err := getConnectionMaterialFromURL(proxyParsedUrl, sshConfig, cliAuthMethods)
+		proxyAgentClient, proxyOptions, err := getConnectionMaterialFromURL(proxyParsedUrl, sshConfig, cliAuthMethods, cliOptions, optionsParsers)
 		if err != nil {
 			log.Error().Msgf("Could not get connection material for proxy %s: %s", proxyParsedUrl, err)
 			return -1
