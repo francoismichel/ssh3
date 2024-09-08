@@ -127,6 +127,16 @@ type TCPForwardingChannelImpl struct {
 	Channel
 }
 
+type TCPReverseForwardingChannelImpl struct {
+	RemoteAddr *net.TCPAddr
+	LocalAddr  *net.TCPAddr
+	Channel
+}
+type TCPOpenReverseForwardingChannelImpl struct {
+	RemoteAddr *net.TCPAddr
+	Channel
+}
+
 func buildHeader(conversationStreamID uint64, channelType string, maxPacketSize uint64, additionalBytes []byte) []byte {
 	channelTypeBuf := make([]byte, util.SSHStringLen(channelType))
 	util.WriteSSHString(channelTypeBuf, channelType)
@@ -158,6 +168,38 @@ func buildForwardingChannelAdditionalBytes(remoteAddr net.IP, port uint16) []byt
 	binary.BigEndian.PutUint16(portBuf[:], uint16(port))
 	buf = append(buf, portBuf[:]...)
 	return buf
+}
+func buildRequestTCPReverseChannelAdditionalBytes(localAddr net.IP, localPort uint16, remoteAddr net.IP, remotePort uint16) []byte {
+	var buf []byte
+	var portBuf [2]byte
+	//var portBuf2 [2]byte
+
+	var addressFamily util.SSHForwardingAddressFamily
+	if len(localAddr) == 4 {
+		addressFamily = util.SSHAFIpv4
+	} else {
+		addressFamily = util.SSHAFIpv6
+	}
+
+	buf = util.AppendVarInt(buf, addressFamily)
+	buf = append(buf, localAddr...)
+	binary.BigEndian.PutUint16(portBuf[:], uint16(localPort))
+	buf = append(buf, portBuf[:]...)
+
+	if len(remoteAddr) == 4 {
+		addressFamily = util.SSHAFIpv4
+	} else {
+		addressFamily = util.SSHAFIpv6
+	}
+
+	buf = util.AppendVarInt(buf, addressFamily)
+	buf = append(buf, remoteAddr...)
+	binary.BigEndian.PutUint16(portBuf[:], uint16(remotePort))
+	buf = append(buf, portBuf[:]...)
+	//TODO: If I do not duplicate this, the port does not arrive to destination
+	buf = append(buf, portBuf[:]...)
+	return buf
+
 }
 
 func parseHeader(channelID uint64, r util.Reader) (conversationControlStreamID ControlStreamID, channelType string, maxPacketSize uint64, err error) {
@@ -206,6 +248,67 @@ func parseForwardingHeader(channelID uint64, buf util.Reader) (net.IP, uint16, e
 	return address, port, nil
 }
 
+func parseRequestReverseHeader(channelID uint64, buf util.Reader) (net.IP, uint16, net.IP, uint16, error) {
+
+	var localaddress net.IP
+	var remoteaddress net.IP
+	var portBuf [2]byte
+
+	//Parse local address and port where the reverse socket is proxied within the client machine
+	//------------------------------------------------------------------------------------------
+	addressFamily, err := util.ReadVarInt(buf)
+	if err != nil {
+		return nil, 0, nil, 0, err
+	}
+
+	if addressFamily == util.SSHAFIpv4 {
+		localaddress = make([]byte, 4)
+	} else if addressFamily == util.SSHAFIpv6 {
+		localaddress = make([]byte, 16)
+	} else {
+		return nil, 0, nil, 0, fmt.Errorf("invalid local address family: %d", addressFamily)
+	}
+
+	_, err = buf.Read(localaddress)
+	if err != nil {
+		return nil, 0, nil, 0, err
+	}
+
+	_, err = buf.Read(portBuf[:])
+	if err != nil {
+		return nil, 0, nil, 0, err
+	}
+	localport := binary.BigEndian.Uint16(portBuf[:])
+
+	//Parse remote address and port of the remote service to be proxied within the client machine
+	//-------------------------------------------------------------------------------------------
+	addressFamily, err = util.ReadVarInt(buf)
+	if err != nil {
+		return nil, 0, nil, 0, err
+	}
+
+	if addressFamily == util.SSHAFIpv4 {
+		remoteaddress = make([]byte, 4)
+	} else if addressFamily == util.SSHAFIpv6 {
+		remoteaddress = make([]byte, 16)
+	} else {
+		return nil, 0, nil, 0, fmt.Errorf("invalid remote address family: %d", addressFamily)
+	}
+
+	_, err = buf.Read(remoteaddress)
+	if err != nil {
+		return nil, 0, nil, 0, err
+	}
+
+	_, err = buf.Read(portBuf[:])
+	if err != nil {
+		return nil, 0, nil, 0, err
+	}
+	remoteport := binary.BigEndian.Uint16(portBuf[:])
+
+	return localaddress, localport, remoteaddress, remoteport, nil
+}
+
 func parseUDPForwardingHeader(channelID uint64, buf util.Reader) (*net.UDPAddr, error) {
 	address, port, err := parseForwardingHeader(channelID, buf)
 	if err != nil {
@@ -226,6 +329,20 @@ func parseTCPForwardingHeader(channelID uint64, buf util.Reader) (*net.TCPAddr, 
 		IP:   address,
 		Port: int(port),
 	}, nil
+}
+
+func parseTCPRequestReverseHeader(channelID uint64, buf util.Reader) (*net.TCPAddr, *net.TCPAddr, error) {
+	localaddress, localport, remoteaddress, remoteport, err := parseRequestReverseHeader(channelID, buf)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &net.TCPAddr{
+			IP:   localaddress,
+			Port: int(localport),
+		}, &net.TCPAddr{
+			IP:   remoteaddress,
+			Port: int(remoteport),
+		}, nil
 }
 
 func NewChannel(conversationStreamID uint64, conversationID ConversationID, channelID uint64, channelType string, maxPacketSize uint64, recv quic.ReceiveStream,

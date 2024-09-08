@@ -209,6 +209,84 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 	}()
 }
 
+func forwardReverseTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
+	go func() {
+		defer conn.CloseWrite()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			genericMessage, err := channel.NextMessage()
+			if err == io.EOF {
+				log.Info().Msgf("eof on tcp-forwarding channel %d", channel.ChannelID())
+			} else if err != nil {
+				log.Error().Msgf("could get message from tcp forwarding channel: %s", err)
+				return
+			}
+
+			// nothing to process
+			if genericMessage == nil {
+				return
+			}
+
+			switch message := genericMessage.(type) {
+			case *ssh3Messages.DataOrExtendedDataMessage:
+				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
+					_, err := conn.Write([]byte(message.Data))
+					if err != nil {
+						log.Error().Msgf("could not write data on TCP socket: %s", err)
+						// signal the write error to the peer
+						channel.CancelRead()
+						return
+					}
+				} else {
+					log.Warn().Msgf("ignoring message data of unexpected type %d on TCP forwarding channel %d", message.DataType, channel.ChannelID())
+				}
+			default:
+				log.Warn().Msgf("ignoring message of type %T on TCP forwarding channel %d", message, channel.ChannelID())
+			}
+		}
+	}()
+
+	go func() {
+		defer channel.Close()
+		defer conn.CloseRead()
+		buf := make([]byte, channel.MaxPacketSize())
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			n, err := conn.Read(buf)
+			if err != nil && err != io.EOF {
+				log.Error().Msgf("could read data on TCP socket: %s", err)
+				return
+			}
+			//log.Debug().Msgf("Reading from socket: %s", string(buf))
+			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if errWrite != nil {
+				switch quicErr := errWrite.(type) {
+				case *quic.StreamError:
+					if quicErr.Remote && quicErr.ErrorCode == 42 {
+						log.Info().Msgf("writing was canceled by the remote, closing the socket: %s", errWrite)
+					} else {
+						log.Error().Msgf("unhandled quic stream error: %+v", quicErr)
+					}
+				default:
+					log.Error().Msgf("could send data on channel: %s", errWrite)
+				}
+				return
+			}
+			if err == io.EOF {
+				return
+			}
+		}
+	}()
+}
+
 type Client struct {
 	qconn quic.EarlyConnection
 	*ssh3.Conversation
@@ -475,6 +553,42 @@ func (c *Client) ForwardTCP(ctx context.Context, localTCPAddr *net.TCPAddr, remo
 		}
 	}()
 	return conn.Addr().(*net.TCPAddr), nil
+}
+
+func (c *Client) ReverseTCP(ctx context.Context, localTCPAddr *net.TCPAddr, remoteTCPAddr *net.TCPAddr) (*net.TCPAddr, error) {
+	log.Debug().Msgf("start TCP forwarding from %s to %s", localTCPAddr, remoteTCPAddr)
+
+	forwardingChannel, err := c.RequestTCPReverseChannel(30000, 10, localTCPAddr, remoteTCPAddr)
+	if err != nil {
+		log.Error().Msgf("could open new TCP reverse forwarding channel: %s", err)
+		return remoteTCPAddr, nil
+	}
+
+	go func() {
+		for {
+			channel, err := c.AcceptChannel(c.Context())
+			if err != nil {
+				log.Debug().Msgf("Error accepting channel")
+			}
+
+			switch channel.ChannelType() {
+			case "open-request-reverse-tcp":
+				log.Debug().Msgf("start reverse TCP forwarding from %s to %s", localTCPAddr, remoteTCPAddr)
+
+				conn, err := net.DialTCP("tcp", nil, remoteTCPAddr)
+				if err != nil {
+					return
+				}
+				forwardReverseTCPInBackground(ctx, channel, conn)
+				if err != nil {
+					channel.Close()
+					return
+				}
+			}
+		}
+	}()
+	forwardingChannel.Close()
+	return remoteTCPAddr, nil
 }
 
 func (c *Client) RunSession(tty *os.File, forwardSSHAgent bool, command ...string) error {
