@@ -102,7 +102,6 @@ func (m *agentSigningMethod) Sign(signingString string, key interface{}) ([]byte
 	if !ok {
 		return nil, fmt.Errorf("bad key type: %T instead of ssh.PublicKey", pk)
 	}
-
 	signature, err := m.agent.SignWithFlags(pk, []byte(signingString), agent.SignatureFlagRsaSha256)
 	if err != nil {
 		return nil, err

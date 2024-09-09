@@ -31,7 +31,6 @@ func init() {
 
 const PRIVKEY_OPTION_NAME = "github.com/francoismichel/ssh3-privkey_auth"
 
-
 // implements client-side pubkey-based authentication
 
 type PrivkeyAuthOption struct {

@@ -41,7 +41,6 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPK
 		panic(err)
 	}
 
-
 	path := "/ssh"
 	listeningPort := listener.Addr().(*net.TCPAddr).Port
 

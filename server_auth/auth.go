@@ -89,8 +89,8 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 				}
 			}
 		}
+
 		log.Debug().Msgf("no suitable plugin found to authenticate the request")
-		// HandleBearerAuth(username, base64ConvID, HandleJWTAuth(username, conv, identityVerifiers, handlerFunc))(w, r)
 
 		authorization := r.Header.Get("Authorization")
 		if enablePasswordLogin && strings.HasPrefix(authorization, "Basic ") {
