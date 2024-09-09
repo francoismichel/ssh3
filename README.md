@@ -3,10 +3,14 @@
 <img src="resources/figures/ssh3.png" style="display: block; width: 60%">
 </div>
 
+> [!NOTE]
+> SSH3 is probably going to change its name. It is still the SSH Connection Protocol (RFC4254) running on top of HTTP/3 Extended connect, but the required changes are heavy and
+> too distant from the philosophy of popular SSH implementations to be considered for integration. The [specification draft](https://datatracker.ietf.org/doc/draft-michel-remote-terminal-http3/) has already been renamed ("Remote Terminals over HTTP/3"),
+> but we need some time to come up with a nice permanent name.
 
 # SSH3: faster and rich secure shell using HTTP/3
 SSH3 is a complete revisit of the SSH
-protocol, mapping its semantics on top of the HTTP mechanisms. It comes from our research work and we (researchers) recently proposed it as an [Internet-Draft](https://www.ietf.org/how/ids/) ([draft-michel-ssh3-00](https://www.ietf.org/archive/id/draft-michel-ssh3-00.html)).
+protocol, mapping its semantics on top of the HTTP mechanisms. It comes from our research work and we (researchers) recently proposed it as an [Internet-Draft](https://www.ietf.org/how/ids/) ([draft-michel-remote-terminal-http3-00](https://datatracker.ietf.org/doc/draft-michel-remote-terminal-http3/)).
 
 In a nutshell, SSH3 uses [QUIC](https://datatracker.ietf.org/doc/html/rfc9000)+[TLS1.3](https://datatracker.ietf.org/doc/html/rfc8446) for
 secure channel establishment and the [HTTP Authorization](https://www.rfc-editor.org/rfc/rfc9110.html#name-authorization) mechanisms for user authentication.

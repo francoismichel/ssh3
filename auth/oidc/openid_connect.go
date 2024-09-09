@@ -3,7 +3,6 @@ package oidc
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -37,20 +36,13 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPK
 
 	providerEndpoint := provider.Endpoint()
 
-	randomSecretUrlBytes := [64]byte{}
-	_, err = rand.Read(randomSecretUrlBytes[:])
-	if err != nil {
-		return "", err
-	}
-
-	randomSecretUrl := hex.EncodeToString(randomSecretUrlBytes[:])
-
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		panic(err)
 	}
 
-	path := fmt.Sprintf("/ssh/%s", randomSecretUrl)
+
+	path := "/ssh"
 	listeningPort := listener.Addr().(*net.TCPAddr).Port
 
 	secretUrl := fmt.Sprintf("http://localhost:%d%s", listeningPort, path)
@@ -74,7 +66,7 @@ func Connect(ctx context.Context, oidcConfig *OIDCConfig, issuerURL string, doPK
 		return "", fmt.Errorf("error when generating random verifier: %s", err.Error())
 	}
 
-	verifier := string(challengeVerifierBytes[:])
+	verifier := oauth2.GenerateVerifier()
 
 	tokenChannel := make(chan string)
 	mux := http.NewServeMux()

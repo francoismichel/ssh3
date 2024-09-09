@@ -10,7 +10,7 @@ import (
 )
 
 /////////////////////////////////////
-//		 Server auth plugins	   //
+//       Server auth plugins	   //
 /////////////////////////////////////
 
 // In ssh3, authorized_keys are replaced by authorized_identities where a use can specify classical
@@ -27,11 +27,15 @@ type RequestIdentityVerifier interface {
 type ServerAuthPlugin func(username string, identityStr string) (RequestIdentityVerifier, error)
 
 /////////////////////////////////////
-//		 Client auth plugins	   //
+//       Client auth plugins	   //
 /////////////////////////////////////
 
-// Updates `request` with the correct authentication material so that an SSH3 conversation
-// can be established by performing the request
+// returns all the suitable authentication methods to be tried against the server in the form
+// of a slice of ClientAuthMethod. Every ClientAuthMethod will have the opportunity to prepare
+// an HTTP request with authentication material to startup an SSH3 conversation. For instance,
+// for pubkey authentication using the private key files on the filesystem, the
+// GetClientAuthMethodsFunc can return a slice containing one ClientAuthMethod for
+// each private key file it wants to try.
 // if no SSH agent socket if found, sshAgent is nil
 type GetClientAuthMethodsFunc func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *client_config.Config, roundTripper *http3.RoundTripper) ([]ClientAuthMethod, error)
 
@@ -52,7 +56,7 @@ type ClientAuthPlugin struct {
 	// A plugin can define one or more new SSH3 config options.
 	// A new option is defined by providing a dedicated option parser.
 	// The key in PluginOptions must be a unique name for each option
-	// and must not confict with any existing option
+	// and must not conflict with any existing option
 	// (good practice: "<your_repo_name>[-<option_name>]")
 	PluginOptions map[client_config.OptionName]client_config.OptionParser
 

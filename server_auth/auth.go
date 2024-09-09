@@ -82,8 +82,6 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 		for _, abstractVerifier := range identityVerifiers {
 			switch verifier := abstractVerifier.(type) {
 			case *WrappedPluginVerifier:
-				log.Debug().Msgf("Testing verifier (username, verifier type): %s,%T ", username, verifier.RequestIdentityVerifier)
-
 				if verifier.Verify(r, base64ConvID) {
 					log.Debug().Msgf("request for user %s successfully verified by plugin", username)
 					handlerFunc(username, conv, w, r)
@@ -92,7 +90,7 @@ func HandleAuths(ctx context.Context, enablePasswordLogin bool, defaultMaxPacket
 			}
 		}
 		log.Debug().Msgf("no suitable plugin found to authenticate the request")
-		HandleBearerAuth(username, base64ConvID, HandleJWTAuth(username, conv, identityVerifiers, handlerFunc))(w, r)
+		// HandleBearerAuth(username, base64ConvID, HandleJWTAuth(username, conv, identityVerifiers, handlerFunc))(w, r)
 
 		authorization := r.Header.Get("Authorization")
 		if enablePasswordLogin && strings.HasPrefix(authorization, "Basic ") {
