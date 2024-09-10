@@ -30,15 +30,18 @@ func init() {
 
 const OPENPUBKEY_OPTION_NAME = "github.com/openpubkey/ssh3-openpubkey_auth"
 
-// implements client-side openpubkey authentication
+// Implements client-side OpenPubkey authentication
 type OpenPubkeyAuthOption struct {
 	issuer string
 }
 
+// Issuer returns the OpenID Provider issuer URI specified by the user
 func (o *OpenPubkeyAuthOption) Issuer() string {
 	return o.issuer
 }
 
+// OpenPubkeyOptionParser handles SSH3 command line arguments relevant to OpenPubkey.
+// An example command: `./ssh3 -openpubkey https://accounts.google.com user1234@example.com:443/ssh3-term`
 type OpenPubkeyOptionParser struct{}
 
 // FlagName implements config.CLIOptionParser.
@@ -70,12 +73,18 @@ func (*OpenPubkeyOptionParser) Usage() string {
 
 var _ config.CLIOptionParser = &OpenPubkeyOptionParser{}
 
-var openpubkeyPluginFunc auth.GetClientAuthMethodsFunc = func(request *http.Request, sshAgent agent.ExtendedAgent, clientConfig *config.Config, roundTripper *http3.RoundTripper) ([]auth.ClientAuthMethod, error) {
+// openpubkeyPluginFunc is set as the PluginFunc for the plugin in init(). Its purpose
+// is to:
+// 1. read the config/options set by the SSH3 client,
+// 2. determine if OpenPubkey auth would be appropriate given the config/options specified,
+// 3. and if so, return the OpenPubkeyAuthMethod for the specified options/config.
+var openpubkeyPluginFunc auth.GetClientAuthMethodsFunc = func(request *http.Request,
+	sshAgent agent.ExtendedAgent, clientConfig *config.Config,
+	roundTripper *http3.RoundTripper) ([]auth.ClientAuthMethod, error) {
 	for _, opt := range clientConfig.Options() {
 		if o, ok := opt.(*OpenPubkeyAuthOption); ok {
-
 			switch o.Issuer() {
-			// We currently only support Google right now
+			// We only support Google
 			case "https://accounts.google.com":
 				providerOpts := providers.GetDefaultGoogleOpOptions()
 				providerOpts.GQSign = false
@@ -85,8 +94,9 @@ var openpubkeyPluginFunc auth.GetClientAuthMethodsFunc = func(request *http.Requ
 						provider: provider,
 					}}
 				return methods, nil
+			// Add new OpenID Provider support here
 			default:
-				log.Error().Msgf("openID Provider is not supported: issuer=%s", o.Issuer())
+				log.Error().Msgf("openID Provider is not supported by OpenPubkey: issuer=%s", o.Issuer())
 				return nil, nil
 			}
 		}
@@ -94,11 +104,16 @@ var openpubkeyPluginFunc auth.GetClientAuthMethodsFunc = func(request *http.Requ
 	return nil, nil
 }
 
+// OpenPubkeyAuthMethod implements auth.ClientAuthMethod.
 type OpenPubkeyAuthMethod struct {
 	provider providers.OpenIdProvider
 }
 
-func (o *OpenPubkeyAuthMethod) PrepareRequestForAuth(request *http.Request, sshAgent agent.ExtendedAgent, roundTripper *http3.RoundTripper, username string, conversation *ssh3.Conversation) error {
+// PrepareRequestForAuth implements auth.ClientAuthMethod.
+// This function performs the client side of the OpenPubkey authentication.
+func (o *OpenPubkeyAuthMethod) PrepareRequestForAuth(request *http.Request,
+	sshAgent agent.ExtendedAgent, roundTripper *http3.RoundTripper,
+	username string, conversation *ssh3.Conversation) error {
 	opkClient, err := client.New(o.provider)
 	if err != nil {
 		return err
@@ -126,7 +141,6 @@ func (o *OpenPubkeyAuthMethod) PrepareRequestForAuth(request *http.Request, sshA
 	if err != nil {
 		return err
 	}
-
 	osm, err := pkt.NewSignedMessage(msg, opkClient.GetSigner())
 	if err != nil {
 		return err

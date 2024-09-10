@@ -19,6 +19,8 @@ import (
 )
 
 const PLUGIN_NAME = "github.com/openpubkey/ssh3-server_openpubkey_auth"
+
+// OPENPUBKEY_TAG specifies an identity string as an OpenPubkey identity string in the authorized_identities file.
 const OPENPUBKEY_TAG = "openpubkey"
 
 func init() {
@@ -27,6 +29,7 @@ func init() {
 	}
 }
 
+// OpenPubkeyIdentityVerifier implements server-side OpenPubkey authentication.
 type OpenPubkeyIdentityVerifier struct {
 	username     string
 	clientIdOidc string
@@ -34,6 +37,12 @@ type OpenPubkeyIdentityVerifier struct {
 	email        string
 }
 
+// Verify authenticates a new SSH3 TLS connection using OpenPubkey.
+// It does this by checking that:
+// 1. a PK Token has been provided,
+// 2. the identity in the PK Token matches an OpenPubkey identity in the authorized identities file,
+// 3. the conversationID of the TLS connection has been signed by PK Token.
+// If all these checks pass it accepts the SSH3 connection as the identity specified.
 func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64ConversationID string) bool {
 	authStr, wellFormattedB64Token := server_auth.ParseBearerAuth(request.Header.Get("Authorization"))
 	if !wellFormattedB64Token {
@@ -50,7 +59,7 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 	pktCom := authStrArr[1]
 
 	var provider providers.OpenIdProvider
-	// Add new openID Provider support here
+	// Add new OpenID Provider support here
 	switch v.issuerOidc {
 	case "https://accounts.google.com":
 		providerOpts := providers.GetDefaultGoogleOpOptions()
@@ -58,7 +67,7 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 		providerOpts.GQSign = false
 		provider = providers.NewGoogleOpWithOptions(providerOpts)
 	default:
-		log.Error().Msgf("openID Provider is not supported: issuer=%s", v.issuerOidc)
+		log.Error().Msgf("openID Provider is not supported by OpenPubkey: issuer=%s", v.issuerOidc)
 		return false
 	}
 	opkVerifier, err := verifier.New(provider)
@@ -89,7 +98,7 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 	}
 
 	upk := cic.PublicKey()
-	var rawkey interface{} // This is the raw key, like *rsa.PrivateKey or *ecdsa.PrivateKey
+	var rawkey interface{} // This is the raw key, such as *rsa.PrivateKey or *ecdsa.PrivateKey
 	if err := upk.Raw(&rawkey); err != nil {
 		log.Error().Msgf("openPubkey CIC is wrong: %s", err)
 		return false
@@ -134,7 +143,9 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 }
 
 // OpenPubkeyAuthPlugin takes a username and identityStr from the authorized_identities file
-// and either rejects the identity string or returns a verifier.
+// and either rejects the identity string or returns a verifier. This function is used to
+// search through the authorized_identities file to find a matching authorized identities.
+// An identity string matches if matches on the username and it is tagged as openpubkey.
 func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIdentityVerifier, error) {
 	log.Debug().Msgf("OpenPubkey auth plugin: parse identity string %s", identityStr)
 
