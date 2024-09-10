@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "github.com/francoismichel/ssh3/auth/plugins/openpubkey/client"
 	_ "github.com/francoismichel/ssh3/auth/plugins/pubkey_authentication/client"
 	cmd "github.com/francoismichel/ssh3/cmd"
 )

@@ -5,6 +5,7 @@ import (
 	"os"
 
 	// authentication plugins
+	_ "github.com/francoismichel/ssh3/auth/plugins/openpubkey/server"
 	_ "github.com/francoismichel/ssh3/auth/plugins/pubkey_authentication/server"
 )
 
