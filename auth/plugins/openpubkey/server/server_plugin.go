@@ -110,7 +110,7 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 		jwt.WithAudience("unused"),
 		jwt.WithValidMethods([]string{"RS256", "EdDSA", "ES256"}))
 	if err != nil || !token.Valid {
-		log.Error().Msgf("invalid private key token: %s", err)
+		log.Error().Msgf("invalid OpenPubkey signed JWT: %s", err)
 		return false
 	}
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
@@ -146,8 +146,6 @@ func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIden
 	clientId := identityStrArr[1]
 	issuer := identityStrArr[2]
 	email := identityStrArr[3]
-
-	log.Debug().Msg("parsing OpenPubkey config")
 
 	return &OpenPubkeyIdentityVerifier{
 		username:     username,
