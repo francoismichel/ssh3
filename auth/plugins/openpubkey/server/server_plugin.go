@@ -19,6 +19,7 @@ import (
 )
 
 const PLUGIN_NAME = "github.com/openpubkey/ssh3-server_openpubkey_auth"
+const OPENPUBKEY_TAG = "openpubkey"
 
 func init() {
 	if err := plugins.RegisterServerAuthPlugin(PLUGIN_NAME, OpenPubkeyAuthPlugin); err != nil {
@@ -132,17 +133,15 @@ func (v *OpenPubkeyIdentityVerifier) Verify(request *http.Request, base64Convers
 	return true
 }
 
-// OpenPubkeyAuthPlugin takes a username and identityStr from the authorizedIdentity file
+// OpenPubkeyAuthPlugin takes a username and identityStr from the authorized_identities file
 // and either rejects the identity string or returns a verifier.
 func OpenPubkeyAuthPlugin(username string, identityStr string) (auth.RequestIdentityVerifier, error) {
 	log.Debug().Msgf("OpenPubkey auth plugin: parse identity string %s", identityStr)
 
 	identityStrArr := strings.Split(identityStr, " ")
-	// TODO: "opk" should be a constant
-	if len(identityStrArr) != 4 || identityStrArr[0] != "opk" {
-		log.Debug().Msgf("the identity string is not a compatiable openpubkey string, %s", identityStr)
-		// we should not return an error when the format does not match a public key, we should just return a nil RequestIdentityVerifier
-		return nil, fmt.Errorf("the identity string is not a compatiable openpubkey string, %s", identityStr)
+	if len(identityStrArr) != 4 || identityStrArr[0] != OPENPUBKEY_TAG {
+		log.Debug().Msgf("the identity string is not a compatible openpubkey string, %s", identityStr)
+		return nil, nil
 	}
 	clientId := identityStrArr[1]
 	issuer := identityStrArr[2]

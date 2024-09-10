@@ -30,8 +30,7 @@ func init() {
 
 const OPENPUBKEY_OPTION_NAME = "github.com/openpubkey/ssh3-openpubkey_auth"
 
-// impements client-side pubkey-based authentication
-
+// implements client-side openpubkey authentication
 type OpenPubkeyAuthOption struct {
 	issuer string
 }
