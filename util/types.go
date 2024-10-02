@@ -78,6 +78,13 @@ func (e InvalidConfig) Error() string {
 	return fmt.Sprintf("Invalid %s config field: \"%s\"", e.Field, e.Value)
 }
 
+type ClosedPluginsRegistry struct {
+}
+
+func (e ClosedPluginsRegistry) Error() string {
+	return "The plugins registry is closed"
+}
+
 type BytesReadCloser struct {
 	*bytes.Reader
 }

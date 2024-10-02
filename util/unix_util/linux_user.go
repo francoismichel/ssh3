@@ -140,10 +140,10 @@ func getpwnam(name string) (*User, error) {
 		bufLen = uint64(cBufLen)
 	}
 
-	buf := (*C.char)(C.malloc(C.ulong(bufLen)))
+	buf := (*C.char)(C.malloc(C.size_t(bufLen)))
 	defer C.free(unsafe.Pointer(buf))
 
-	ret, err := C.getpwnam_r(cname, cpasswd, buf, C.ulong(bufLen), &cpasswd)
+	ret, err := C.getpwnam_r(cname, cpasswd, buf, C.size_t(bufLen), &cpasswd)
 
 	if int(ret) != 0 {
 		return nil, syscall.Errno(ret)

@@ -3,10 +3,15 @@
 <img src="resources/figures/ssh3.png" style="display: block; width: 60%">
 </div>
 
+> [!NOTE]
+> SSH3 is probably going to change its name. It is still the SSH Connection Protocol (RFC4254) running on top of HTTP/3 Extended connect, but the required changes are heavy and
+> too distant from the philosophy of popular SSH implementations to be considered for integration. The [specification draft](https://datatracker.ietf.org/doc/draft-michel-remote-terminal-http3/) has already been renamed ("Remote Terminals over HTTP/3"),
+> but we need some time to come up with a nice permanent name.
 
 # SSH3: faster and rich secure shell using HTTP/3
 SSH3 is a complete revisit of the SSH
-protocol, mapping its semantics on top of the HTTP mechanisms.
+protocol, mapping its semantics on top of the HTTP mechanisms. It comes from our research work and we (researchers) recently proposed it as an [Internet-Draft](https://www.ietf.org/how/ids/) ([draft-michel-remote-terminal-http3-00](https://datatracker.ietf.org/doc/draft-michel-remote-terminal-http3/)).
+
 In a nutshell, SSH3 uses [QUIC](https://datatracker.ietf.org/doc/html/rfc9000)+[TLS1.3](https://datatracker.ietf.org/doc/html/rfc8446) for
 secure channel establishment and the [HTTP Authorization](https://www.rfc-editor.org/rfc/rfc9110.html#name-authorization) mechanisms for user authentication.
 Among others, SSH3 allows the following improvements:
@@ -18,8 +23,6 @@ Among others, SSH3 allows the following improvements:
 
 > [!TIP]
 > Quickly want to get started ? Checkout how to [install SSH3](#installing-ssh3). You will learn to [setup an SSH3 server](#deploying-an-ssh3-server) and [use the SSH3 client](#using-the-ssh3-client).
-
-*SSH3* stands for the concatenation of *SSH* and *H3*.
 
 ## ⚡ SSH3 is faster
 Faster for session establishment, not throughput ! SSH3 offers a significantly faster session establishment than SSHv2. Establishing a new session with SSHv2 can take 5 to 7 network round-trip times, which can easily be noticed by the user. SSH3 only needs 3 round-trip times. The keystroke latency in a running session is unchanged.
@@ -50,6 +53,8 @@ Using SSH3, you can avoid the usual stress of scanning and dictionary attacks ag
     ssh3-server -bind 192.0.2.0:443 -url-path <my-long-secret>
 
 By replacing `<my-long-secret>` by, let's say, the random value `M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU`, your SSH3 server will only answer to SSH3 connection attempts made to the URL `https://192.0.2.0:443/M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU` and it will respond a `404 Not Found` to other requests. Attackers and crawlers on the Internet can therefore not detect the presence of your SSH3 server. They will only see a simple web server answering 404 status codes to every request.
+
+**NOTE WELL**: placing your SSH3 server behind a secret URL may reduce the impact of scanning attacks but will and must *never* replace classical authentication mechanisms. The secret link should only be used to avoid your host to be discovered. Knowing the secret URL should not grant someone access to your server. Use the classical authentication mechanisms described above to protect your server. 
 
 ## 💐 SSH3 is already feature-rich
 SSH3 provides new feature that could not be provided by the SSHv2 protocol.
