@@ -307,6 +307,64 @@ func (c *Conversation) OpenTCPForwardingChannel(maxPacketSize uint64, datagramsQ
 	c.channelsManager.addChannel(channel)
 	return &TCPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
 }
+func (c *Conversation) RequestTCPReverseChannel(maxPacketSize uint64, datagramsQueueSize uint64, localAddr *net.TCPAddr, remoteAddr *net.TCPAddr) (Channel, error) {
+	str, err := c.streamCreator.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+
+	additionalBytes := buildRequestTCPReverseChannelAdditionalBytes(localAddr.IP, uint16(localAddr.Port), remoteAddr.IP, uint16(remoteAddr.Port))
+
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "request-reverse-tcp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel.maybeSendHeader()
+	c.channelsManager.addChannel(channel)
+	return &TCPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
+
+}
+func (c *Conversation) RequestUDPReverseChannel(maxPacketSize uint64, datagramsQueueSize uint64, localAddr *net.UDPAddr, remoteAddr *net.UDPAddr) (Channel, error) {
+	str, err := c.streamCreator.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+
+	additionalBytes := buildRequestUDPReverseChannelAdditionalBytes(localAddr.IP, uint16(localAddr.Port), remoteAddr.IP, uint16(remoteAddr.Port))
+
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "request-reverse-udp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel.maybeSendHeader()
+	c.channelsManager.addChannel(channel)
+	return &UDPForwardingChannelImpl{Channel: channel, LocalAddr: localAddr, RemoteAddr: remoteAddr}, nil
+
+}
+func (c *Conversation) OpenTCPReverseForwardingChannel(maxPacketSize uint64, datagramsQueueSize uint64, remoteAddr *net.TCPAddr) (Channel, error) {
+
+	str, err := c.streamCreator.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+	//missing additional bites!! if occurs more than a single reverse forwarding, there will be no way to tell appart which request is for which destination
+
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "open-request-reverse-tcp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, nil)
+	channel.maybeSendHeader()
+	c.channelsManager.addChannel(channel)
+	return &TCPOpenReverseForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
+}
+
+func (c *Conversation) OpenUDPReverseForwardingChannel(maxPacketSize uint64, datagramsQueueSize uint64, localAddr *net.UDPAddr, remoteAddr *net.UDPAddr) (Channel, error) {
+
+	str, err := c.streamCreator.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+	//missing additional bites!! if occurs more than a single reverse forwarding, there will be no way to tell appart which request is for which destination
+	//additionalBytes := buildRequestUDPReverseChannelAdditionalBytes(localAddr.IP, uint16(localAddr.Port), remoteAddr.IP, uint16(remoteAddr.Port))
+
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "open-request-reverse-udp,"+localAddr.String()+","+remoteAddr.String(), maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, nil)
+	channel.setDatagramSender(c.getDatagramSenderForChannel(channel.ChannelID()))
+	channel.maybeSendHeader()
+	c.channelsManager.addChannel(channel)
+	return &UDPOpenReverseForwardingChannelImpl{Channel: channel, LocalAddr: localAddr, RemoteAddr: remoteAddr}, nil
+}
+
 
 func (c *Conversation) AcceptChannel(ctx context.Context) (Channel, error) {
 	for {

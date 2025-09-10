@@ -95,10 +95,11 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 
 	var qconf quic.Config
 
-	qconf.MaxIncomingStreams = 10
-	qconf.Allow0RTT = true
-	qconf.EnableDatagrams = true
-	qconf.KeepAlivePeriod = 1 * time.Second
+        qconf.MaxIncomingUniStreams = 10000
+        qconf.MaxIncomingStreams = 10000
+        qconf.Allow0RTT = false
+        qconf.EnableDatagrams = true
+        qconf.KeepAlivePeriod = 1 * time.Second
 
 	if certs, ok := knownHosts[options.CanonicalHostFormat()]; ok {
 		foundSelfsignedSSH3 := false
@@ -206,26 +207,31 @@ func setupQUICConnection(ctx context.Context, skipHostVerification bool, keylog 
 	return qClient, 0
 }
 
-func parseAddrPort(addrPort string) (localPort int, remoteIP net.IP, remotePort int, err error) {
-	array := strings.Split(addrPort, "/")
-	localPort, err = strconv.Atoi(array[0])
+func parseAddrPort(addrPort string) (localIP net.IP, localPort int, remoteIP net.IP, remotePort int, err error) {
+	array := strings.Split(addrPort, "@")
+	subarray := strings.Split(array[0], "/")
+	localIP = net.ParseIP(subarray[1])
+	if localIP == nil {
+		return nil, 0, nil, 0, fmt.Errorf("could not parse IP %s", subarray[1])
+	}
+	localPort, err = strconv.Atoi(subarray[0])
 	if err != nil {
-		return 0, nil, 0, fmt.Errorf("could not convert %s to int: %s", array[0], err)
+		return nil, 0, nil, 0, fmt.Errorf("could not convert %s to int: %s", subarray[0], err)
 	} else if localPort > 0xFFFF {
-		return 0, nil, 0, fmt.Errorf("UDP port too large %d", localPort)
+		return nil, 0, nil, 0, fmt.Errorf("UDP port too large %d", localPort)
 	}
-	array = strings.Split(array[1], "@")
-	remoteIP = net.ParseIP(array[0])
+	subarray = strings.Split(array[1], "/")
+	remoteIP = net.ParseIP(subarray[1])
 	if remoteIP == nil {
-		return 0, nil, 0, fmt.Errorf("could not parse IP %s", array[0])
+		return nil, 0, nil, 0, fmt.Errorf("could not parse IP %s", subarray[1])
 	}
-	remotePort, err = strconv.Atoi(array[1])
+	remotePort, err = strconv.Atoi(subarray[0])
 	if err != nil {
-		return 0, nil, 0, fmt.Errorf("could not convert %s to int: %s", array[1], err)
+		return nil, 0, nil, 0, fmt.Errorf("could not convert %s to int: %s", array[0], err)
 	} else if remotePort > 0xFFFF {
-		return 0, nil, 0, fmt.Errorf("UDP port too large %d", remotePort)
+		return nil, 0, nil, 0, fmt.Errorf("UDP port too large %d", remotePort)
 	}
-	return localPort, remoteIP, remotePort, err
+	return localIP, localPort, remoteIP, remotePort, err
 }
 
 func getConfigOptions(hostUrl *url.URL, sshConfig *ssh_config.Config, optionParsers map[client_config.OptionName]client_config.OptionParser) (*client_config.Config, error) {
@@ -381,6 +387,8 @@ func ClientMain() int {
 	forwardSSHAgent := flag.Bool("forward-agent", false, "if set, forwards ssh agent to be used with sshv2 connections on the remote host")
 	forwardUDP := flag.String("forward-udp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
 	forwardTCP := flag.String("forward-tcp", "", "if set, take a localport/remoteip@remoteport forwarding localhost@localport towards remoteip@remoteport")
+	reverseTCP := flag.String("reverse-tcp", "", "if set, take a remoteip@remoteport reverse forwarding it towards a localport/remoteip@remoteport")
+	reverseUDP := flag.String("reverse-udp", "", "if set, take a remoteip@remoteport reverse forwarding it towards a localport/remoteip@remoteport")
 	proxyJump := flag.String("proxy-jump", "", "if set, performs a proxy jump using the specified remote host as proxy (requires server with version >= 0.1.5)")
 
 	var flagValues []*FlagValue
@@ -462,32 +470,13 @@ func ClientMain() int {
 	var remoteUDPAddr *net.UDPAddr = nil
 	var localTCPAddr *net.TCPAddr = nil
 	var remoteTCPAddr *net.TCPAddr = nil
-	if *forwardUDP != "" {
-		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardUDP)
-		if err != nil {
-			log.Error().Msgf("UDP forwarding parsing error %s", err)
-		}
-		remoteUDPAddr = &net.UDPAddr{
-			IP:   remoteIP,
-			Port: remotePort,
-		}
-		if remoteIP.To4() != nil {
-			localUDPAddr = &net.UDPAddr{
-				IP:   net.IPv4(127, 0, 0, 1),
-				Port: localPort,
-			}
-		} else if remoteIP.To16() != nil {
-			localUDPAddr = &net.UDPAddr{
-				IP:   net.IPv6loopback,
-				Port: localPort,
-			}
-		} else {
-			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
-			return -1
-		}
-	}
+
+
+        var fwUDPmulticonn *net.UDPConn
+        fwUDPmulticonn = nil
+
 	if *forwardTCP != "" {
-		localPort, remoteIP, remotePort, err := parseAddrPort(*forwardTCP)
+		localIP, localPort, remoteIP, remotePort, err := parseAddrPort(*forwardTCP)
 		if err != nil {
 			log.Error().Msgf("UDP forwarding parsing error %s", err)
 		}
@@ -496,20 +485,74 @@ func ClientMain() int {
 			Port: remotePort,
 		}
 		if remoteIP.To4() != nil {
-			localTCPAddr = &net.TCPAddr{
-				IP:   net.IPv4(127, 0, 0, 1),
-				Port: localPort,
+			if localIP.To4() != nil {
+				localTCPAddr = &net.TCPAddr{
+					IP:   localIP.To4(),
+					Port: localPort,
+				}
+			}else{
+				localTCPAddr = &net.TCPAddr{
+					IP:   net.IPv4(127, 0, 0, 1),
+					Port: localPort,
+				}
 			}
 		} else if remoteIP.To16() != nil {
-			localTCPAddr = &net.TCPAddr{
-				IP:   net.IPv6loopback,
-				Port: localPort,
+			if localIP.To16() != nil {
+				localTCPAddr = &net.TCPAddr{
+					IP:   localIP.To16(),
+					Port: localPort,
+				}
+			}else{
+				localTCPAddr = &net.TCPAddr{
+					IP:   net.IPv6loopback,
+					Port: localPort,
+				}
 			}
 		} else {
 			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
 			return -1
 		}
 	}
+
+	if *reverseTCP != "" {
+		localIP, localPort, remoteIP, remotePort, err := parseAddrPort(*reverseTCP)
+		if err != nil {
+			log.Error().Msgf("TCP reverse parsing error %s", err)
+		}
+		remoteTCPAddr = &net.TCPAddr{
+			IP:   remoteIP,
+			Port: remotePort,
+		}
+		if remoteIP.To4() != nil {
+			if localIP.To4() != nil {
+				localTCPAddr = &net.TCPAddr{
+					IP:   localIP.To4(),
+					Port: localPort,
+				}
+			}else{
+				localTCPAddr = &net.TCPAddr{
+					IP:   net.IPv4(127, 0, 0, 1),
+					Port: localPort,
+				}
+			}
+		} else if remoteIP.To16() != nil {
+			if localIP.To16() != nil {
+				localTCPAddr = &net.TCPAddr{
+					IP:   localIP.To16(),
+					Port: localPort,
+				}
+			}else{
+				localTCPAddr = &net.TCPAddr{
+					IP:   net.IPv6loopback,
+					Port: localPort,
+				}
+			}
+		} else {
+			log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+			return -1
+		}
+	}
+
 
 	var sshConfig *ssh_config.Config
 	var configBytes []byte
@@ -670,7 +713,7 @@ func ClientMain() int {
 			log.Error().Msgf("Could not resolve remote address %s: %s", options.URLHostnamePort(), err)
 			return -1
 		}
-		addr, err := proxyClient.ForwardUDP(ctx, baseAddr, remoteAddr)
+		addr, _, err := proxyClient.ForwardUDP(ctx, baseAddr, remoteAddr, fwUDPmulticonn)
 		if err != nil {
 			log.Error().Msgf("Could not forward UDP for proxy jump: %s", err)
 			return -1
@@ -697,19 +740,146 @@ func ClientMain() int {
 		log.Error().Msgf("could not dial %s: %s", options.CanonicalHostFormat(), err)
 		return -1
 	}
-	if localTCPAddr != nil && remoteTCPAddr != nil {
+	if *forwardTCP != "" && localTCPAddr != nil && remoteTCPAddr != nil {
 		_, err := c.ForwardTCP(ctx, localTCPAddr, remoteTCPAddr)
 		if err != nil {
 			log.Error().Msgf("could not forward UDP: %s", err)
 			return -1
 		}
 	}
-	if localUDPAddr != nil && remoteUDPAddr != nil {
-		_, err := c.ForwardUDP(ctx, localUDPAddr, remoteUDPAddr)
+	if *reverseTCP != "" && localTCPAddr != nil && remoteTCPAddr != nil {
+		_, err := c.ReverseTCP(ctx, localTCPAddr, remoteTCPAddr)
 		if err != nil {
-			log.Error().Msgf("could not forward UDP: %s", err)
+			log.Error().Msgf("could not reverse TCP: %s", err)
 			return -1
 		}
+	}
+
+
+	if *reverseUDP != "" {
+		v := strings.TrimSpace(*reverseUDP)
+		if v == "" {
+			return -1
+		}
+		parts := strings.Split(v, ",")
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+	
+			localIP, localPort, remoteIP, remotePort, err := parseAddrPort(p)
+			if err != nil {
+				log.Error().Msgf("UDP reverse parsing error %s", err)
+			}
+			remoteUDPAddr = &net.UDPAddr{
+				IP:   remoteIP,
+				Port: remotePort,
+			}
+			if remoteIP.To4() != nil {
+				if localIP.To4() != nil {
+					localUDPAddr = &net.UDPAddr{
+						IP:   localIP.To4(),
+						Port: localPort,
+					}
+				} else {
+					localUDPAddr = &net.UDPAddr{
+						IP:   net.IPv4(127, 0, 0, 1),
+						Port: localPort,
+					}
+				}
+			} else if remoteIP.To16() != nil {
+				if localIP.To16() != nil {
+					localUDPAddr = &net.UDPAddr{
+						IP:   localIP.To16(),
+						Port: localPort,
+					}
+				}else{
+					localUDPAddr = &net.UDPAddr{
+						IP:   net.IPv6loopback,
+						Port: localPort,
+					}
+				}
+
+			} else {
+				log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+				return -1
+			}
+
+			if *reverseUDP != "" && localUDPAddr != nil && remoteUDPAddr != nil {
+				_, err := c.ReverseUDP(ctx, localUDPAddr, remoteUDPAddr)
+				if err != nil {
+					log.Error().Msgf("could not reverse UDP: %s", err)
+					return -1
+				}
+			}
+
+		}
+	}
+
+
+	if *forwardUDP != "" {
+		v := strings.TrimSpace(*forwardUDP)
+		if v == "" {
+			return -1
+		}
+		parts := strings.Split(v, ",")
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+
+			localIP, localPort, remoteIP, remotePort, err := parseAddrPort(p)
+			if err != nil {
+				log.Error().Msgf("UDP forwarding parsing error %s", err)
+			}
+			remoteUDPAddr = &net.UDPAddr{
+				IP:   remoteIP,
+				Port: remotePort,
+			}
+			if remoteIP.To4() != nil {
+				if localIP.To4() != nil {
+					localUDPAddr = &net.UDPAddr{
+						IP:   localIP.To4(),
+						Port: localPort,
+					}
+				} else {
+					localUDPAddr = &net.UDPAddr{
+						IP:   net.IPv4(127, 0, 0, 1),
+						Port: localPort,
+					}
+				}
+			} else if remoteIP.To16() != nil {
+				if localIP.To16() != nil {
+					localUDPAddr = &net.UDPAddr{
+						IP:   localIP.To16(),
+						Port: localPort,
+					}
+				}else{
+					localUDPAddr = &net.UDPAddr{
+						IP:   net.IPv6loopback,
+						Port: localPort,
+					}
+				}
+			} else {
+				log.Error().Msgf("Unrecognized IP length %d", len(remoteIP))
+				return -1
+			}
+
+			if *forwardUDP != "" && localUDPAddr != nil && remoteUDPAddr != nil {
+				_, conn, err := c.ForwardUDP(ctx, localUDPAddr, remoteUDPAddr, fwUDPmulticonn)
+				if err != nil {
+					log.Error().Msgf("could not forward UDP: %s", err)
+					return -1
+				}
+				if localUDPAddr.IP.IsMulticast(){
+					fwUDPmulticonn = conn
+				}
+			}
+
+		}
+
 	}
 
 	err = c.RunSession(tty, *forwardSSHAgent, command...)
