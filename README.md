@@ -22,14 +22,14 @@ Among others, SSH3 allows the following improvements:
 - All the features allowed by the modern QUIC protocol: including connection migration (soon) and multipath connections
 
 > [!TIP]
-> Quickly want to get started ? Checkout how to [install SSH3](#installing-ssh3). You will learn to [setup an SSH3 server](#deploying-an-ssh3-server) and [use the SSH3 client](#using-the-ssh3-client).
+> Quickly want to get started ? Check out how to [install SSH3](#installing-ssh3). You will learn to [setup an SSH3 server](#deploying-an-ssh3-server) and [use the SSH3 client](#using-the-ssh3-client).
 
 ## ⚡ SSH3 is faster
 Faster for session establishment, not throughput ! SSH3 offers a significantly faster session establishment than SSHv2. Establishing a new session with SSHv2 can take 5 to 7 network round-trip times, which can easily be noticed by the user. SSH3 only needs 3 round-trip times. The keystroke latency in a running session is unchanged.
 
 <p align="center">
 <img src="resources/figures/ssh3_100ms_rtt.gif"/>
-<i>SSH3 (top) VS SSHv2 (bottom) session establishement with a 100ms ping towards the server.</i>
+<i>SSH3 (top) VS SSHv2 (bottom) session establishment with a 100ms ping towards the server.</i>
 </p>
 
 ## 🔒 SSH3 security
@@ -52,7 +52,7 @@ Using SSH3, you can avoid the usual stress of scanning and dictionary attacks ag
 
     ssh3-server -bind 192.0.2.0:443 -url-path <my-long-secret>
 
-By replacing `<my-long-secret>` by, let's say, the random value `M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU`, your SSH3 server will only answer to SSH3 connection attempts made to the URL `https://192.0.2.0:443/M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU` and it will respond a `404 Not Found` to other requests. Attackers and crawlers on the Internet can therefore not detect the presence of your SSH3 server. They will only see a simple web server answering 404 status codes to every request.
+By replacing `<my-long-secret>` with, let's say, the random value `M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU`, your SSH3 server will only answer to SSH3 connection attempts made to the URL `https://192.0.2.0:443/M3MzkxYWMxMjYxMjc5YzJkODZiMTAyMjU` and it will respond a `404 Not Found` to other requests. Attackers and crawlers on the Internet can therefore not detect the presence of your SSH3 server. They will only see a simple web server answering 404 status codes to every request.
 
 **NOTE WELL**: placing your SSH3 server behind a secret URL may reduce the impact of scanning attacks but will and must *never* replace classical authentication mechanisms. The secret link should only be used to avoid your host to be discovered. Knowing the secret URL should not grant someone access to your server. Use the classical authentication mechanisms described above to protect your server. 
 
