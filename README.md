@@ -57,7 +57,7 @@ By replacing `<my-long-secret>` by, let's say, the random value `M3MzkxYWMxMjYxM
 **NOTE WELL**: placing your SSH3 server behind a secret URL may reduce the impact of scanning attacks but will and must *never* replace classical authentication mechanisms. The secret link should only be used to avoid your host to be discovered. Knowing the secret URL should not grant someone access to your server. Use the classical authentication mechanisms described above to protect your server. 
 
 ## 💐 SSH3 is already feature-rich
-SSH3 provides new feature that could not be provided by the SSHv2 protocol.
+SSH3 provides new features that could not be provided by the SSHv2 protocol.
 
 ### Brand new features
 - **UDP port forwarding**: you can now access your QUIC, DNS, RTP or any UDP-based server that are only reachable from your SSH3 host.
