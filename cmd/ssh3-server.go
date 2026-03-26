@@ -779,12 +779,12 @@ func ServerMain() int {
 		}
 		logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "cannot open log file %s: %s\n", logFileName, err.Error())
-			return -1
+			fmt.Fprintf(os.Stderr, "cannot open log file %s: %s, falling back to stderr\n", logFileName, err.Error())
+			log.Logger = log.Output(os.Stderr)
+		} else {
+			log.Logger = log.Output(logFile)
 		}
-		log.Logger = log.Output(logFile)
 	}
-
 	tlsConfig := &tls.Config{}
 	if len(autogenCertificates) > 0 {
 		var zapLevel zapcore.Level
@@ -945,4 +945,5 @@ func ServerMain() int {
 	}
 
 	return 0
+
 }

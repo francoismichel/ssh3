@@ -6,6 +6,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"syscall"
+	"os"
+	osuser "os/user"
+	"strconv"
 )
 
 type User struct {
@@ -18,6 +21,51 @@ type User struct {
 
 func GetUser(username string) (*User, error) {
 	return getUser(username)
+}
+
+// getSupplementaryGroups returns the supplementary group IDs for the user.
+// Used when running as root to set up a fully-privileged credential block.
+func (u *User) getSupplementaryGroups() []uint32 {
+  osUser, err := osuser.LookupId(strconv.FormatUint(u.Uid, 10))
+  if err != nil {
+    return nil
+  }
+  groupIds, err := osUser.GroupIds()
+  if err != nil {
+    return nil
+  }
+  groups := make([]uint32, 0, len(groupIds))
+  for _, gidStr := range groupIds {
+    gid, err := strconv.ParseUint(gidStr, 10, 32)
+    if err != nil {
+      continue
+    }
+    groups = append(groups, uint32(gid))
+  }
+  return groups
+}
+
+// buildCredential builds the syscall.Credential for exec'ing child processes.
+//
+// When running as root we supply the full set of supplementary groups so that
+// the spawned shell inherits the correct group memberships.
+//
+// When running as a non-root user we set NoSetGroups=true to skip the
+// setgroups(2) syscall, which always requires CAP_SETGID and therefore fails
+// with EPERM for unprivileged processes.
+func (u *User) buildCredential() *syscall.Credential {
+  if os.Getuid() == 0 {
+    return &syscall.Credential{
+      Uid:    uint32(u.Uid),
+      Gid:    uint32(u.Gid),
+      Groups: u.getSupplementaryGroups(),
+    }
+  }
+  return &syscall.Credential{
+    Uid:         uint32(u.Uid),
+    Gid:         uint32(u.Gid),
+    NoSetGroups: true,
+  }
 }
 
 func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.Reader, loginShell bool, command string, args ...string) (*exec.Cmd, io.Reader, io.Reader, io.Writer, error) {
@@ -33,8 +81,7 @@ func (u *User) CreateCommand(addEnv string, stdout, stderr io.Writer, stdin io.R
 	}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(u.Uid), Gid: uint32(u.Gid)}
-
+	cmd.SysProcAttr.Credential = u.buildCredential()
 	var err error
 	var stdoutR, stderrR io.Reader
 	var stdinW io.Writer
@@ -74,8 +121,7 @@ func (u *User) CreateCommandPipeOutput(addEnv string, loginShell bool, command s
 	cmd.Dir = u.Dir
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(u.Uid), Gid: uint32(u.Gid)}
-
+	cmd.SysProcAttr.Credential = u.buildCredential()
 	return u.CreateCommand(addEnv, nil, nil, nil, loginShell, command, args...)
 }
 
