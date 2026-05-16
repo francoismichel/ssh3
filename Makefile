@@ -28,6 +28,16 @@ integration-tests:
 		SSH3_INTEGRATION_TESTS_WITH_SERVER_ENABLED=1 \
 		go run github.com/onsi/ginkgo/v2/ginkgo ./integration_tests
 
+# local-integration-tests runs the full Ginkgo suite end-to-end on the
+# current host: it generates the TLS material, SSH key pairs and test
+# users itself (the standard `integration-tests` target above assumes
+# the caller has already exported all the env vars and set up the
+# world).  Requires sudo, openssl, ssh-keygen, useradd; see
+# scripts/run_integration_tests.sh for the full contract and the
+# environment variables you can override.
+local-integration-tests:
+	bash scripts/run_integration_tests.sh
+
 install:
 	$(GO_OPTS) go install $(BUILDFLAGS) ./cmd/ssh3
 	$(GO_OPTS) go install $(BUILDFLAGS) ./cmd/ssh3-server

@@ -15,6 +15,12 @@ import (
 	"path/filepath"
 	"syscall"
 	"unsafe"
+	"time"
+	"strings"
+
+	"golang.org/x/sys/unix"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 
 	_ "net/http/pprof"
 
@@ -247,6 +253,84 @@ func forwardTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net
 			}
 		}
 	}()
+}
+
+func forwardReverseTCPInBackground(ctx context.Context, channel ssh3.Channel, conn *net.TCPConn) {
+	go func() {
+		defer channel.Close()
+		defer conn.CloseRead()
+		buf := make([]byte, channel.MaxPacketSize())
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			n, err := conn.Read(buf)
+			if err != nil && err != io.EOF {
+				log.Error().Msgf("could read data on TCP socket: %s", err)
+				return
+			}
+			_, errWrite := channel.WriteData(buf[:n], ssh3Messages.SSH_EXTENDED_DATA_NONE)
+			if errWrite != nil {
+				switch quicErr := errWrite.(type) {
+				case *quic.StreamError:
+					if quicErr.Remote && quicErr.ErrorCode == 42 {
+						log.Info().Msgf("writing was canceled by the remote, closing the socket: %s", errWrite)
+					} else {
+						log.Error().Msgf("unhandled quic stream error: %+v", quicErr)
+					}
+				default:
+					log.Error().Msgf("could send data on channel: %s", errWrite)
+				}
+				return
+			}
+			if err == io.EOF {
+				return
+			}
+		}
+	}()
+
+	go func() {
+		defer conn.CloseWrite()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			genericMessage, err := channel.NextMessage()
+			if err == io.EOF {
+				log.Info().Msgf("eof on reverse-tcp-forwarding channel %d", channel.ChannelID())
+			} else if err != nil {
+				log.Error().Msgf("could get message from tcp forwarding channel: %s", err)
+				return
+			}
+
+			// nothing to process
+			if genericMessage == nil {
+				return
+			}
+
+			switch message := genericMessage.(type) {
+			case *ssh3Messages.DataOrExtendedDataMessage:
+				if message.DataType == ssh3Messages.SSH_EXTENDED_DATA_NONE {
+					_, err := conn.Write([]byte(message.Data))
+					if err != nil {
+						log.Error().Msgf("could not write data on TCP socket: %s", err)
+						// signal the write error to the peer
+						channel.CancelRead()
+						return
+					}
+				} else {
+					log.Warn().Msgf("ignoring message data of unexpected type %d on TCP forwarding channel %d", message.DataType, channel.ChannelID())
+				}
+			default:
+				log.Warn().Msgf("ignoring message of type %T on TCP forwarding channel %d", message, channel.ChannelID())
+			}
+		}
+	}()
+
 }
 
 func execCmdInBackground(channel ssh3.Channel, openPty *openPty, user *unix_util.User, runningCommand *runningCommand, authAgentSocketPath string) error {
@@ -552,6 +636,325 @@ func handleTCPForwardingChannel(ctx context.Context, user *unix_util.User, conv 
 	return nil
 }
 
+// Wire-protocol for the reverse-forward setup acknowledgement.  After
+// receiving a request-reverse-{tcp,udp} channel the server attempts to open
+// the requested listener and immediately writes a single status byte back to
+// the client on the same channel using the ssh3.ReverseSetupAck{OK,Fail}
+// constants (see channel.go).
+//
+// writeReverseSetupAck sends one such status message.  The caller is
+// responsible for tearing down any resources (listener, channel) if the
+// write fails: a successful Listen* followed by a failed ack write means
+// the client has timed us out and the listener would otherwise be orphaned
+// on this side.
+func writeReverseSetupAck(channel ssh3.Channel, status byte, reason string) error {
+	buf := append([]byte{status}, []byte(reason)...)
+	if _, err := channel.WriteData(buf, ssh3Messages.SSH_EXTENDED_DATA_NONE); err != nil {
+		return fmt.Errorf("write reverse-forward setup ack: %w", err)
+	}
+	return nil
+}
+
+//Copied from client.go ForwardTCP()
+func handleTCPReverseForwardingChannel(ctx context.Context, user *unix_util.User, conv *ssh3.Conversation, channel *ssh3.TCPReverseForwardingChannelImpl) error {
+	conn, err := net.ListenTCP("tcp", channel.LocalAddr)
+	if err != nil {
+		log.Error().Msgf("could not listen on TCP %s: %s", channel.LocalAddr, err)
+		// Best-effort: tell the client why we are giving up.  We do not
+		// care if this ack write also fails - the channel is about to
+		// be closed and the client will see EOF.
+		_ = writeReverseSetupAck(channel, ssh3.ReverseSetupAckFail, fmt.Sprintf("listen tcp %s: %s", channel.LocalAddr, err))
+		channel.Close()
+		return err
+	}
+	if ackErr := writeReverseSetupAck(channel, ssh3.ReverseSetupAckOK, ""); ackErr != nil {
+		// We successfully opened the listener but the client is no
+		// longer there to receive our confirmation (e.g. it hit its
+		// own ack timeout).  Closing the listener here prevents a
+		// resource leak: without this, the socket would stay bound
+		// and silently accept connections that nobody would ever
+		// relay through the QUIC tunnel.
+		log.Error().Msgf("reverse TCP %s: ack write failed, closing orphan listener: %s", channel.LocalAddr, ackErr)
+		conn.Close()
+		channel.Close()
+		return ackErr
+	}
+
+	go func() {
+		for {
+			conn, err := conn.AcceptTCP()
+			if err != nil {
+				log.Error().Msgf("could not accept on TCP listener %s: %s", channel.LocalAddr, err)
+				return
+			}
+
+			forwardingChannel, err := conv.OpenTCPReverseForwardingChannel(30000, 10, channel.LocalAddr)
+			if err != nil {
+				log.Error().Msgf("could not open new TCP reverse forwarding channel: %s", err)
+				return
+			}
+			forwardReverseTCPInBackground(ctx, forwardingChannel, conn)
+		}
+	}()
+	return nil
+}
+
+
+
+// Functions below should be included in a package to avoid reusing them aswell in ssh3-server.go
+
+func ListenUDPReuse(ctx context.Context, network string, laddr *net.UDPAddr) (*net.UDPConn, error) {
+	lc := net.ListenConfig{
+		Control: func(netw, addr string, c syscall.RawConn) error {
+			var firstErr error
+			c.Control(func(fd uintptr) {
+				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1); err != nil && firstErr == nil {
+					firstErr = fmt.Errorf("SO_REUSEADDR: %w", err)
+				}
+				if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil && firstErr == nil {
+					firstErr = fmt.Errorf("SO_REUSEPORT: %w", err)
+				}
+			})
+			return firstErr
+		},
+	}
+
+	pc, err := lc.ListenPacket(ctx, network, laddr.String()) // "udp", "udp4", or "udp6"
+	if err != nil {
+		return nil, err
+	}
+	uc, ok := pc.(*net.UDPConn)
+	if !ok {
+		pc.Close()
+		return nil, fmt.Errorf("not a UDP socket")
+	}
+	return uc, nil
+}
+
+
+
+
+// ListenUDPWithAutoMulticast listens on udpAddr.
+// If udpAddr.IP is multicast, it binds to the wildcard address on the same
+// family+port and joins the multicast group. Otherwise it just listens normally.
+//
+// If ifaceName is non-empty, it will join only on that interface.
+// Otherwise it tries all "up" multicast-capable interfaces (excluding loopback).
+func ListenUDPWithAutoMulticast(udpAddr *net.UDPAddr, ifaceName string) (*net.UDPConn, error) {
+	if udpAddr == nil {
+		return nil, fmt.Errorf("nil UDPAddr")
+	}
+	isV4 := udpAddr.IP.To4() != nil
+
+	// Non-multicast or unspecified: plain listen in the right family.
+	if udpAddr.IP == nil || !udpAddr.IP.IsMulticast() {
+		network := "udp"
+		if isV4 {
+			network = "udp4"
+		} else {
+			network = "udp6"
+		}
+		return net.ListenUDP(network, udpAddr)
+	}
+
+	// Multicast: bind to wildcard in the right family.
+	var bind *net.UDPAddr
+	var network string
+	if isV4 {
+		bind = &net.UDPAddr{IP: net.IPv4zero, Port: udpAddr.Port}
+		network = "udp4"
+	} else {
+		bind = &net.UDPAddr{IP: net.IPv6unspecified, Port: udpAddr.Port}
+		network = "udp6"
+	}
+
+	var err error
+	var conn *net.UDPConn
+	if conn == nil {
+		//conn, err = net.ListenUDP(network, bind)
+		conn, err = ListenUDPReuse(context.Background(), network, bind)		
+		if err != nil {
+			return nil, fmt.Errorf("listen: %w", err)
+		}
+		// Linux: ensure we only receive groups we actually join.
+		if err := disableMulticastAll(conn); err != nil {
+			// consider returning the error; otherwise log loudly
+			return nil, fmt.Errorf("disableMulticastAll: %w", err)
+		}
+	}
+	// Join group (same join helpers as before)
+	if isV4 {
+		// Belt-and-braces: filter by destination IP from control messages.
+		p := ipv4.NewPacketConn(conn)
+		if err := joinOnInterfacesV4(p, udpAddr, ifaceName); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		
+	} else {
+		p := ipv6.NewPacketConn(conn)
+		if err := joinOnInterfacesV6(p, udpAddr, ifaceName); err != nil {
+			conn.Close()
+			return nil, err
+		}
+	}
+	return conn, nil
+}
+
+func joinOnInterfacesV4(p *ipv4.PacketConn, group *net.UDPAddr, ifaceName string) error {
+	if ifaceName != "" {
+		ifi, err := net.InterfaceByName(ifaceName)
+		if err != nil {
+			return fmt.Errorf("iface '%s': %w", ifaceName, err)
+		}
+		return p.JoinGroup(ifi, &net.UDPAddr{IP: group.IP})
+	}
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return fmt.Errorf("list ifaces: %w", err)
+	}
+
+	var errs []string
+	joined := 0
+	for _, ifi := range ifaces {
+		if (ifi.Flags&net.FlagUp) == 0 || (ifi.Flags&net.FlagMulticast) == 0 || (ifi.Flags&net.FlagLoopback) != 0 {
+			continue
+		}
+		if err := p.JoinGroup(&ifi, &net.UDPAddr{IP: group.IP}); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", ifi.Name, err))
+			continue
+		}
+		joined++
+	}
+	if joined == 0 {
+		if len(errs) > 0 {
+			return errors.New("failed to join on any iface: " + strings.Join(errs, "; "))
+		}
+		return errors.New("no suitable interfaces found to join multicast")
+	}
+	return nil
+}
+
+func joinOnInterfacesV6(p *ipv6.PacketConn, group *net.UDPAddr, ifaceName string) error {
+	if ifaceName != "" {
+		ifi, err := net.InterfaceByName(ifaceName)
+		if err != nil {
+			return fmt.Errorf("iface '%s': %w", ifaceName, err)
+		}
+		return p.JoinGroup(ifi, &net.UDPAddr{IP: group.IP})
+	}
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return fmt.Errorf("list ifaces: %w", err)
+	}
+
+	var errs []string
+	joined := 0
+	for _, ifi := range ifaces {
+		if (ifi.Flags&net.FlagUp) == 0 || (ifi.Flags&net.FlagMulticast) == 0 || (ifi.Flags&net.FlagLoopback) != 0 {
+			continue
+		}
+		if err := p.JoinGroup(&ifi, &net.UDPAddr{IP: group.IP}); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", ifi.Name, err))
+			continue
+		}
+		joined++
+	}
+	if joined == 0 {
+		if len(errs) > 0 {
+			return errors.New("failed to join on any iface: " + strings.Join(errs, "; "))
+		}
+		return errors.New("no suitable interfaces found to join multicast")
+	}
+	return nil
+}
+
+func disableMulticastAll(uc *net.UDPConn) error {
+    rc, err := uc.SyscallConn()
+    if err != nil {
+        return err
+    }
+    var serr error
+    err = rc.Control(func(fd uintptr) {
+        // IP_MULTICAST_ALL = 49 on Linux; use unix.IP_MULTICAST_ALL for portability.
+        if e := unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, unix.IP_MULTICAST_ALL, 0); e != nil {
+            serr = e
+        }
+    })
+    if err != nil {
+        return err
+    }
+    return serr
+}
+
+//Copied from client.go ForwardUDP()
+func handleUDPReverseForwardingChannel(ctx context.Context, user *unix_util.User, conv *ssh3.Conversation, ch *ssh3.UDPReverseForwardingChannelImpl) error {
+	conn, err := ListenUDPWithAutoMulticast(ch.LocalAddr,"")
+	//conn, err := net.ListenUDP("udp", ch.LocalAddr)
+	if err != nil {
+		log.Error().Msgf("could not listen on UDP %s: %s", ch.LocalAddr, err)
+		_ = writeReverseSetupAck(ch, ssh3.ReverseSetupAckFail, fmt.Sprintf("listen udp %s: %s", ch.LocalAddr, err))
+		ch.Close()
+		return err
+	}
+	if ackErr := writeReverseSetupAck(ch, ssh3.ReverseSetupAckOK, ""); ackErr != nil {
+		// See handleTCPReverseForwardingChannel for the rationale: a
+		// successful Listen followed by a failed ack write must not
+		// leave the listener bound on this side.
+		log.Error().Msgf("reverse UDP %s: ack write failed, closing orphan listener: %s", ch.LocalAddr, ackErr)
+		conn.Close()
+		ch.Close()
+		return ackErr
+	}
+	forwardings := make(map[string]ssh3.Channel)
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			n, addr, err := conn.ReadFromUDP(buf)
+			if err != nil {
+				log.Error().Msgf("could not read on UDP socket: %s", err)
+				return
+			}
+			channel, ok := forwardings[addr.String()]
+			if !ok {
+				channel, err = conv.OpenUDPReverseForwardingChannel(30000, 10, ch.LocalAddr)
+				if err != nil {
+					log.Error().Msgf("could not open new UDP reverse forwarding channel: %s", err)
+					return
+				}
+				forwardings[addr.String()] = channel
+				go func() {
+					for {
+						dgram, err := channel.ReceiveDatagram(ctx)
+						if err != nil {
+							log.Error().Msgf("could not receive datagram on channel: %s", err)
+							return
+						}
+						_, err = conn.WriteToUDP(dgram, addr)
+						if err != nil {
+							log.Error().Msgf("could not write datagram on socket: %s", err)
+							return
+						}
+					}
+				}()
+			}
+			
+			err = channel.SendDatagram(buf[:n])
+			if err != nil {
+				log.Error().Msgf("could not send datagram: %s", err)
+				return
+			}
+		}
+	}()
+	return nil
+}
+
+
+
+
+
 func newDataReq(user *unix_util.User, channel ssh3.Channel, request ssh3Messages.DataOrExtendedDataMessage) error {
 	runningSession, ok := runningSessions.Get(channel)
 	if !ok {
@@ -829,7 +1232,11 @@ func ServerMain() int {
 	log.Debug().Msgf("version %s", ssh3.GetCurrentSoftwareVersion())
 
 	quicConf := &quic.Config{
-		Allow0RTT: true,
+		Allow0RTT:            false,
+		KeepAlivePeriod:      1 * time.Second,
+		EnableDatagrams:      true,
+		MaxIncomingStreams:    10000, // client-initiated bidi streams allowed
+		MaxIncomingUniStreams: 10000, // client-initiated uni streams allowed
 	}
 
 	var err error
@@ -859,6 +1266,10 @@ func ServerMain() int {
 				handleUDPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
 			case *ssh3.TCPForwardingChannelImpl:
 				handleTCPForwardingChannel(conv.Context(), authenticatedUser, conv, c)
+			case *ssh3.TCPReverseForwardingChannelImpl:
+				handleTCPReverseForwardingChannel(conv.Context(), authenticatedUser, conv, c)
+			case *ssh3.UDPReverseForwardingChannelImpl:
+				handleUDPReverseForwardingChannel(conv.Context(), authenticatedUser, conv, c)
 			default:
 				runningSessions.Insert(channel, &runningSession{
 					channelState: LARVAL,

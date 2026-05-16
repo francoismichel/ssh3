@@ -108,6 +108,34 @@ func (c *Conversation) EstablishClientConversation(req *http.Request, roundTripp
 
 		newChannel := NewChannel(channelInfo.ConversationStreamID, channelInfo.ConversationID, uint64(stream.StreamID()), channelInfo.ChannelType, channelInfo.MaxPacketSize, &StreamByteReader{stream}, stream, nil, c.channelsManager, false, false, true, c.defaultDatagramsQueueSize, nil)
 		newChannel.setDatagramSender(c.getDatagramSenderForChannel(newChannel.ChannelID()))
+
+		// Server-initiated reverse-forward data channels carry the
+		// server-side bind address in their header additional bytes
+		// (see Conversation.OpenTCPReverseForwardingChannel and the
+		// UDP variant).  Decode it here so the central client-side
+		// dispatcher can route the channel by bind address.  Any
+		// parse error means the peer is sending us malformed reverse-
+		// forward channels; surface it instead of silently demoting
+		// the channel to a generic one.
+		switch channelInfo.ChannelType {
+		case "open-request-reverse-tcp":
+			bind, err := parseTCPForwardingHeader(channelInfo.ChannelID, &StreamByteReader{stream})
+			if err != nil {
+				log.Error().Msgf("parse open-request-reverse-tcp header: %s", err)
+				return false, err
+			}
+			c.channelsAcceptQueue.Add(&TCPOpenReverseForwardingChannelImpl{Channel: newChannel, BindAddr: bind})
+			return true, nil
+		case "open-request-reverse-udp":
+			bind, err := parseUDPForwardingHeader(channelInfo.ChannelID, &StreamByteReader{stream})
+			if err != nil {
+				log.Error().Msgf("parse open-request-reverse-udp header: %s", err)
+				return false, err
+			}
+			c.channelsAcceptQueue.Add(&UDPOpenReverseForwardingChannelImpl{Channel: newChannel, BindAddr: bind})
+			return true, nil
+		}
+
 		c.channelsAcceptQueue.Add(newChannel)
 		return true, nil
 	}
@@ -307,6 +335,80 @@ func (c *Conversation) OpenTCPForwardingChannel(maxPacketSize uint64, datagramsQ
 	c.channelsManager.addChannel(channel)
 	return &TCPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
 }
+func (c *Conversation) RequestTCPReverseChannel(maxPacketSize uint64, datagramsQueueSize uint64, localAddr *net.TCPAddr, remoteAddr *net.TCPAddr) (Channel, error) {
+	str, err := c.streamCreator.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+
+	additionalBytes := buildRequestReverseChannelAdditionalBytes(localAddr.IP, uint16(localAddr.Port), remoteAddr.IP, uint16(remoteAddr.Port))
+
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "request-reverse-tcp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel.maybeSendHeader()
+	c.channelsManager.addChannel(channel)
+	return &TCPForwardingChannelImpl{Channel: channel, RemoteAddr: remoteAddr}, nil
+
+}
+func (c *Conversation) RequestUDPReverseChannel(maxPacketSize uint64, datagramsQueueSize uint64, localAddr *net.UDPAddr, remoteAddr *net.UDPAddr) (Channel, error) {
+	str, err := c.streamCreator.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+
+	additionalBytes := buildRequestReverseChannelAdditionalBytes(localAddr.IP, uint16(localAddr.Port), remoteAddr.IP, uint16(remoteAddr.Port))
+
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "request-reverse-udp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel.maybeSendHeader()
+	c.channelsManager.addChannel(channel)
+	return &UDPForwardingChannelImpl{Channel: channel, LocalAddr: localAddr, RemoteAddr: remoteAddr}, nil
+
+}
+// OpenTCPReverseForwardingChannel opens a server-initiated data channel
+// for one inbound connection on a previously-established reverse-TCP
+// forward.  bindAddr is the server-side listening address that produced
+// the connection: it is serialised into the channel-header additional
+// bytes so the client-side dispatcher can route the channel to the
+// matching reverse-forward handler.  Without this, multiple concurrent
+// reverse-TCP forwards on the same conversation would be indistinguishable
+// to the client and would race over each other.
+func (c *Conversation) OpenTCPReverseForwardingChannel(maxPacketSize uint64, datagramsQueueSize uint64, bindAddr *net.TCPAddr) (Channel, error) {
+
+	str, err := c.streamCreator.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+
+	additionalBytes := buildForwardingChannelAdditionalBytes(bindAddr.IP, uint16(bindAddr.Port))
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "open-request-reverse-tcp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel.maybeSendHeader()
+	c.channelsManager.addChannel(channel)
+	return &TCPOpenReverseForwardingChannelImpl{Channel: channel, BindAddr: bindAddr}, nil
+}
+
+// OpenUDPReverseForwardingChannel is the UDP analogue of
+// OpenTCPReverseForwardingChannel; see its doc for the role of bindAddr.
+//
+// Pre-existing PR #148 versions of this function encoded the addresses in
+// the channel-type string itself ("open-request-reverse-udp,<local>,<remote>")
+// because the additional-bytes path was not wired up.  We now use the
+// regular additional-bytes header for one address (the bind side), which
+// keeps the wire format consistent with the TCP variant and lets the
+// client dispatcher reuse the same parser.
+func (c *Conversation) OpenUDPReverseForwardingChannel(maxPacketSize uint64, datagramsQueueSize uint64, bindAddr *net.UDPAddr) (Channel, error) {
+
+	str, err := c.streamCreator.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+
+	additionalBytes := buildForwardingChannelAdditionalBytes(bindAddr.IP, uint16(bindAddr.Port))
+	channel := NewChannel(uint64(c.controlStream.StreamID()), c.conversationID, uint64(str.StreamID()), "open-request-reverse-udp", maxPacketSize, &StreamByteReader{str}, str, nil, c.channelsManager, true, true, false, datagramsQueueSize, additionalBytes)
+	channel.setDatagramSender(c.getDatagramSenderForChannel(channel.ChannelID()))
+	channel.maybeSendHeader()
+	c.channelsManager.addChannel(channel)
+	return &UDPOpenReverseForwardingChannelImpl{Channel: channel, BindAddr: bindAddr}, nil
+}
+
 
 func (c *Conversation) AcceptChannel(ctx context.Context) (Channel, error) {
 	for {
